@@ -1,0 +1,207 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: sglang-sa
+  namespace: default
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: distributed-sglang-nvfp4-k26
+  namespace: default
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: distributed-sglang-nvfp4-k26
+  serviceName: "sglang-master-pod-nvfp4-k26"
+  template:
+    metadata:
+      labels:
+        app: distributed-sglang-nvfp4-k26
+      annotations:
+        gke-gcsfuse/volumes: "true"
+        gke-gcsfuse/cpu-limit: "2"
+        gke-gcsfuse/memory-limit: "4Gi"
+        gke-gcsfuse/ephemeral-storage-limit: "250Gi"
+        networking.gke.io/default-interface: 'eth0'
+        networking.gke.io/interfaces: |
+          [
+            {"interfaceName":"eth0","network":"default"},
+            {"interfaceName":"eth2","network":"rdma-0"},
+            {"interfaceName":"eth3","network":"rdma-1"},
+            {"interfaceName":"eth4","network":"rdma-2"},
+            {"interfaceName":"eth5","network":"rdma-3"},
+            {"interfaceName":"eth6","network":"rdma-4"},
+            {"interfaceName":"eth7","network":"rdma-5"},
+            {"interfaceName":"eth8","network":"rdma-6"},
+            {"interfaceName":"eth9","network":"rdma-7"}
+          ]
+    spec:
+      serviceAccountName: sglang-sa
+      initContainers:
+      - name: nccl-plugin-installer
+        imagePullPolicy: Always
+        image: "us-docker.pkg.dev/gce-ai-infra/gpudirect-gib/nccl-plugin-gib:v1.1.2"
+        volumeMounts:
+        - name: gib-nccl-plugin-volume
+          mountPath: /target/usr/local/gib
+        command: ["/bin/sh", "-c"]
+        args:
+        - |
+          set -ex
+          /scripts/container_entry.sh install --install-nccl
+          cp -R /var/lib/gib/. /target/usr/local/gib
+      containers:
+      - name: sglang-container
+        image: docker.io/lmsysorg/sglang:v0.5.10.post1
+        imagePullPolicy: Always
+        command:
+        - /bin/bash
+        - -c
+        args:
+        - |
+          set -ex
+          ldconfig /usr/local/nvidia/lib64/ || true
+          export LD_LIBRARY_PATH="/usr/local/gib/lib64:/usr/local/nvidia/lib64:$LD_LIBRARY_PATH"
+          if [ -f "/usr/local/gib/scripts/set_nccl_env.sh" ]; then
+              source /usr/local/gib/scripts/set_nccl_env.sh
+          fi
+
+          python3 -m sglang.launch_server \
+              --model-path nvidia/Kimi-K2.6-NVFP4 \
+              --trust-remote-code \
+              --quantization modelopt_fp4 \
+              --disable-shared-experts-fusion \
+              --mem-fraction-static 0.82 \
+              --chunked-prefill-size 32768 \
+              --max-running-requests 1024 \
+              --cuda-graph-max-bs 256 \
+              --nnodes 2 \
+              --node-rank $POD_INDEX \
+              --dist-init-addr sglang-master-pod-nvfp4-k26:5000 \
+              --enable-dp-attention \
+              --dp-size 8 \
+              --enable-dp-lm-head \
+              --enable-fused-moe-sum-all-reduce \
+              --reasoning-parser kimi_k2 \
+              --tool-call-parser kimi_k2 \
+              --kv-cache-dtype bfloat16 \
+              --disable-radix-cache \
+              --fp4-gemm-backend flashinfer_cutlass \
+              --attention-backend flashinfer \
+              --moe-runner-backend flashinfer_cutlass \
+              --enable-flashinfer-allreduce-fusion \
+              --disable-custom-all-reduce \
+              --tp-size 8 \
+              --pp-size 2 \
+              --context-length 16384 \
+              --host 0.0.0.0 \
+              --port 8000
+        env:
+        - name: POD_INDEX
+          valueFrom:
+            fieldRef:
+              apiVersion: v1
+              fieldPath: metadata.labels['apps.kubernetes.io/pod-index']
+        - name: HF_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: hf-secret
+              key: HF_TOKEN
+              optional: true
+        - name: NCCL_DEBUG
+          value: WARN
+        - name: SGLANG_REQUEST_STATE_WAIT_TIMEOUT
+          value: "18000"
+        - name: SGLANG_ENABLE_SPEC_V2
+          value: "1"
+        - name: OMP_NUM_THREADS
+          value: "24"
+        - name: SGLANG_SET_CPU_AFFINITY
+          value: "1"
+        - name: SAFETENSORS_FAST_GPU
+          value: "1"
+        - name: PYTORCH_CUDA_ALLOC_CONF
+          value: "expandable_segments:True"
+        - name: SGLANG_ENABLE_DEEP_GEMM
+          value: "0"
+        - name: SGLANG_ENABLE_JIT_DEEPGEMM
+          value: "0"
+        resources:
+          limits:
+            nvidia.com/gpu: "8"
+            cpu: "206"
+            memory: "1500Gi"
+          requests:
+            nvidia.com/gpu: "8"
+            cpu: "206"
+            memory: "1500Gi"
+        volumeMounts:
+          - mountPath: /dev/shm
+            name: dshm
+          - mountPath: /root/.cache/huggingface
+            name: hf-cache
+          - name: nvidia-install-dir-host
+            mountPath: /usr/local/nvidia
+          - name: gib-nccl-plugin-volume
+            mountPath: /usr/local/gib
+        securityContext:
+          privileged: true  
+      hostNetwork: true
+      dnsPolicy: ClusterFirstWithHostNet
+      nodeSelector:
+        cloud.google.com/gke-accelerator: nvidia-b200
+      tolerations:
+        - operator: "Exists"
+          key: "nvidia.com/gpu"
+        - operator: "Exists"
+          key: "cloud.google.com/impending-node-termination"
+        - operator: "Exists"
+          key: "user-workload"
+      volumes:
+      - emptyDir:
+          medium: Memory
+          sizeLimit: 100Gi
+        name: dshm
+      - name: hf-cache
+        emptyDir: {}
+      - name: nvidia-install-dir-host
+        hostPath:
+          path: /home/kubernetes/bin/nvidia
+      - name: gib-nccl-plugin-volume
+        emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: sglang-master-pod-nvfp4-k26
+  namespace: default
+spec:
+  type: ClusterIP
+  clusterIP: None
+  selector:
+    app: distributed-sglang-nvfp4-k26
+    apps.kubernetes.io/pod-index: "0"
+  ports:
+  - name: dist-port
+    port: 5000
+    targetPort: 5000
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: sglang-serving-nvfp4-k26
+  namespace: default
+spec:
+  type: NodePort
+  selector:
+    app: distributed-sglang-nvfp4-k26
+    apps.kubernetes.io/pod-index: "0"
+  ports:
+  - name: serving
+    port: 8000
+    targetPort: 8000
+  - name: metrics
+    port: 8080
+    targetPort: 8080
