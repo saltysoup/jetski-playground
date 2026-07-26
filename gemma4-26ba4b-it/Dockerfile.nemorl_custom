@@ -1,0 +1,45 @@
+# Pure NeMo-RL Container Image built from GitHub source using nvcr.io/nvidia/pytorch:26.06-py3
+FROM nvcr.io/nvidia/pytorch:26.06-py3
+
+USER root
+ENV DEBIAN_FRONTEND=noninteractive
+
+# 1. Install system utilities and git
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    git \
+    sudo \
+    netcat-openbsd \
+    pciutils \
+    curl \
+    ca-certificates \
+    build-essential \
+    && rm -rf /var/lib/apt/lists/*
+
+# 2. Install uv package manager
+RUN curl -LsSf https://astral.sh/uv/install.sh | sh
+ENV PATH="/root/.local/bin:$PATH"
+
+WORKDIR /opt
+
+# 3. Clone NeMo-RL from GitHub source
+RUN git clone --recursive https://github.com/NVIDIA-NeMo/RL.git /opt/nemo-rl
+
+WORKDIR /opt/nemo-rl
+
+# 4. Create virtual environment and install NeMo-RL base dependencies
+RUN uv venv /opt/nemo_rl_venv --seed
+ENV PATH="/opt/nemo_rl_venv/bin:$PATH"
+ENV UV_PROJECT_ENVIRONMENT=/opt/nemo_rl_venv
+
+RUN uv pip install --no-cache-dir setuptools wheel
+RUN uv sync --no-install-project --all-groups
+RUN uv pip install --no-cache-dir -e .
+
+## 5. Prefetch Ray virtualenvs for multi-worker execution
+#RUN UV_LINK_MODE=symlink uv run nemo_rl/utils/prefetch_venvs.py || true
+
+ENV NEMO_RL_VENV_DIR=/opt/ray_venvs
+ENV RAY_USAGE_STATS_ENABLED=0
+ENV RAY_ENABLE_UV_RUN_RUNTIME_ENV=0
+
+WORKDIR /opt/nemo-rl
