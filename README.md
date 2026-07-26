@@ -1,6 +1,6 @@
-# NVIDIA NeMo-RL & Kuberay Multi-Node Reinforcement Learning for Gemma 3 & Gemma 4 on GKE
+# NVIDIA NeMo-RL & Kuberay Multi-Node Reinforcement Learning for Gemma 3 on GKE
 
-This repository contains production-ready reinforcement learning (GRPO / DAPO) recipes, Helm chart configurations, Dockerfiles, and automated workstation submission orchestrators for fine-tuning **Google Gemma 3 27B IT** and **Gemma 4 26B A4 IT** on Google Kubernetes Engine (GKE) high-GPU **NVIDIA B200** clusters (`2n8g` — 16 × B200 GPUs).
+This repository contains production-ready reinforcement learning (GRPO / DAPO) recipes, Helm chart configurations, Dockerfiles, and automated workstation submission orchestrators for fine-tuning **Google Gemma 3 27B IT** on Google Kubernetes Engine (GKE) high-GPU **NVIDIA B200** clusters (`2n8g` — 16 × B200 GPUs).
 
 ---
 
@@ -46,17 +46,10 @@ Across our experiments on `DAPOMath17K` (17,000 diverse math reasoning problems)
 
 ```text
 ├── README.md                           # This documentation and usage guide
-├── gemma3-27b-it/
-│   ├── values.yaml                     # Kuberay Helm chart (1500Gi RAM, 500Gi /dev/shm, nemo-rl:v0.6.0, RDMA gIB)
-│   ├── dapo-gemma3-27b-it-2n8g-fsdp2-automodel.yaml  # 2D Tensor/FSDP2 recipe for Gemma 3 27B IT
-│   └── submit_gemma3-27b-it.sh         # Automated workstation submission orchestrator
-└── gemma4-26ba4b-it/
-    ├── Dockerfile.gemma4               # Custom Dockerfile for Gemma 4 testing
-    ├── Dockerfile.nemorl_custom        # Base custom NeMo-RL container
-    ├── patch_gemma4.py                 # Python AST patch script for Transformers & vLLM compatibility
-    ├── dapo-gemma4-26ba4b-it-2n8g-fsdp2-automodel.yaml  # FSDP2 recipe for Gemma 4 26B
-    ├── submit_gemma4-26ba4b-it.sh      # Workstation submission orchestrator for Gemma 4
-    └── launch-ray-cluster.sh           # Script to bootstrap cluster resources
+└── gemma3-27b-it/
+    ├── values.yaml                     # Kuberay Helm chart (1500Gi RAM, 500Gi /dev/shm, nemo-rl:v0.6.0, RDMA gIB)
+    ├── dapo-gemma3-27b-it-2n8g-fsdp2-automodel.yaml  # 2D Tensor/FSDP2 recipe for Gemma 3 27B IT
+    └── submit_gemma3-27b-it.sh         # Automated workstation submission orchestrator
 ```
 
 ---
