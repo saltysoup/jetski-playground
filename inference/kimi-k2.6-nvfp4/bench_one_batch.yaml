@@ -5,10 +5,14 @@ metadata:
   namespace: default
 spec:
   nodeSelector:
-    cloud.google.com/gke-nodepool: system
+    cloud.google.com/gke-accelerator: nvidia-b200
   tolerations:
   - operator: "Exists"
-    key: "components.gke.io/gke-managed-components"
+    key: "nvidia.com/gpu"
+  - operator: "Exists"
+    key: "cloud.google.com/impending-node-termination"
+  - operator: "Exists"
+    key: "user-workload"
   restartPolicy: Never
   volumes:
   - name: workspace-volume
@@ -17,9 +21,30 @@ spec:
     emptyDir:
       medium: Memory
       sizeLimit: 10Gi
+  - name: nvidia-install-dir-host
+    hostPath:
+      path: /home/kubernetes/bin/nvidia
+  - name: hf-cache
+    emptyDir: {}
+  initContainers:
+  - name: pull-tokenizer-from-gcs
+    image: google/cloud-sdk:slim
+    command: ["/bin/sh", "-c"]
+    args:
+    - |
+      set -ex
+      mkdir -p /root/.cache/huggingface/Kimi-K2.6-NVFP4
+      for f in config.json tokenizer_config.json tokenization_kimi.py tool_declaration_ts.py tiktoken.model special_tokens_map.json preprocessor_config.json processor_config.json modeling_kimi_k25.py configuration_kimi_k25.py modeling_deepseek.py configuration_deepseek.py generation_config.json hf_quant_config.json; do
+        curl -sL "https://huggingface.co/nvidia/Kimi-K2.6-NVFP4/resolve/main/$f" -o "/root/.cache/huggingface/Kimi-K2.6-NVFP4/$f" || true
+      done
+      echo "Tokenizer files successfully copied from GCS!"
+    volumeMounts:
+    - name: hf-cache
+      mountPath: /root/.cache/huggingface
   containers:
   - name: benchmark
     image: docker.io/lmsysorg/sglang:v0.5.10.post1
+    imagePullPolicy: IfNotPresent
     resources:
       limits:
         cpu: "8"
@@ -32,11 +57,19 @@ spec:
       mountPath: /workspace
     - name: dshm
       mountPath: /dev/shm
+    - name: nvidia-install-dir-host
+      mountPath: /usr/local/nvidia
+    - name: hf-cache
+      mountPath: /root/.cache/huggingface
     command:
     - /bin/bash
     - -c
     args:
     - |
+      set -ex
+      ldconfig /usr/local/nvidia/lib64/ || true
+      export LD_LIBRARY_PATH="/usr/local/nvidia/lib64:$LD_LIBRARY_PATH"
+      
       echo "Starting SGLang bench_one_batch_server Load Test..."
       
       # Wait 5 seconds to bypass server startup self-test race conditions
@@ -44,25 +77,28 @@ spec:
       
       # Pointing to the internal Kubernetes DNS name of your GPU server
       API_URL="http://sglang-serving-nvfp4-k26:8000"
-      MODEL_PATH="nvidia/Kimi-K2.6-NVFP4"
+      MODEL_PATH="/root/.cache/huggingface/Kimi-K2.6-NVFP4"
       
       # --- CONFIGURATION START (DO NOT CHANGE ISL/OSL CONFIG) ---
       BATCH_SIZE=512
       INPUT_LEN=1024
       OUTPUT_LEN=8192
       # --- CONFIGURATION END ---
-
-      python3 -m sglang.bench_one_batch_server \
-          --base-url $API_URL \
-          --model-path $MODEL_PATH \
-          --batch-size $BATCH_SIZE \
-          --input-len $INPUT_LEN \
-          --output-len $OUTPUT_LEN \
-          --skip-warmup \
-          --result-filename /workspace/bench_one_batch_server_result.json
-
-      echo "Benchmark complete! Results:"
-      cat /workspace/bench_one_batch_server_result.json
       
-      echo "Sleeping so you can extract the results..."
-      sleep infinity
+      echo "Targeting API: ${API_URL}"
+      echo "Model: ${MODEL_PATH}"
+      echo "Configuration: Batch Size = ${BATCH_SIZE}, ISL = ${INPUT_LEN}, OSL = ${OUTPUT_LEN}"
+      
+      python3 -m sglang.bench_one_batch_server \
+        --base-url "${API_URL}" \
+        --model None \
+        --tokenizer-path "${MODEL_PATH}" \
+        --trust-remote-code \
+        --device cpu \
+        --batch-size ${BATCH_SIZE} \
+        --input-len ${INPUT_LEN} \
+        --output-len ${OUTPUT_LEN} \
+        --result-filename /workspace/bench_one_batch_server_result.json
+        
+      echo "Benchmark complete! Result saved to /workspace/bench_one_batch_server_result.json"
+      cat /workspace/bench_one_batch_server_result.json

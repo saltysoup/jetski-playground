@@ -1,0 +1,25 @@
+# Large model weights and checkpoints
+*.safetensors
+*.bin
+*.pt
+*.pth
+*.ckpt
+*.onnx
+*.engine
+
+# Secrets and credentials
+*secret*
+*key*
+*.pem
+*.key
+*.json
+
+# Allow documentation, configs, and reproducible benchmark results
+!README.md
+!*.yaml
+!*.yml
+!*.j2
+!*.sh
+!*.py
+!*result*.json
+!*benchmark*.json
