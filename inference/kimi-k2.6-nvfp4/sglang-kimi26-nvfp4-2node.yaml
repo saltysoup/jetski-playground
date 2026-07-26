@@ -15,15 +15,12 @@ spec:
     matchLabels:
       app: distributed-sglang-nvfp4-k26
   serviceName: "sglang-master-pod-nvfp4-k26"
+  podManagementPolicy: Parallel
   template:
     metadata:
       labels:
         app: distributed-sglang-nvfp4-k26
       annotations:
-        gke-gcsfuse/volumes: "true"
-        gke-gcsfuse/cpu-limit: "2"
-        gke-gcsfuse/memory-limit: "4Gi"
-        gke-gcsfuse/ephemeral-storage-limit: "250Gi"
         networking.gke.io/default-interface: 'eth0'
         networking.gke.io/interfaces: |
           [
@@ -58,17 +55,17 @@ spec:
         args:
           - |
             set -ex
-            if [ -f /root/.cache/Kimi-K2.6-NVFP4/config.json ]; then
-              echo "Model already exists in local cache /root/.cache/Kimi-K2.6-NVFP4! Skipping GCS pull."
+            if [ -f /root/.cache/huggingface/Kimi-K2.6-NVFP4/config.json ]; then
+              echo "Model already exists in local cache /root/.cache/huggingface/Kimi-K2.6-NVFP4! Skipping GCS pull."
             else
               echo "Pulling Kimi-K2.6-NVFP4 from GCS bucket gs://ikwak-models-gpu-launchpad-playground/Kimi-K2.6-NVFP4..."
-              mkdir -p /root/.cache/Kimi-K2.6-NVFP4
-              gcloud storage cp -r gs://ikwak-models-gpu-launchpad-playground/Kimi-K2.6-NVFP4/* /root/.cache/Kimi-K2.6-NVFP4/
+              mkdir -p /root/.cache/huggingface/Kimi-K2.6-NVFP4
+              gcloud storage cp "gs://ikwak-models-gpu-launchpad-playground/Kimi-K2.6-NVFP4/*" /root/.cache/huggingface/Kimi-K2.6-NVFP4/
               echo "Model successfully pulled from GCS to local NVMe disk!"
             fi
         volumeMounts:
           - name: hf-cache
-            mountPath: /root/.cache
+            mountPath: /root/.cache/huggingface
       containers:
       - name: sglang-container
         image: docker.io/lmsysorg/sglang:v0.5.10.post1
@@ -86,7 +83,7 @@ spec:
           fi
 
           python3 -m sglang.launch_server \
-              --model-path /root/.cache/Kimi-K2.6-NVFP4 \
+              --model-path /root/.cache/huggingface/Kimi-K2.6-NVFP4 \
               --served-model-name nvidia/Kimi-K2.6-NVFP4 \
               --trust-remote-code \
               --quantization modelopt_fp4 \

@@ -57,6 +57,8 @@ spec:
         args:
           - |
             set -e
+            echo "Removing temporary .cache directory before GCS upload..."
+            rm -rf /workspace/Kimi-K2.6-NVFP4/.cache/ || true
             echo "Uploading /workspace/Kimi-K2.6-NVFP4 to gs://ikwak-models-gpu-launchpad-playground/Kimi-K2.6-NVFP4..."
             gcloud storage cp -r /workspace/Kimi-K2.6-NVFP4 gs://ikwak-models-gpu-launchpad-playground/
             echo "GCS upload complete! Model is now saved in gs://ikwak-models-gpu-launchpad-playground/Kimi-K2.6-NVFP4"
