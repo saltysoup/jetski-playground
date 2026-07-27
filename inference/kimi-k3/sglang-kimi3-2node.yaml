@@ -126,7 +126,7 @@ spec:
           fi
           export GLOO_SOCKET_IFNAME=eth0
           export NCCL_SOCKET_IFNAME=eth0
-          export SGLANG_HOST_IP=$(hostname -i | awk '{print $1}')
+          export SGLANG_HOST_IP=$(hostname -I | tr ' ' '\n' | grep -E '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+' | head -n 1)
 
           echo "=========================================================="
           echo "Launching SGLang multi-node for moonshotai/Kimi-K3..."
