@@ -68,4 +68,17 @@ kubectl logs -f distributed-sglang-k3-1 -c sglang-container
 
 # Test API health once serving starts on Port 30000:
 kubectl exec -it distributed-sglang-k3-0 -c sglang-container -- curl -s http://localhost:30000/get_model_info
+
+# Test generation with Kimi-K3 reasoning & DSpark speculative decoding:
+kubectl exec -i distributed-sglang-k3-0 -c sglang-container -- \
+  curl -s -X POST http://localhost:30000/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "moonshotai/Kimi-K3",
+    "messages": [
+      {"role": "user", "content": "What is Google Cloud AI Hypercomputer in 2 sentences."}
+    ],
+    "max_tokens": 256,
+    "temperature": 0.7
+  }' | jq .
 ```
