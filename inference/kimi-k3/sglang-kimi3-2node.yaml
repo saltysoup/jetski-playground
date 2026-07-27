@@ -75,7 +75,7 @@ spec:
         image: us-docker.pkg.dev/gce-ai-infra/gpudirect-gib/nccl-plugin-gib:v1.1.0
         volumeMounts:
         - name: gib-nccl-plugin-volume
-          mountPath: /usr/local/gib
+          mountPath: /var/lib/tcpxo/lib64
       containers:
       - name: sglang-container
         image: docker.io/lmsysorg/sglang:kimi-k3
