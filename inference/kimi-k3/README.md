@@ -34,8 +34,13 @@ This directory contains production-ready Kubernetes manifests for deploying **Mo
     * `Service: sglang-serving-k3` (ClusterIP, port `30000`, selecting `pod-index: 0`)
     * `StatefulSet: distributed-sglang-k3` (`replicas: 2`, `TP=16`)
 * **[`kimi-k3-gcs-uploader-job.yaml`](kimi-k3-gcs-uploader-job.yaml):**
-  * High-speed parallel downloader and GCS uploader Job.
-  * Downloads `moonshotai/Kimi-K3` using 16 parallel workers via `hf_transfer` and streams to `gs://ikwak-models-gpu-launchpad-playground/Kimi-K3`.
+  * High-speed parallel downloader and GCS uploader Job (`hf_transfer`).
+* **[`gke-inference-gateway-k3.yaml`](gke-inference-gateway-k3.yaml):**
+  * GKE Inference Gateway (`llm-d`) with Regional Internal Application Load Balancer (`gke-l7-rilb`, VIP `http://192.168.0.10`) for KV-cache aware request routing via Envoy Ext-Proc.
+* **[`inference-perf-k3-2node-direct.yaml`](inference-perf-k3-2node-direct.yaml):**
+  * Standardized `inference-perf` benchmark client for 2-Node Direct Service (`ISL=1024, OSL=8192, BS=512`).
+* **[`inference-perf-k3-2node-gateway.yaml`](inference-perf-k3-2node-gateway.yaml):**
+  * Standardized `inference-perf` benchmark client for 2-Node GKE Inference Gateway (`ISL=1024, OSL=8192, BS=512`).
 
 ---
 
