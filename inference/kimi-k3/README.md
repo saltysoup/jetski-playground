@@ -13,7 +13,7 @@ This directory contains production-ready Kubernetes manifests for deploying **Mo
   * Uses `--speculative-algorithm DSPARK --speculative-draft-model-path /root/.cache/huggingface/Kimi-K3-DSpark --speculative-dspark-block-size 7`.
   * Enables Linear Replay SSM verification via `--enable-linear-replayssm-spec` for high-accuracy state space model draft validation.
 * **Cross-Node RDMA (`gIB` over RoCEv2) & Multi-Networking:**
-  * Uses pod annotations `networking.gke.io/interfaces` (`rdma-1..4`) to attach secondary RoCEv2 network interfaces to each pod.
+  * Uses pod annotations `networking.gke.io/interfaces` (`rdma-0..7` mapped to `eth2..eth9`) to attach 8 secondary RoCEv2 network interfaces to each pod (1-to-1 ConnectX-7 NIC pairing for all 8 NVIDIA B200 GPUs on an `a4-highgpu-8g` node for full 800 Gbps / 3.2 Tbps GPUDirect RDMA bandwidth).
   * Uses an init-container `nccl-plugin-installer` (`us-docker.pkg.dev/gce-ai-infra/gpudirect-gib/nccl-plugin-gib:v1.1.0`) to install Google's GPUDirect RDMA plugin into a shared `emptyDir` volume (`gib-nccl-plugin-volume`) mounted at `/usr/local/gib` (replacing any legacy `/var/lib/tcpxo/lib64` mounts).
   * Sources `/usr/local/gib/scripts/set_nccl_env.sh` and exports `LD_LIBRARY_PATH="/usr/local/gib/lib64:/usr/local/nvidia/lib64:$LD_LIBRARY_PATH"` for RoCEv2 GPU-to-GPU transfers.
   * Pins bootstrap and NCCL interfaces explicitly:
@@ -48,9 +48,9 @@ This directory contains production-ready Kubernetes manifests for deploying **Mo
 
 ## 3. Cluster & Node Pool Prerequisites (Multi-Networking & RoCEv2)
 
-When creating a new GKE cluster or B200 spot/reserved node pool for low-latency RDMA serving:
-1. **Attach Secondary RoCEv2 RDMA Networks to the Node Pool:**
-   You must pass `--additional-node-network` flags during node pool creation so that GKE attaches the secondary RoCEv2 NICs to each host VM and creates the `/dev/infiniband` (`uverbs*`) character devices in the Linux kernel:
+When creating a new GKE cluster or B200 (`a4-highgpu-8g`) spot/reserved node pool for low-latency RDMA serving (refer to the [Google Cloud AI Hypercomputer RoCEv2 Multi-Networking Documentation](https://docs.cloud.google.com/ai-hypercomputer/docs/create/gke-ai-hypercompute-custom#create-cluster-and-node-pool-rdma-multi-net)):
+1. **Attach 8 Secondary RoCEv2 RDMA Networks to the Node Pool:**
+   You must pass 8 `--additional-node-network` flags during node pool creation (one per ConnectX-7 RoCEv2 RDMA NIC for each of the 8 B200 GPUs) so that GKE attaches all 8 secondary RoCEv2 NICs to each host VM and creates the `/dev/infiniband` (`uverbs0..7`) character devices in the Linux kernel:
    ```bash
    gcloud container node-pools create b200-spot-pool \
      --cluster=kimi-k3-uw8-cluster \
@@ -58,10 +58,14 @@ When creating a new GKE cluster or B200 spot/reserved node pool for low-latency 
      --machine-type=a4-highgpu-8g \
      --num-nodes=2 \
      --spot \
-     --additional-node-network=network=rdma-vpc-1,subnetwork=rdma-sub-1-uw8 \
-     --additional-node-network=network=rdma-vpc-2,subnetwork=rdma-sub-2-uw8 \
-     --additional-node-network=network=rdma-vpc-3,subnetwork=rdma-sub-3-uw8 \
-     --additional-node-network=network=rdma-vpc-4,subnetwork=rdma-sub-4-uw8
+     --additional-node-network=network=rdma-0,subnetwork=rdma-sub-0 \
+     --additional-node-network=network=rdma-1,subnetwork=rdma-sub-1 \
+     --additional-node-network=network=rdma-2,subnetwork=rdma-sub-2 \
+     --additional-node-network=network=rdma-3,subnetwork=rdma-sub-3 \
+     --additional-node-network=network=rdma-4,subnetwork=rdma-sub-4 \
+     --additional-node-network=network=rdma-5,subnetwork=rdma-sub-5 \
+     --additional-node-network=network=rdma-6,subnetwork=rdma-sub-6 \
+     --additional-node-network=network=rdma-7,subnetwork=rdma-sub-7
    ```
 2. **Deploy the Host `nccl-rdma-installer` DaemonSet:**
    New clusters require `nccl-rdma-installer-ds.yaml` (`nccl-plugin-gib:v1.1.0`) deployed to `kube-system` to disable IPv4 log martians and populate `/home/kubernetes/bin/nvidia/lib64` on worker nodes:
