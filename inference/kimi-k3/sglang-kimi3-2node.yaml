@@ -52,6 +52,7 @@ spec:
     metadata:
       labels:
         app: distributed-sglang-k3
+        llm-d.ai/guide: optimized-baseline
     spec:
       serviceAccountName: sglang-sa
       initContainers:
@@ -150,7 +151,9 @@ spec:
               --speculative-algorithm DSPARK \
               --speculative-draft-model-path /root/.cache/huggingface/Kimi-K3-DSpark \
               --speculative-dspark-block-size 7 \
-              --enable-linear-replayssm-spec
+              --enable-linear-replayssm-spec \
+              --max-running-requests 512 \
+              --cuda-graph-max-bs 512
         env:
         - name: POD_INDEX
           valueFrom:

@@ -1,0 +1,69 @@
+# inference-perf Benchmark Client for MoonshotAI Kimi-K3 (2-Node GKE Inference Gateway)
+# Standardized at ISL=1024, OSL=8192, BS=512 (concurrency_level=512, num_requests=512)
+# Targets: http://192.168.0.10/v1 (GKE L7 RILB VIP)
+
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: inference-perf-k3-2node-gateway
+  namespace: default
+spec:
+  backoffLimit: 0
+  template:
+    metadata:
+      labels:
+        app: inference-perf-k3-2node-gateway
+    spec:
+      serviceAccountName: default
+      restartPolicy: Never
+      containers:
+      - name: benchmark
+        image: "us-docker.pkg.dev/google-samples/containers/gke/inference-perf:v0.1.2"
+        imagePullPolicy: Always
+        command:
+        - /bin/sh
+        - -c
+        args:
+        - |
+          set -ex
+          cat <<EOF > /tmp/config.yml
+          server:
+            type: open_ai
+            base_url: "http://192.168.0.10/v1"
+            model_name: moonshotai/Kimi-K3
+          tokenizer:
+            trust_remote_code: true
+          data:
+            type: random
+            prompt_size: 1024
+            output_size: 8192
+          load:
+            type: concurrent
+            concurrency_level: 512
+            num_requests: 512
+          report:
+            request_lifecycle:
+              ttft: true
+              tpot: true
+              itl: true
+              e2e: true
+          EOF
+          echo "=========================================================="
+          echo "Running inference-perf Gateway benchmark for Kimi-K3"
+          echo "ISL: 1024 | OSL: 8192 | BS: 512 | Concurrency: 512"
+          echo "=========================================================="
+          inference-perf -c /tmp/config.yml
+        env:
+        - name: HF_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: hf-secret
+              key: HF_TOKEN
+              optional: true
+        resources:
+          requests:
+            cpu: "8"
+            memory: "16Gi"
+          limits:
+            cpu: "8"
+            memory: "16Gi"
