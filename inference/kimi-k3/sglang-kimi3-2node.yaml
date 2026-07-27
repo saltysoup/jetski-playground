@@ -68,6 +68,9 @@ spec:
       initContainers:
       - name: nccl-plugin-installer
         image: us-docker.pkg.dev/gce-ai-infra/gpudirect-gib/nccl-plugin-gib:v1.1.0
+        args:
+        - "install"
+        - "--install-nccl"
         volumeMounts:
         - name: gib-nccl-plugin-volume
           mountPath: /var/lib/gib
