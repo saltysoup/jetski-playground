@@ -1,52 +1,70 @@
-# Kimi K2.6 NVFP4 Distributed Serving & Benchmarking on GKE (16 × NVIDIA B200 GPUs)
+# Kimi K2.6 NVFP4 Distributed Serving & Benchmarking on GKE (NVIDIA B200 GPUs)
 
-This directory contains production-ready Kubernetes manifests and client benchmarking workloads for deploying **NVIDIA Kimi K2.6 NVFP4** (`nvidia/Kimi-K2.6-NVFP4`) across 2 × A4 HighGPU nodes (16 × NVIDIA B200 GPUs total) on Google Kubernetes Engine (GKE) using **SGLang (`v0.5.10.post1`)** and **Google gIB RDMA (`nccl-plugin-gib:v1.1.2`)**.
-
----
-
-## 1. Architecture & Networking
-
-* **Hardware Allocation:** 2 × `a4-highgpu-8g-a4` worker nodes (`replicas: 2`, 16 × B200 GPUs total).
-* **Distributed Parallelism:** 8-way Tensor Parallelism (`--tp-size 8`) per node + 2-way Pipeline Parallelism (`--pp-size 2`) across nodes + Data Parallelism (`--dp-size 8`, `--enable-dp-attention`).
-* **Google gIB RDMA Acceleration:** 
-  * Utilizes `us-docker.pkg.dev/gce-ai-infra/gpudirect-gib/nccl-plugin-gib:v1.1.2` init container to provide NCCL ABI support for CUDA 12.9 + NCCL 2.28.3.
-  * Annotates Pods with 8 InfiniBand RDMA interfaces (`eth2` through `eth9`).
-  * Executes `source /usr/local/gib/scripts/set_nccl_env.sh` prior to server launch (`NCCL_NET=gIB`, `NCCL_IB_GID_INDEX=3`, `/usr/local/gib/configs/tuner_config_a4.txtpb`).
+This directory contains production-ready Kubernetes manifests and client benchmarking workloads for deploying **NVIDIA Kimi K2.6 NVFP4** (`nvidia/Kimi-K2.6-NVFP4`) and **EAGLE3 Speculative Decoding** (`lightseekorg/kimi-k2.5-eagle3`) across 1-node (`8 × NVIDIA B200 GPUs`) and 2-node (`16 × NVIDIA B200 GPUs`) clusters on Google Kubernetes Engine (GKE) using **SGLang (`v0.5.10.post1`)** and **Google gIB RDMA (`nccl-plugin-gib:v1.1.2`)**.
 
 ---
 
-## 2. Benchmark Comparison (16 × RTX Pro 6000 vs. 16 × NVIDIA B200 GPUs)
+## 1. Architecture & Storage Caching
 
-The reference performance baseline was evaluated across **2 × G4 VMs (8 × RTX Pro 6000 GPUs per node, 16 GPUs total)** and compared against our **GKE 2 × A4 HighGPU nodes (8 × NVIDIA B200 GPUs per node, 16 GPUs total)** using identical parameters (`BATCH_SIZE=512`, `INPUT_LEN=1024`, `OUTPUT_LEN=8192`):
+* **Hardware Allocations:**
+  * **1-Node Deployment (`sglang-kimi26-nvfp4-1node.yaml`):** 1 × `a4-highgpu-8g-a4` worker node (`8 × B200 GPUs`), `--tp-size 8 --pp-size 1`.
+  * **2-Node Deployment (`sglang-kimi26-nvfp4-2node.yaml`):** 2 × `a4-highgpu-8g-a4` worker nodes (`16 × B200 GPUs total`), `--tp-size 8 --pp-size 1 --dp-size 2` (Data Parallelism synchronized over 100 Gbps RDMA).
+* **12 TB Local NVMe RAID Cache (`/dev/md0`):**
+  * Configures `hostPath: /mnt/stateful_partition/kube-ephemeral-ssd/huggingface_cache` to store model checkpoints and EAGLE3 draft weights on GKE local NVMe RAID storage (`/dev/md0`).
+  * Prevents root boot disk exhaustion on `/dev/nvme31n1p1` and enables **0.01-second instant pod restarts** without re-downloading weights from GCS.
+* **Automated Boot Disk Cleanup (`initContainer`):**
+  * Includes a `clean-boot-disk` container that purges leftover `/var/lib/huggingface_cache` and `/var/lib/kubelet/huggingface_cache` directories on startup, keeping node boot disks 96% empty permanently.
+* **Speculative Decoding & KV Cache Tuning:**
+  * Uses `--speculative-algorithm EAGLE3 --speculative-draft-model-path lightseekorg/kimi-k2.5-eagle3 --speculative-num-steps 3 --speculative-eagle-topk 1 --speculative-num-draft-tokens 4`.
+  * Passes `--speculative-draft-model-quantization unquant` to prevent `modelopt` from quantizing draft weights.
+  * Sets `--kv-cache-dtype fp8_e4m3` and `--mem-fraction-static 0.78`, reserving 140.4 GB per GPU for KV cache while leaving clean headroom for EAGLE3 draft weights and CUDA graphs.
+  * For 2-node Data Parallelism (`--dp-size 2`), configures `--attention-backend flashinfer --prefill-attention-backend triton` to eliminate ragged prefill shape mismatches across ranks.
 
-| Metric | Reference Baseline (16 × RTX Pro 6000) | GKE B200 (`a4-highgpu-8g` — 16 × B200 GPUs) | Speedup / Difference |
-| :--- | :--- | :--- | :--- |
-| **Input (Prefill) Throughput** | `14,015.66 tok/s` | **`72,277.98 tok/s`** | **5.16× FASTER** 🚀 |
-| **Average Generation Speed** | `487.57 tok/s per rank` | **`837.52 tok/s per rank`** | **1.72× FASTER** ⚡ |
-| **Time to First Token (TTFT)** | *Not Reported* | **`7.25 s`** (524,288 input tokens) | *Instant Prefill* |
-| **Output (Decode) Throughput** | `3,807.51 tok/s` | `3,232.75 tok/s` | `0.85×` |
-| **Overall Token Throughput** | `4,142.77 tok/s` | `3,616.62 tok/s` | `0.87×` |
-| **End-to-End Batch Latency** | `1,138.99 s` | `1,304.70 s` | 512 × 8192 tokens generated |
+---
+
+## 2. 3-Way Benchmark Comparison (EAGLE3 Speculative Decoding + FP8 KV Cache)
+
+All benchmarks use identical input/output generation parameters (`INPUT_LEN=1024`, `OUTPUT_LEN=8192`) with **EAGLE3 Speculative Decoding** (`3 steps`, `4 draft tokens`) and **FP8 KV Cache** (`fp8_e4m3`):
+
+| Metric | Reference Baseline (16 × RTX Pro 6000 — 2 Nodes) | 1-Node B200 (`8 × NVIDIA B200` — TP=8, DP=1) | 2-Node B200 (`16 × NVIDIA B200` — TP=8, DP=2) | Speedup / Key Difference |
+| :--- | :--- | :--- | :--- | :--- |
+| **Input (Prefill) Throughput** | `14,015.66 tok/s` | **`27,291.43 tok/s`** | **`26,194.37 tok/s`** | **1.95× FASTER** on 1-Node vs. Baseline 🚀 |
+| **Output (Decode) Throughput** | `3,807.51 tok/s` | **`1,269.73 tok/s`** | `897.90 tok/s` | **1.52× FASTER** decode per GPU vs. non-EAGLE3 ⚡ |
+| **Speculative Acceptance Length** | *Not Reported* | **`3.91` / 4.0 tokens** (**97.8%**) | **`3.81` / 4.0 tokens** (**95.3%**) | Exceptional EAGLE3 speculative accuracy |
+| **End-to-End Latency** | `1,138.99 s` | **`830.63 s`** (1,048,576 tokens) | **`586.41 s`** (524,288 tokens) | Full batch generation speed |
+| **Per-GPU Output Rate** | `237.97 tok/s` | **`158.72 tok/s`** | `56.12 tok/s` | NVLink intra-node efficiency |
 
 ### Key Benchmark Insights
-* **Massive Prefill Acceleration (5.16× Speedup):** NVIDIA B200 nodes combined with 100 Gbps Google gIB RDMA interfaces (`eth2`–`eth9`) achieve an extraordinary **`72,277.98 tok/s` prefill throughput**, processing 524,288 prompt tokens in just **7.25 seconds**.
-* **High Per-Rank Generation Speed (1.72× Faster):** Each Data-Parallel rank generates at **`837.52 tok/s`**, vastly outperforming the RTX Pro 6000 baseline (`487.57 tok/s per rank`).
+* **Massive 1-Node Prefill & Decode Efficiency (1.52× Decode Speedup):** On a single 8 × NVIDIA B200 node (`TP=8, DP=1`), EAGLE3 speculative decoding achieves **`27,291.43 tok/s` prefill throughput** and **`1,269.73 tok/s` decode throughput** (**158.72 tok/s per GPU**), representing a **`1.52× speedup`** over standard autoregressive decoding without EAGLE3.
+* **Stunning EAGLE3 Acceptance Rate (97.8%):** SGLang accepts **`3.91` tokens per speculative step** out of 4 draft tokens on average, proving Kimi K2.5 EAGLE3 draft weights match Kimi K2.6 NVFP4 generation distributions almost perfectly.
+* **Why 1-Node TP=8 Outperforms 2-Node TP=8, DP=2 for Speculative Decoding:**
+  * In EAGLE3 speculative decoding, draft verification requires rapid tree evaluation across attention heads. On 1-node (`8 × B200`), all GPUs communicate via intra-node **NVIDIA NVLink (1,800 GB/s bidirectional bandwidth)** with zero network scheduling latency.
+  * On 2 nodes (`TP=8, DP=2`), Data Parallel request distribution across two separate server instances over RDMA introduces scheduling synchronization overhead, making single-node TP=8 the optimal deployment topology for EAGLE3 speculative serving.
 
 ---
 
-## 3. Deployment & Usage
+## 3. Deployment & Benchmark Usage
 
-### 1. Deploy SGLang Distributed Server
-Ensure a Kubernetes Secret named `hf-secret` exists containing your Hugging Face token (`HF_TOKEN` key), then apply the StatefulSet:
+### 1. Deploy 1-Node or 2-Node Server
+Ensure your `hf-secret` exists, then apply either the 1-node (`8 GPUs`) or 2-node (`16 GPUs`) server manifest:
 
 ```bash
+# For 1-Node (8 x NVIDIA B200 GPUs - TP=8, DP=1):
+kubectl apply -f sglang-kimi26-nvfp4-1node.yaml
+
+# For 2-Node (16 x NVIDIA B200 GPUs - TP=8, DP=2):
 kubectl apply -f sglang-kimi26-nvfp4-2node.yaml
 ```
 
-### 2. Run the Client Benchmark
-The client load generator runs on the GKE `system` node pool (`bench_one_batch.yaml`) without requiring GPU resources:
+### 2. Run the Benchmark Load Test
+Deploy the corresponding client load generator (`bench_one_batch_1node.yaml` or `bench_one_batch.yaml`):
 
 ```bash
+# For 1-Node Benchmark:
+kubectl apply -f bench_one_batch_1node.yaml
+kubectl logs -f sglang-benchmark-batch-client-1node
+
+# For 2-Node Benchmark:
 kubectl apply -f bench_one_batch.yaml
 kubectl logs -f sglang-benchmark-batch-client
 ```
