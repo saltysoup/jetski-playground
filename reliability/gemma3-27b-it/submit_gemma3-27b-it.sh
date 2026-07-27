@@ -41,13 +41,14 @@ cd /opt/nemo-rl
 pkill -f run_grpo.py || true
 
 echo "Setting environment variables..."
-export WANDB_API_KEY=$WANDB_API_KEY
-if [ -n "$WANDB_API_KEY" ]; then
+if [ -n "$WANDB_API_KEY" ] && [ "$WANDB_API_KEY" != "YOUR_WANDB_API_KEY" ]; then
+  export WANDB_API_KEY=$WANDB_API_KEY
   export WANDB_MODE=online
   echo "WANDB_API_KEY detected: WANDB_MODE set to online"
 else
+  unset WANDB_API_KEY
   export WANDB_MODE=offline
-  echo "WANDB_API_KEY not detected: WANDB_MODE set to offline (use wandb sync later to upload)"
+  echo "WANDB_API_KEY not detected or placeholder: WANDB_MODE set to offline (use wandb sync later to upload)"
 fi
 export HF_TOKEN=$HF_TOKEN
 export HF_HOME=/opt/nemo-rl/
@@ -75,8 +76,8 @@ defaults: ../../grpo_math_1B.yaml
 grpo:
   num_prompts_per_step: 32
   num_generations_per_prompt: 16
-  max_num_steps: 100
-  val_period: 25
+  max_num_steps: 10
+  val_period: 10
   val_at_start: true
   val_at_end: true
 checkpointing:
