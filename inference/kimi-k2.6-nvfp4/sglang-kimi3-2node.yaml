@@ -1,0 +1,225 @@
+# Distributed Kimi-K3 (moonshotai/Kimi-K3) 2-Node GKE Deployment (16 × NVIDIA B200 GPUs)
+# Uses Low-Latency Strategy (TP=16 across 2 nodes) with DSpark Speculative Decoding (RadixArk/Kimi-K3-DSpark)
+# and Google gIB RDMA (nccl-plugin-gib:v1.1.2) over 100 Gbps network.
+# Loads weights from gs://ikwak-models-gpu-launchpad-playground/Kimi-K3 onto 12 TB NVMe RAID (/dev/md0).
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: sglang-master-pod-k3
+  namespace: default
+spec:
+  type: ClusterIP
+  clusterIP: None
+  selector:
+    app: distributed-sglang-k3
+    apps.kubernetes.io/pod-index: "0"
+  ports:
+  - name: dist-port
+    port: 20000
+    targetPort: 20000
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: sglang-serving-k3
+  namespace: default
+  labels:
+    app: distributed-sglang-k3
+spec:
+  type: ClusterIP
+  selector:
+    app: distributed-sglang-k3
+    apps.kubernetes.io/pod-index: "0"
+  ports:
+  - name: http
+    port: 30000
+    targetPort: 30000
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: distributed-sglang-k3
+  namespace: default
+spec:
+  serviceName: "sglang-master-pod-k3"
+  replicas: 2
+  podManagementPolicy: Parallel
+  selector:
+    matchLabels:
+      app: distributed-sglang-k3
+  template:
+    metadata:
+      labels:
+        app: distributed-sglang-k3
+    spec:
+      serviceAccountName: sglang-sa
+      initContainers:
+      - name: clean-boot-disk
+        image: busybox
+        command: ["/bin/sh", "-c"]
+        args:
+          - |
+            rm -rf /host-var-lib/huggingface_cache || true
+            rm -rf /host-var-lib/kubelet/huggingface_cache || true
+            echo "Cleaned up old boot disk caches!"
+        volumeMounts:
+          - name: host-var-lib
+            mountPath: /host-var-lib
+      - name: nccl-plugin-installer
+        imagePullPolicy: Always
+        image: "us-docker.pkg.dev/gce-ai-infra/gpudirect-gib/nccl-plugin-gib:v1.1.2"
+        volumeMounts:
+        - name: gib-nccl-plugin-volume
+          mountPath: /target/usr/local/gib
+        command: ["/bin/sh", "-c"]
+        args:
+        - |
+          set -ex
+          /scripts/container_entry.sh install --install-nccl
+          cp -R /var/lib/gib/. /target/usr/local/gib
+      - name: pull-model-from-gcs
+        image: google/cloud-sdk:slim
+        command: ["/bin/sh", "-c"]
+        args:
+          - |
+            set -ex
+            mkdir -p /root/.cache/huggingface/Kimi-K3
+            find /root/.cache/huggingface/Kimi-K3/ -size 0 -delete || true
+            rm -f /root/.cache/huggingface/Kimi-K3/*.gstmp || true
+            echo "Running fast GCS rsync for Kimi-K3..."
+            gcloud storage rsync -r gs://ikwak-models-gpu-launchpad-playground/Kimi-K3 /root/.cache/huggingface/Kimi-K3/
+            echo "Kimi-K3 rsync complete!"
+            echo "Downloading DSpark draft model RadixArk/Kimi-K3-DSpark..."
+            pip install --no-cache-dir --break-system-packages huggingface_hub hf_transfer
+            export HF_HUB_ENABLE_HF_TRANSFER=1
+            python3 -m huggingface_hub.cli.hf download RadixArk/Kimi-K3-DSpark --local-dir /root/.cache/huggingface/Kimi-K3-DSpark
+            echo "Models cached on 12TB NVMe RAID successfully!"
+        env:
+        - name: HF_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: hf-secret
+              key: HF_TOKEN
+              optional: true
+        volumeMounts:
+          - name: hf-cache
+            mountPath: /root/.cache/huggingface
+      containers:
+      - name: sglang-container
+        image: docker.io/lmsysorg/sglang:latest
+        imagePullPolicy: Always
+        command:
+        - /bin/bash
+        - -c
+        args:
+        - |
+          set -ex
+          ldconfig /usr/local/nvidia/lib64/ || true
+          export LD_LIBRARY_PATH="/usr/local/gib/lib64:/usr/local/nvidia/lib64:$LD_LIBRARY_PATH"
+          if [ -f "/usr/local/gib/scripts/set_nccl_env.sh" ]; then
+              source /usr/local/gib/scripts/set_nccl_env.sh
+          fi
+          export GLOO_SOCKET_IFNAME=eth0
+          export NCCL_SOCKET_IFNAME=eth0
+          export SGLANG_HOST_IP=$(hostname -i | awk '{print $1}')
+
+          echo "=========================================================="
+          echo "Launching SGLang multi-node for moonshotai/Kimi-K3..."
+          echo "Node Rank: $POD_INDEX | dist-init-addr: sglang-master-pod-k3:20000"
+          echo "=========================================================="
+
+          sglang serve \
+              --trust-remote-code \
+              --model-path /root/.cache/huggingface/Kimi-K3 \
+              --served-model-name moonshotai/Kimi-K3 \
+              --enable-metrics \
+              --tp-size 16 \
+              --nnodes 2 \
+              --node-rank $POD_INDEX \
+              --dist-init-addr sglang-master-pod-k3:20000 \
+              --mem-fraction-static 0.85 \
+              --disable-flashinfer-autotune \
+              --watchdog-timeout 3600 \
+              --reasoning-parser kimi_k3 \
+              --tool-call-parser kimi_k3 \
+              --model-loader-extra-config '{"enable_multithread_load": true}' \
+              --mamba-full-memory-ratio 0.43 \
+              --host 0.0.0.0 \
+              --port 30000 \
+              --speculative-algorithm DSPARK \
+              --speculative-draft-model-path /root/.cache/huggingface/Kimi-K3-DSpark \
+              --speculative-dspark-block-size 7 \
+              --enable-linear-replayssm-spec
+        env:
+        - name: POD_INDEX
+          valueFrom:
+            fieldRef:
+              apiVersion: v1
+              fieldPath: metadata.labels['apps.kubernetes.io/pod-index']
+        - name: HF_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: hf-secret
+              key: HF_TOKEN
+              optional: true
+        - name: NCCL_DEBUG
+          value: WARN
+        - name: SGLANG_REQUEST_STATE_WAIT_TIMEOUT
+          value: "18000"
+        - name: OMP_NUM_THREADS
+          value: "24"
+        - name: SGLANG_SET_CPU_AFFINITY
+          value: "1"
+        - name: SAFETENSORS_FAST_GPU
+          value: "1"
+        - name: PYTORCH_CUDA_ALLOC_CONF
+          value: "expandable_segments:True"
+        resources:
+          limits:
+            nvidia.com/gpu: "8"
+            cpu: "206"
+            memory: "1500Gi"
+          requests:
+            nvidia.com/gpu: "8"
+            cpu: "206"
+            memory: "1500Gi"
+        volumeMounts:
+          - mountPath: /dev/shm
+            name: dshm
+          - mountPath: /root/.cache/huggingface
+            name: hf-cache
+          - name: nvidia-install-dir-host
+            mountPath: /usr/local/nvidia
+          - name: gib-nccl-plugin-volume
+            mountPath: /usr/local/gib
+        securityContext:
+          privileged: true  
+      hostNetwork: true
+      dnsPolicy: ClusterFirstWithHostNet
+      nodeSelector:
+        cloud.google.com/gke-accelerator: nvidia-b200
+      tolerations:
+        - operator: "Exists"
+          key: "nvidia.com/gpu"
+        - operator: "Exists"
+          key: "cloud.google.com/impending-node-termination"
+        - operator: "Exists"
+          key: "user-workload"
+      volumes:
+      - emptyDir:
+          medium: Memory
+          sizeLimit: 100Gi
+        name: dshm
+      - name: hf-cache
+        hostPath:
+          path: /mnt/stateful_partition/kube-ephemeral-ssd/huggingface_cache
+          type: DirectoryOrCreate
+      - name: nvidia-install-dir-host
+        hostPath:
+          path: /home/kubernetes/bin/nvidia
+      - name: gib-nccl-plugin-volume
+        emptyDir: {}
+      - name: host-var-lib
+        hostPath:
+          path: /var/lib
