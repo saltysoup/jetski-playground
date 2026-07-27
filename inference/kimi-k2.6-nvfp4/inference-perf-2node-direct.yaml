@@ -16,6 +16,7 @@ data:
       ignore_eos: false
     tokenizer:
       pretrained_model_name_or_path: nvidia/Kimi-K2.6-NVFP4
+      trust_remote_code: true
     data:
       type: random
       input_distribution:
@@ -81,6 +82,13 @@ spec:
           echo "================================================================"
           inference-perf -c /config/config.yml
           echo "Benchmark Completed Successfully!"
+        env:
+        - name: HF_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: hf-secret
+              key: HF_TOKEN
+              optional: true
         resources:
           limits:
             cpu: "2"
