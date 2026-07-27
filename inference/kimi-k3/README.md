@@ -14,8 +14,8 @@ This directory contains production-ready Kubernetes manifests for deploying **Mo
   * Enables Linear Replay SSM verification via `--enable-linear-replayssm-spec` for high-accuracy state space model draft validation.
 * **Cross-Node RDMA (`gIB` over RoCEv2) & Multi-Networking:**
   * Uses pod annotations `networking.gke.io/interfaces` (`rdma-0..7` mapped to `eth2..eth9`) to attach 8 secondary RoCEv2 network interfaces to each pod (1-to-1 ConnectX-7 NIC pairing for all 8 NVIDIA B200 GPUs on an `a4-highgpu-8g` node for full 800 Gbps / 3.2 Tbps GPUDirect RDMA bandwidth).
-  * Uses an init-container `nccl-plugin-installer` (`us-docker.pkg.dev/gce-ai-infra/gpudirect-gib/nccl-plugin-gib:v1.1.0`) to install Google's GPUDirect RDMA plugin into a shared `emptyDir` volume (`gib-nccl-plugin-volume`) mounted at `/usr/local/gib` (replacing any legacy `/var/lib/tcpxo/lib64` mounts).
-  * Sources `/usr/local/gib/scripts/set_nccl_env.sh` and exports `LD_LIBRARY_PATH="/usr/local/gib/lib64:/usr/local/nvidia/lib64:$LD_LIBRARY_PATH"` for RoCEv2 GPU-to-GPU transfers.
+  * Mounts host RDMA and driver libraries (`gib` from `/home/kubernetes/bin/gib`, `nvidia` from `/home/kubernetes/bin/nvidia`, and `lib64` from `/lib64`) directly into `/usr/local/gib`, `/usr/local/nvidia`, and `/lib64`, eliminating the need for `privileged: true` or `hostNetwork: true`.
+  * Sources `/usr/local/gib/scripts/set_nccl_env.sh` and exports `LD_LIBRARY_PATH="/usr/local/gib/lib64:/usr/local/nvidia/lib64:/lib64:$LD_LIBRARY_PATH"` for RoCEv2 GPU-to-GPU transfers.
   * Explicitly exports `NCCL_TUNER_CONFIG_PATH=/usr/local/gib/configs/tuner_config_default.txtpb` after sourcing `set_nccl_env.sh` (preventing NCCL from defaulting to `tuner_config_a4.txtpb`, which expects bare-metal unmanaged PCIe bus numbering and crashes under containerized GKE Dataplane V2 RoCEv2 multi-networking).
   * Pins bootstrap and NCCL interfaces explicitly:
     ```bash
