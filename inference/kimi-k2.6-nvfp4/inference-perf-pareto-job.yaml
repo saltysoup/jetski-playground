@@ -1,0 +1,101 @@
+# Kimi K2.6 NVFP4 Pareto Curve Benchmarking with inference-perf (Rate/Concurrency Sweep Mode)
+# Uses identical ISL=1024, OSL=4096, and sweep stages across 1-Node and 2-Node (Gateway & Direct Service).
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: inference-perf-config
+  namespace: default
+data:
+  config.yml: |
+    server:
+      type: vllm
+      model_name: nvidia/Kimi-K2.6-NVFP4
+      # Switch base_url between Gateway (http://192.168.0.10) and Direct Service (http://sglang-serving-nvfp4-k26:8000)
+      base_url: http://192.168.0.10
+      ignore_eos: false
+    tokenizer:
+      pretrained_model_name_or_path: nvidia/Kimi-K2.6-NVFP4
+    data:
+      type: random
+      input_distribution:
+        min: 1024
+        max: 1024
+        mean: 1024
+        std_dev: 0
+        total_count: 1000
+      output_distribution:
+        min: 4096
+        max: 4096
+        mean: 4096
+        std_dev: 0
+        total_count: 1000
+    load:
+      type: concurrent
+      # Sweep concurrency mode to generate Pareto Curve (TTFT vs. Output Throughput / TPOT vs. Throughput)
+      stages:
+      - num_requests: 32
+        concurrency_level: 16
+      - num_requests: 64
+        concurrency_level: 32
+      - num_requests: 128
+        concurrency_level: 64
+      - num_requests: 128
+        concurrency_level: 128
+    api:
+      type: completion
+      streaming: true
+      request_timeout: 36000
+    report:
+      request_lifecycle:
+        summary: true
+        per_stage: true
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: inference-perf-pareto-sweep
+  namespace: default
+spec:
+  backoffLimit: 0
+  template:
+    metadata:
+      labels:
+        app: inference-perf-client
+    spec:
+      nodeName: gke-ikwak-reliabilit-a4-highgpu-8g-a4-5e816978-0bzk
+      tolerations:
+      - operator: "Exists"
+        key: "nvidia.com/gpu"
+      - operator: "Exists"
+        key: "cloud.google.com/impending-node-termination"
+      - operator: "Exists"
+        key: "user-workload"
+      restartPolicy: Never
+      containers:
+      - name: inference-perf
+        image: python:3.12-slim
+        command: ["/bin/bash", "-c"]
+        args:
+        - |
+          set -ex
+          pip install -q -U inference-perf PyYAML==6.0.3
+          echo "=========================================================="
+          echo "Launching inference-perf Pareto Concurrency Sweep..."
+          echo "=========================================================="
+          inference-perf -c /config/config.yml
+          echo "Pareto Concurrency Sweep Completed Successfully!"
+        resources:
+          limits:
+            cpu: "2"
+            memory: "8Gi"
+          requests:
+            cpu: "2"
+            memory: "8Gi"
+        volumeMounts:
+        - name: config-volume
+          mountPath: /config
+      volumes:
+      - name: config-volume
+        configMap:
+          name: inference-perf-config
