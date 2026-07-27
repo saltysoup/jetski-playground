@@ -1,7 +1,52 @@
 # inference-perf Benchmark Client for MoonshotAI Kimi-K3 (2-Node Direct Service)
 # Standardized at ISL=1024, OSL=8192, BS=512 (concurrency_level=512, num_requests=512)
-# Targets: http://sglang-serving-k3.default.svc.cluster.local:30000/v1
+# Targets: http://sglang-serving-k3.default.svc.cluster.local:30000
 
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: inference-perf-k3-direct-config
+  namespace: default
+data:
+  config.yml: |
+    server:
+      type: open_ai
+      base_url: http://sglang-serving-k3.default.svc.cluster.local:30000
+      ignore_eos: false
+    tokenizer:
+      pretrained_model_name_or_path: moonshotai/Kimi-K3
+      trust_remote_code: true
+    data:
+      type: random
+      input_distribution:
+        min: 1024
+        max: 1024
+        mean: 1024
+        std_dev: 0
+        total_count: 512
+      output_distribution:
+        min: 8192
+        max: 8192
+        mean: 8192
+        std_dev: 0
+        total_count: 512
+    load:
+      type: concurrent
+      num_workers: 8
+      worker_max_concurrency: 1000
+      request_timeout: 36000
+      stages:
+      - num_requests: 512
+        concurrency_level: 512
+    api:
+      type: completion
+      streaming: true
+    report:
+      request_lifecycle:
+        summary: true
+        per_stage: true
+        per_request: true
+---
 apiVersion: batch/v1
 kind: Job
 metadata:
@@ -18,41 +63,18 @@ spec:
       restartPolicy: Never
       containers:
       - name: benchmark
-        image: "us-docker.pkg.dev/google-samples/containers/gke/inference-perf:v0.1.2"
-        imagePullPolicy: Always
-        command:
-        - /bin/sh
-        - -c
+        image: python:3.12-slim
+        command: ["/bin/bash", "-c"]
         args:
         - |
           set -ex
-          cat <<EOF > /tmp/config.yml
-          server:
-            type: open_ai
-            base_url: "http://sglang-serving-k3.default.svc.cluster.local:30000/v1"
-            model_name: moonshotai/Kimi-K3
-          tokenizer:
-            trust_remote_code: true
-          data:
-            type: random
-            prompt_size: 1024
-            output_size: 8192
-          load:
-            type: concurrent
-            concurrency_level: 512
-            num_requests: 512
-          report:
-            request_lifecycle:
-              ttft: true
-              tpot: true
-              itl: true
-              e2e: true
-          EOF
-          echo "=========================================================="
+          pip install -q -U inference-perf PyYAML==6.0.3
+          echo "======================================================================="
           echo "Running inference-perf Direct Service benchmark for Kimi-K3"
           echo "ISL: 1024 | OSL: 8192 | BS: 512 | Concurrency: 512"
-          echo "=========================================================="
-          inference-perf -c /tmp/config.yml
+          echo "======================================================================="
+          inference-perf -c /config/config.yml
+          echo "Benchmark Completed Successfully!"
         env:
         - name: HF_TOKEN
           valueFrom:
@@ -67,3 +89,10 @@ spec:
           limits:
             cpu: "8"
             memory: "16Gi"
+        volumeMounts:
+        - name: config-volume
+          mountPath: /config
+      volumes:
+      - name: config-volume
+        configMap:
+          name: inference-perf-k3-direct-config
