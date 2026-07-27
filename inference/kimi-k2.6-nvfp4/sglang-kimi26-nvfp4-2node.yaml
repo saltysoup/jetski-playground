@@ -115,8 +115,8 @@ spec:
               --chunked-prefill-size 16384 \
               --enable-mixed-chunk \
               --context-length 131072 \
-              --max-running-requests 128 \
-              --cuda-graph-max-bs 128 \
+              --max-running-requests 512 \
+              --cuda-graph-max-bs 512 \
               --nnodes 2 \
               --node-rank $POD_INDEX \
               --dist-init-addr sglang-master-pod-nvfp4-k26:5000 \

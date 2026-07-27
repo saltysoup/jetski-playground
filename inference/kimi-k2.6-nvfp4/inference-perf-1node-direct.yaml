@@ -1,0 +1,97 @@
+# inference-perf benchmark: 1-Node Direct Service (No Gateway)
+# Config: ISL=1024, OSL=8192, batch_size=512 (concurrency_level=512)
+# Template: https://github.com/llm-d/llm-d/blob/main/guides/agentic-serving/benchmark-templates/guide.yaml
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: inference-perf-config-1node-direct
+  namespace: default
+data:
+  config.yml: |
+    server:
+      type: vllm
+      model_name: nvidia/Kimi-K2.6-NVFP4
+      base_url: http://sglang-serving-nvfp4-k26-1node:8000
+      ignore_eos: false
+    tokenizer:
+      pretrained_model_name_or_path: nvidia/Kimi-K2.6-NVFP4
+    data:
+      type: random
+      input_distribution:
+        min: 1024
+        max: 1024
+        mean: 1024
+        std_dev: 0
+        total_count: 512
+      output_distribution:
+        min: 8192
+        max: 8192
+        mean: 8192
+        std_dev: 0
+        total_count: 512
+    load:
+      type: concurrent
+      num_workers: 8
+      worker_max_concurrency: 1000
+      request_timeout: 36000
+      stages:
+      - num_requests: 512
+        concurrency_level: 512
+    api:
+      type: completion
+      streaming: true
+    report:
+      request_lifecycle:
+        summary: true
+        per_stage: true
+        per_request: true
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: inference-perf-1node-direct
+  namespace: default
+spec:
+  backoffLimit: 0
+  template:
+    metadata:
+      labels:
+        app: inference-perf-1node-direct
+    spec:
+      nodeName: gke-ikwak-reliabilit-a4-highgpu-8g-a4-5e816978-0bzk
+      tolerations:
+      - operator: "Exists"
+        key: "nvidia.com/gpu"
+      - operator: "Exists"
+        key: "cloud.google.com/impending-node-termination"
+      - operator: "Exists"
+        key: "user-workload"
+      restartPolicy: Never
+      containers:
+      - name: inference-perf
+        image: python:3.12-slim
+        command: ["/bin/bash", "-c"]
+        args:
+        - |
+          set -ex
+          pip install -q -U inference-perf PyYAML==6.0.3
+          echo "================================================================"
+          echo "Launching inference-perf: 1-Node Direct Service (BS=512)..."
+          echo "================================================================"
+          inference-perf -c /config/config.yml
+          echo "Benchmark Completed Successfully!"
+        resources:
+          limits:
+            cpu: "2"
+            memory: "8Gi"
+          requests:
+            cpu: "2"
+            memory: "8Gi"
+        volumeMounts:
+        - name: config-volume
+          mountPath: /config
+      volumes:
+      - name: config-volume
+        configMap:
+          name: inference-perf-config-1node-direct
