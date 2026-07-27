@@ -54,6 +54,7 @@ spec:
         app: distributed-sglang-k3
         llm-d.ai/guide: optimized-baseline
       annotations:
+        gke-gcsfuse/volumes: "true"
         networking.gke.io/default-interface: 'eth0'
         networking.gke.io/interfaces: |
           [
@@ -69,45 +70,6 @@ spec:
           ]
     spec:
       serviceAccountName: sglang-sa
-      initContainers:
-      - name: clean-boot-disk
-        image: busybox
-        command: ["/bin/sh", "-c"]
-        args:
-          - |
-            rm -rf /host-var-lib/huggingface_cache || true
-            rm -rf /host-var-lib/kubelet/huggingface_cache || true
-            echo "Cleaned up old boot disk caches!"
-        volumeMounts:
-          - name: host-var-lib
-            mountPath: /host-var-lib
-      - name: pull-model-from-gcs
-        image: google/cloud-sdk:slim
-        command: ["/bin/sh", "-c"]
-        args:
-          - |
-            set -ex
-            mkdir -p /root/.cache/huggingface/Kimi-K3
-            find /root/.cache/huggingface/Kimi-K3/ -size 0 -delete || true
-            rm -f /root/.cache/huggingface/Kimi-K3/*.gstmp || true
-            echo "Running fast GCS rsync for Kimi-K3..."
-            gcloud storage rsync -r gs://ikwak-models-gpu-launchpad-playground/Kimi-K3 /root/.cache/huggingface/Kimi-K3/
-            echo "Kimi-K3 rsync complete!"
-            echo "Downloading DSpark draft model RadixArk/Kimi-K3-DSpark..."
-            pip install --no-cache-dir --break-system-packages huggingface_hub hf_transfer
-            export HF_HUB_ENABLE_HF_TRANSFER=1
-            python3 -m huggingface_hub.cli.hf download RadixArk/Kimi-K3-DSpark --local-dir /root/.cache/huggingface/Kimi-K3-DSpark
-            echo "Models cached on 12TB NVMe RAID successfully!"
-        env:
-        - name: HF_TOKEN
-          valueFrom:
-            secretKeyRef:
-              name: hf-secret
-              key: HF_TOKEN
-              optional: true
-        volumeMounts:
-          - name: hf-cache
-            mountPath: /root/.cache/huggingface
       containers:
       - name: sglang-container
         image: docker.io/lmsysorg/sglang:kimi-k3
@@ -119,7 +81,7 @@ spec:
         - |
           set -ex
           ldconfig /usr/local/nvidia/lib64/ || true
-          export LD_LIBRARY_PATH="/usr/local/gib/lib64:/usr/local/nvidia/lib64:/lib/x86_64-linux-gnu:/usr/lib/x86_64-linux-gnu:/host/lib64:$LD_LIBRARY_PATH"
+          export LD_LIBRARY_PATH="/usr/local/gib/lib64:/usr/local/nvidia/lib64:$LD_LIBRARY_PATH"
           if [ -f "/usr/local/gib/scripts/set_nccl_env.sh" ]; then
               source /usr/local/gib/scripts/set_nccl_env.sh
               export NCCL_TUNER_CONFIG_PATH=/usr/local/gib/configs/tuner_config_default.txtpb
@@ -137,8 +99,9 @@ spec:
 
           sglang serve \
               --trust-remote-code \
-              --model-path /root/.cache/huggingface/Kimi-K3 \
+              --model-path /bucket/Kimi-K3 \
               --served-model-name moonshotai/Kimi-K3 \
+              --load-format runai_streamer \
               --enable-metrics \
               --tp-size 16 \
               --nnodes 2 \
@@ -154,7 +117,7 @@ spec:
               --host 0.0.0.0 \
               --port 30000 \
               --speculative-algorithm DSPARK \
-              --speculative-draft-model-path /root/.cache/huggingface/Kimi-K3-DSpark \
+              --speculative-draft-model-path /bucket/Kimi-K3-DSpark \
               --speculative-dspark-block-size 7 \
               --enable-linear-replayssm-spec \
               --max-running-requests 512 \
@@ -172,7 +135,7 @@ spec:
               key: HF_TOKEN
               optional: true
         - name: LD_LIBRARY_PATH
-          value: /usr/local/gib/lib64:/usr/local/nvidia/lib64:/lib/x86_64-linux-gnu:/usr/lib/x86_64-linux-gnu:/host/lib64
+          value: /usr/local/gib/lib64:/usr/local/nvidia/lib64
         - name: NCCL_DEBUG
           value: INFO
         - name: SGLANG_REQUEST_STATE_WAIT_TIMEOUT
@@ -201,12 +164,12 @@ spec:
             name: dshm
           - mountPath: /root/.cache/huggingface
             name: hf-cache
-          - name: nvidia
+          - name: nvidia-install-dir-host
             mountPath: /usr/local/nvidia
-          - name: gib
+          - name: gib-nccl-plugin-volume
             mountPath: /usr/local/gib
-          - name: lib64
-            mountPath: /host/lib64
+          - name: gcs-fuse-csi-eph
+            mountPath: /bucket
       nodeSelector:
         cloud.google.com/gke-accelerator: nvidia-b200
       tolerations:
@@ -225,15 +188,15 @@ spec:
         hostPath:
           path: /mnt/stateful_partition/kube-ephemeral-ssd/huggingface_cache
           type: DirectoryOrCreate
-      - name: gib
-        hostPath:
-          path: /home/kubernetes/bin/gib
-      - name: nvidia
+      - name: nvidia-install-dir-host
         hostPath:
           path: /home/kubernetes/bin/nvidia
-      - name: lib64
-        hostPath:
-          path: /lib64
-      - name: host-var-lib
-        hostPath:
-          path: /var/lib
+      - name: gib-nccl-plugin-volume
+        emptyDir: {}
+      - name: gcs-fuse-csi-eph
+        csi:
+          driver: gcsfuse.csi.storage.gke.io
+          volumeAttributes:
+            bucketName: ikwak-models-gpu-launchpad-playground
+            gcsfuseMetadataPrefetchOnMount: "true"
+            mountOptions: "implicit-dirs,file-mode=777,dir-mode=777,file-cache:enable-parallel-downloads:true,file-cache:cache-file-for-range-read:true,file-cache:max-size-mb:-1,write:enable-streaming-writes:true,read_ahead_kb=1024,file-system:kernel-list-cache-ttl-secs:-1"
