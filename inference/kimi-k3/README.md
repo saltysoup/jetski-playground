@@ -21,6 +21,8 @@ This directory contains production-ready Kubernetes manifests for deploying **Mo
     ```bash
     export GLOO_SOCKET_IFNAME=eth0
     export NCCL_SOCKET_IFNAME=eth0
+    export NCCL_IB_GID_INDEX=3
+    export NCCL_IB_ROCE_VERSION_NUM=2
     export SGLANG_HOST_IP=$(hostname -I | tr ' ' '\n' | grep -E '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+' | head -n 1)
     ```
 * **12 TB NVMe RAID 0 Caching (`/dev/md0`):**
