@@ -10,7 +10,7 @@ metadata:
 data:
   config.yml: |
     server:
-      type: open_ai
+      type: sglang
       base_url: http://192.168.0.10
       ignore_eos: false
     tokenizer:

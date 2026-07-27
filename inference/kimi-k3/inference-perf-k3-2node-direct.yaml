@@ -10,7 +10,7 @@ metadata:
 data:
   config.yml: |
     server:
-      type: open_ai
+      type: sglang
       base_url: http://sglang-serving-k3.default.svc.cluster.local:30000
       ignore_eos: false
     tokenizer:

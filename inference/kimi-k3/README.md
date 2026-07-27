@@ -1,6 +1,6 @@
 # Kimi-K3 (moonshotai/Kimi-K3) 2-Node Low-Latency Distributed Serving on GKE (NVIDIA B200 GPUs)
 
-This directory contains production-ready Kubernetes manifests for deploying **MoonshotAI Kimi-K3** (`moonshotai/Kimi-K3`) with **DSpark Speculative Decoding** (`RadixArk/Kimi-K3-DSpark`) across 2 nodes (**16 × NVIDIA B200 GPUs**) on Google Kubernetes Engine (GKE) using **SGLang (`docker.io/lmsysorg/sglang:kimi-k3`)** and **Google gIB RDMA (`nccl-plugin-gib:v1.1.2`)** over 100 Gbps networking.
+This directory contains production-ready Kubernetes manifests for deploying **MoonshotAI Kimi-K3** (`moonshotai/Kimi-K3`) with **DSpark Speculative Decoding** (`RadixArk/Kimi-K3-DSpark`) across 2 nodes (**16 × NVIDIA B200 GPUs**) on Google Kubernetes Engine (GKE) using **SGLang (`docker.io/lmsysorg/sglang:kimi-k3`)** and **Google gIB RDMA (`nccl-plugin-gib:v1.1.0`)** over 100 Gbps networking.
 
 ---
 
@@ -12,9 +12,11 @@ This directory contains production-ready Kubernetes manifests for deploying **Mo
 * **DSpark Speculative Decoding (`RadixArk/Kimi-K3-DSpark`):**
   * Uses `--speculative-algorithm DSPARK --speculative-draft-model-path /root/.cache/huggingface/Kimi-K3-DSpark --speculative-dspark-block-size 7`.
   * Enables Linear Replay SSM verification via `--enable-linear-replayssm-spec` for high-accuracy state space model draft validation.
-* **Cross-Node RDMA & NIC Pinning (`eth0`):**
-  * Configures `hostNetwork: true` and `dnsPolicy: ClusterFirstWithHostNet`.
-  * Pins bootstrap and NCCL interfaces explicitly to avoid virtual bridge conflicts:
+* **Cross-Node RDMA (`gIB` over RoCEv2) & Multi-Networking:**
+  * Uses pod annotations `networking.gke.io/interfaces` (`rdma-1..4`) to attach secondary RoCEv2 network interfaces to each pod.
+  * Uses an init-container `nccl-plugin-installer` (`us-docker.pkg.dev/gce-ai-infra/gpudirect-gib/nccl-plugin-gib:v1.1.0`) to install Google's GPUDirect RDMA plugin into a shared `emptyDir` volume (`gib-nccl-plugin-volume`) mounted at `/usr/local/gib` (replacing any legacy `/var/lib/tcpxo/lib64` mounts).
+  * Sources `/usr/local/gib/scripts/set_nccl_env.sh` and exports `LD_LIBRARY_PATH="/usr/local/gib/lib64:/usr/local/nvidia/lib64:$LD_LIBRARY_PATH"` for RoCEv2 GPU-to-GPU transfers.
+  * Pins bootstrap and NCCL interfaces explicitly:
     ```bash
     export GLOO_SOCKET_IFNAME=eth0
     export NCCL_SOCKET_IFNAME=eth0
@@ -44,7 +46,32 @@ This directory contains production-ready Kubernetes manifests for deploying **Mo
 
 ---
 
-## 3. Deployment & Usage
+## 3. Cluster & Node Pool Prerequisites (Multi-Networking & RoCEv2)
+
+When creating a new GKE cluster or B200 spot/reserved node pool for low-latency RDMA serving:
+1. **Attach Secondary RoCEv2 RDMA Networks to the Node Pool:**
+   You must pass `--additional-node-network` flags during node pool creation so that GKE attaches the secondary RoCEv2 NICs to each host VM and creates the `/dev/infiniband` (`uverbs*`) character devices in the Linux kernel:
+   ```bash
+   gcloud container node-pools create b200-spot-pool \
+     --cluster=kimi-k3-uw8-cluster \
+     --location=us-west8-c \
+     --machine-type=a4-highgpu-8g \
+     --num-nodes=2 \
+     --spot \
+     --additional-node-network=network=rdma-vpc-1,subnetwork=rdma-sub-1-uw8 \
+     --additional-node-network=network=rdma-vpc-2,subnetwork=rdma-sub-2-uw8 \
+     --additional-node-network=network=rdma-vpc-3,subnetwork=rdma-sub-3-uw8 \
+     --additional-node-network=network=rdma-vpc-4,subnetwork=rdma-sub-4-uw8
+   ```
+2. **Deploy the Host `nccl-rdma-installer` DaemonSet:**
+   New clusters require `nccl-rdma-installer-ds.yaml` (`nccl-plugin-gib:v1.1.0`) deployed to `kube-system` to disable IPv4 log martians and populate `/home/kubernetes/bin/nvidia/lib64` on worker nodes:
+   ```bash
+   kubectl apply -f nccl-rdma-installer-ds.yaml
+   ```
+
+---
+
+## 4. Deployment & Usage
 
 ### 1. Download Model to GCS (If Not Already Cached)
 ```bash
