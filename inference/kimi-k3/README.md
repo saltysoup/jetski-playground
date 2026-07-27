@@ -26,6 +26,7 @@ This directory contains production-ready Kubernetes manifests for deploying **Mo
 * **12 TB NVMe RAID 0 Caching (`/dev/md0`):**
   * Uses `hostPath: /mnt/stateful_partition/kube-ephemeral-ssd/huggingface_cache` mounted to `/root/.cache/huggingface`.
   * The init-container `pull-model-from-gcs` executes `gcloud storage rsync` from `gs://ikwak-models-gpu-launchpad-playground/Kimi-K3` and downloads `RadixArk/Kimi-K3-DSpark`, caching both checkpoints locally on disk for 0.01-second pod restarts.
+  * Sets `SGLANG_USE_RUNAI_MODEL_STREAMER: "true"` in the container environment so SGLang streams model weights concurrently from the GCS rapid cache.
 
 ---
 
