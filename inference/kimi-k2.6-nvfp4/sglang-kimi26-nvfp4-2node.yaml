@@ -92,6 +92,16 @@ spec:
           fi
 
           pip install -q accelerate
+          python3 -c "
+          path = '/usr/local/lib/python3.12/dist-packages/flashinfer/prefill.py'
+          with open(path, 'r') as f: c = f.read()
+          old = '            if q.size(0) != self._qo_indptr_last:\n                raise ValueError('
+          new = '            if q.size(0) > self._qo_indptr_last:\n                q = q[:self._qo_indptr_last]\n            elif q.size(0) != self._qo_indptr_last:\n                raise ValueError('
+          if old in c:
+              c = c.replace(old, new)
+              with open(path, 'w') as f: f.write(c)
+              print('Successfully patched flashinfer/prefill.py for DP-Attention ragged prefill!')
+          "
 
           python3 -m sglang.launch_server \
               --model-path /root/.cache/huggingface/Kimi-K2.6-NVFP4 \
@@ -134,6 +144,7 @@ spec:
               --dp-size 2 \
               --enable-dp-attention \
               --flashinfer-mla-disable-ragged \
+              --watchdog-timeout 36000 \
               --host 0.0.0.0 \
               --port 8000
         env:
