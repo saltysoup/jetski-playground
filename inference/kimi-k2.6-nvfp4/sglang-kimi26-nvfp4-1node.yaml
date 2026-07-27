@@ -104,8 +104,8 @@ spec:
               --chunked-prefill-size 16384 \
               --enable-mixed-chunk \
               --context-length 131072 \
-              --max-running-requests 128 \
-              --cuda-graph-max-bs 128 \
+              --max-running-requests 512 \
+              --cuda-graph-max-bs 512 \
               --nnodes 1 \
               --enable-fused-moe-sum-all-reduce \
               --reasoning-parser kimi_k2 \
