@@ -1,6 +1,6 @@
 # Distributed Kimi-K3 (moonshotai/Kimi-K3) 2-Node GKE Deployment (16 × NVIDIA B200 GPUs)
 # Uses Low-Latency Strategy (TP=16 across 2 nodes) with DSpark Speculative Decoding (RadixArk/Kimi-K3-DSpark)
-# and Google gIB RDMA (nccl-plugin-gib:v1.1.2) over 100 Gbps network.
+# and Google gIB RDMA (nccl-plugin-gib:v1.1.2) over 3200 Gbps network.
 # Loads weights from gs://ikwak-models-gpu-launchpad-playground/Kimi-K3 onto 12 TB NVMe RAID (/dev/md0).
 
 apiVersion: v1
