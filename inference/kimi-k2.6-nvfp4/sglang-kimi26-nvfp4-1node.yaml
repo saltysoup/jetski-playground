@@ -13,12 +13,13 @@ spec:
   replicas: 1
   selector:
     matchLabels:
-      app: sglang-nvfp4-k26-1node
+      app: distributed-sglang-nvfp4-k26
   serviceName: "sglang-serving-nvfp4-k26-1node"
   template:
     metadata:
       labels:
-        app: sglang-nvfp4-k26-1node
+        app: distributed-sglang-nvfp4-k26
+        llm-d.ai/guide: "optimized-baseline"
       annotations:
         networking.gke.io/default-interface: 'eth0'
         networking.gke.io/interfaces: |
@@ -96,6 +97,7 @@ spec:
               --model-path /root/.cache/huggingface/Kimi-K2.6-NVFP4 \
               --served-model-name nvidia/Kimi-K2.6-NVFP4 \
               --trust-remote-code \
+              --enable-metrics \
               --quantization modelopt_fp4 \
               --disable-shared-experts-fusion \
               --mem-fraction-static 0.78 \
@@ -216,7 +218,7 @@ metadata:
 spec:
   type: NodePort
   selector:
-    app: sglang-nvfp4-k26-1node
+    app: distributed-sglang-nvfp4-k26
   ports:
   - name: serving
     port: 8000

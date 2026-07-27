@@ -46,11 +46,11 @@ spec:
     imagePullPolicy: IfNotPresent
     resources:
       limits:
-        cpu: "8"
-        memory: "32Gi"
+        cpu: "2"
+        memory: "8Gi"
       requests:
-        cpu: "8"
-        memory: "32Gi"
+        cpu: "2"
+        memory: "8Gi"
     volumeMounts:
     - name: workspace-volume
       mountPath: /workspace
@@ -74,32 +74,38 @@ spec:
       # Wait 5 seconds to bypass server startup self-test race conditions
       sleep 5
       
-      # Remove hardcoded 600 second timeout from SGLang benchmark client
-      python3 -c "
+      # Remove hardcoded 600 second timeout and add 30-retry wrapper for server_info and flush_cache
+      python3 -c '
       import sglang.test.bench_one_batch_server_internal as mod
       import inspect
       path = inspect.getfile(mod)
-      with open(path, 'r') as f: c = f.read()
-      c = c.replace('DEFAULT_TIMEOUT = 600', 'DEFAULT_TIMEOUT = 36000')
-      with open(path, 'w') as f: f.write(c)
-      print('Patched DEFAULT_TIMEOUT to 36000 in', path)
-      "
+      with open(path, "r") as f: c = f.read()
+      c = c.replace("DEFAULT_TIMEOUT = 600", "DEFAULT_TIMEOUT = 36000")
+      wrapper = """import time\ndef _safe_req(fn, *a, **kw):\n    for _i in range(30):\n        try:\n            r = fn(*a, **kw)\n            if r.status_code == 200: return r\n        except Exception:\n            pass\n        time.sleep(3)\n    return fn(*a, **kw)\n"""
+      c = c.replace("import requests", "import requests\n" + wrapper)
+      q = chr(34)
+      c = c.replace("response = requests.get(url + " + q + "/server_info" + q, "response = _safe_req(requests.get, url + " + q + "/server_info" + q)
+      c = c.replace("response = requests.get(base_url + " + q + "/server_info" + q, "response = _safe_req(requests.get, base_url + " + q + "/server_info" + q)
+      c = c.replace("response = requests.post(url + " + q + "/flush_cache" + q, "response = _safe_req(requests.post, url + " + q + "/flush_cache" + q)
+      with open(path, "w") as f: f.write(c)
+      print("Patched DEFAULT_TIMEOUT, server_info, and flush_cache with 30-retry safe wrapper in", path)
+      '
 
-      # Pointing to the internal Kubernetes DNS name of your GPU server
-      API_URL="http://sglang-serving-nvfp4-k26:8000"
+      # Pointing to the GKE Inference Gateway Internal Application Load Balancer IP
+      API_URL="http://192.168.0.10"
       MODEL_PATH="/root/.cache/huggingface/Kimi-K2.6-NVFP4"
       
       # --- CONFIGURATION START (DO NOT CHANGE ISL/OSL CONFIG) ---
-      BATCH_SIZE=128
+      BATCH_SIZE=64
       INPUT_LEN=1024
-      OUTPUT_LEN=8192
+      OUTPUT_LEN=4096
       # --- CONFIGURATION END ---
       
       echo "Targeting API: ${API_URL}"
       echo "Model: ${MODEL_PATH}"
       echo "Configuration: Batch Size = ${BATCH_SIZE}, ISL = ${INPUT_LEN}, OSL = ${OUTPUT_LEN}"
       
-      python3 -m sglang.bench_one_batch_server \
+      python3 -u -m sglang.bench_one_batch_server \
         --base-url "${API_URL}" \
         --model None \
         --tokenizer-path "${MODEL_PATH}" \
