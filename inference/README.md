@@ -30,7 +30,7 @@ This directory contains production-ready Kubernetes deployments, distributed mul
 * **Model Checkpoint:** `moonshotai/Kimi-K3`
 * **Speculative Decoding:** `DSpark` using `RadixArk/Kimi-K3-DSpark` draft checkpoint (`block-size=7`) with **Linear Replay SSM** verification (`--enable-linear-replayssm-spec`).
 * **Deployment Topology:**
-  * **2-Node Low-Latency Strategy (`16 × NVIDIA B200 GPUs`):** Spans all 16 GPUs across two `a4-highgpu-8g-a4` worker nodes (`--tp-size 16 --nnodes 2 --dp-size 1`) using `sglang serve` with `docker.io/lmsysorg/sglang:latest` ([`sglang-kimi3-2node.yaml`](./kimi-k3/sglang-kimi3-2node.yaml)).
+  * **2-Node Low-Latency Strategy (`16 × NVIDIA B200 GPUs`):** Spans all 16 GPUs across two `a4-highgpu-8g-a4` worker nodes (`--tp-size 16 --nnodes 2 --dp-size 1`) using `sglang serve` with `docker.io/lmsysorg/sglang:kimi-k3` ([`sglang-kimi3-2node.yaml`](./kimi-k3/sglang-kimi3-2node.yaml)).
   * Head Node (`pod-index: 0`) coordinates NCCL / Gloo distributed initialization over headless Service `sglang-master-pod-k3:20000` and serves inference endpoints on port `30000`.
 * **Cross-Node RDMA & NIC Pinning (`100 Gbps`):**
   * Pinned explicitly to `eth0` (`GLOO_SOCKET_IFNAME=eth0`, `NCCL_SOCKET_IFNAME=eth0`, `SGLANG_HOST_IP`) with Google gIB RDMA (`nccl-plugin-gib:v1.1.2`).
