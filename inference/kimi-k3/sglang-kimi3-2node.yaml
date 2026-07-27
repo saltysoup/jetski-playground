@@ -70,6 +70,12 @@ spec:
           ]
     spec:
       serviceAccountName: sglang-sa
+      initContainers:
+      - name: nccl-plugin-installer
+        image: us-docker.pkg.dev/gce-ai-infra/gpudirect-gib/nccl-plugin-gib:v1.1.0
+        volumeMounts:
+        - name: gib-nccl-plugin-volume
+          mountPath: /var/lib/tcpxo/lib64
       containers:
       - name: sglang-container
         image: docker.io/lmsysorg/sglang:kimi-k3
