@@ -74,12 +74,23 @@ spec:
       # Wait 5 seconds to bypass server startup self-test race conditions
       sleep 5
       
+      # Remove hardcoded 600 second timeout from SGLang benchmark client
+      python3 -c "
+      import sglang.test.bench_one_batch_server_internal as mod
+      import inspect
+      path = inspect.getfile(mod)
+      with open(path, 'r') as f: c = f.read()
+      c = c.replace('DEFAULT_TIMEOUT = 600', 'DEFAULT_TIMEOUT = 36000')
+      with open(path, 'w') as f: f.write(c)
+      print('Patched DEFAULT_TIMEOUT to 36000 in', path)
+      "
+
       # Pointing to the internal Kubernetes DNS name of your GPU server
       API_URL="http://sglang-serving-nvfp4-k26:8000"
       MODEL_PATH="/root/.cache/huggingface/Kimi-K2.6-NVFP4"
       
       # --- CONFIGURATION START (DO NOT CHANGE ISL/OSL CONFIG) ---
-      BATCH_SIZE=64
+      BATCH_SIZE=128
       INPUT_LEN=1024
       OUTPUT_LEN=8192
       # --- CONFIGURATION END ---
