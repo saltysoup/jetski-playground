@@ -193,6 +193,8 @@ spec:
           value: "1"
         - name: PYTORCH_CUDA_ALLOC_CONF
           value: "expandable_segments:True"
+        - name: SGLANG_USE_RUNAI_MODEL_STREAMER
+          value: "true"
         resources:
           limits:
             nvidia.com/gpu: "8"
