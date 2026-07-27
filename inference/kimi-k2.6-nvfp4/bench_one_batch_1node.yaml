@@ -1,7 +1,7 @@
 apiVersion: v1
 kind: Pod
 metadata:
-  name: sglang-benchmark-batch-client
+  name: sglang-benchmark-batch-client-1node
   namespace: default
 spec:
   nodeName: gke-ikwak-reliabilit-a4-highgpu-8g-a4-5e816978-0bzk
@@ -69,17 +69,17 @@ spec:
       ldconfig /usr/local/nvidia/lib64/ || true
       export LD_LIBRARY_PATH="/usr/local/nvidia/lib64:$LD_LIBRARY_PATH"
       
-      echo "Starting SGLang bench_one_batch_server Load Test..."
+      echo "Starting SGLang bench_one_batch_server Load Test (Single-Node)..."
       
       # Wait 5 seconds to bypass server startup self-test race conditions
       sleep 5
       
       # Pointing to the internal Kubernetes DNS name of your GPU server
-      API_URL="http://sglang-serving-nvfp4-k26:8000"
+      API_URL="http://sglang-serving-nvfp4-k26-1node:8000"
       MODEL_PATH="/root/.cache/huggingface/Kimi-K2.6-NVFP4"
       
       # --- CONFIGURATION START (DO NOT CHANGE ISL/OSL CONFIG) ---
-      BATCH_SIZE=64
+      BATCH_SIZE=128
       INPUT_LEN=1024
       OUTPUT_LEN=8192
       # --- CONFIGURATION END ---
@@ -97,7 +97,7 @@ spec:
         --batch-size ${BATCH_SIZE} \
         --input-len ${INPUT_LEN} \
         --output-len ${OUTPUT_LEN} \
-        --result-filename /workspace/bench_one_batch_server_result_2node_eagle3.json
+        --result-filename /workspace/bench_one_batch_server_result_1node_eagle3.json
         
-      echo "Benchmark complete! Result saved to /workspace/bench_one_batch_server_result_2node_eagle3.json"
-      cat /workspace/bench_one_batch_server_result_2node_eagle3.json
+      echo "Benchmark complete! Result saved to /workspace/bench_one_batch_server_result_1node_eagle3.json"
+      cat /workspace/bench_one_batch_server_result_1node_eagle3.json

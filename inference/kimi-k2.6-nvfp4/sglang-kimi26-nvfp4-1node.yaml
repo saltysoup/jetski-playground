@@ -7,19 +7,18 @@ metadata:
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
-  name: distributed-sglang-nvfp4-k26
+  name: sglang-nvfp4-k26-1node
   namespace: default
 spec:
-  replicas: 2
+  replicas: 1
   selector:
     matchLabels:
-      app: distributed-sglang-nvfp4-k26
-  serviceName: "sglang-master-pod-nvfp4-k26"
-  podManagementPolicy: Parallel
+      app: sglang-nvfp4-k26-1node
+  serviceName: "sglang-serving-nvfp4-k26-1node"
   template:
     metadata:
       labels:
-        app: distributed-sglang-nvfp4-k26
+        app: sglang-nvfp4-k26-1node
       annotations:
         networking.gke.io/default-interface: 'eth0'
         networking.gke.io/interfaces: |
@@ -105,9 +104,7 @@ spec:
               --context-length 131072 \
               --max-running-requests 128 \
               --cuda-graph-max-bs 128 \
-              --nnodes 2 \
-              --node-rank $POD_INDEX \
-              --dist-init-addr sglang-master-pod-nvfp4-k26:5000 \
+              --nnodes 1 \
               --enable-fused-moe-sum-all-reduce \
               --reasoning-parser kimi_k2 \
               --tool-call-parser kimi_k2 \
@@ -125,15 +122,11 @@ spec:
               --schedule-conservativeness 0.3 \
               --fp4-gemm-backend flashinfer_cutlass \
               --attention-backend flashinfer \
-              --prefill-attention-backend triton \
               --moe-runner-backend flashinfer_cutlass \
               --enable-flashinfer-allreduce-fusion \
               --disable-custom-all-reduce \
               --tp-size 8 \
               --pp-size 1 \
-              --dp-size 2 \
-              --enable-dp-attention \
-              --flashinfer-mla-disable-ragged \
               --host 0.0.0.0 \
               --port 8000
         env:
@@ -218,29 +211,12 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: sglang-master-pod-nvfp4-k26
-  namespace: default
-spec:
-  type: ClusterIP
-  clusterIP: None
-  selector:
-    app: distributed-sglang-nvfp4-k26
-    apps.kubernetes.io/pod-index: "0"
-  ports:
-  - name: dist-port
-    port: 5000
-    targetPort: 5000
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: sglang-serving-nvfp4-k26
+  name: sglang-serving-nvfp4-k26-1node
   namespace: default
 spec:
   type: NodePort
   selector:
-    app: distributed-sglang-nvfp4-k26
-    apps.kubernetes.io/pod-index: "0"
+    app: sglang-nvfp4-k26-1node
   ports:
   - name: serving
     port: 8000
