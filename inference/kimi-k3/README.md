@@ -1,6 +1,6 @@
 # Kimi-K3 (moonshotai/Kimi-K3) 2-Node Low-Latency Distributed Serving on GKE (NVIDIA B200 GPUs)
 
-This directory contains production-ready Kubernetes manifests for deploying **MoonshotAI Kimi-K3** (`moonshotai/Kimi-K3`) with **DSpark Speculative Decoding** (`RadixArk/Kimi-K3-DSpark`) across 2 nodes (**16 × NVIDIA B200 GPUs**) on Google Kubernetes Engine (GKE) using **SGLang (`docker.io/lmsysorg/sglang:latest`)** and **Google gIB RDMA (`nccl-plugin-gib:v1.1.2`)** over 100 Gbps networking.
+This directory contains production-ready Kubernetes manifests for deploying **MoonshotAI Kimi-K3** (`moonshotai/Kimi-K3`) with **DSpark Speculative Decoding** (`RadixArk/Kimi-K3-DSpark`) across 2 nodes (**16 × NVIDIA B200 GPUs**) on Google Kubernetes Engine (GKE) using **SGLang (`docker.io/lmsysorg/sglang:kimi-k3`)** and **Google gIB RDMA (`nccl-plugin-gib:v1.1.2`)** over 100 Gbps networking.
 
 ---
 

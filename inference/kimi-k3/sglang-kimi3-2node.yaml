@@ -107,7 +107,7 @@ spec:
             mountPath: /root/.cache/huggingface
       containers:
       - name: sglang-container
-        image: docker.io/lmsysorg/sglang:latest
+        image: docker.io/lmsysorg/sglang:kimi-k3
         imagePullPolicy: Always
         command:
         - /bin/bash
