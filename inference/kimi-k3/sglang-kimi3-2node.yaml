@@ -119,7 +119,7 @@ spec:
         - |
           set -ex
           ldconfig /usr/local/nvidia/lib64/ || true
-          export LD_LIBRARY_PATH="/usr/local/gib/lib64:/usr/local/nvidia/lib64:/host/lib64:$LD_LIBRARY_PATH"
+          export LD_LIBRARY_PATH="/usr/local/gib/lib64:/usr/local/nvidia/lib64:/lib/x86_64-linux-gnu:/usr/lib/x86_64-linux-gnu:/host/lib64:$LD_LIBRARY_PATH"
           if [ -f "/usr/local/gib/scripts/set_nccl_env.sh" ]; then
               source /usr/local/gib/scripts/set_nccl_env.sh
               export NCCL_TUNER_CONFIG_PATH=/usr/local/gib/configs/tuner_config_default.txtpb
@@ -170,7 +170,7 @@ spec:
               key: HF_TOKEN
               optional: true
         - name: LD_LIBRARY_PATH
-          value: /usr/local/gib/lib64:/usr/local/nvidia/lib64:/host/lib64
+          value: /usr/local/gib/lib64:/usr/local/nvidia/lib64:/lib/x86_64-linux-gnu:/usr/lib/x86_64-linux-gnu:/host/lib64
         - name: NCCL_DEBUG
           value: WARN
         - name: SGLANG_REQUEST_STATE_WAIT_TIMEOUT
