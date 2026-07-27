@@ -1,0 +1,82 @@
+# High-Speed Downloader & GCS Uploader Job for moonshotai/Kimi-K3
+# Downloads using 16 parallel workers via hf_transfer onto emptyDir (/workspace)
+# and uploads to gs://ikwak-models-gpu-launchpad-playground/Kimi-K3
+
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: kimi-k3-gcs-uploader
+  namespace: default
+spec:
+  backoffLimit: 1
+  template:
+    metadata:
+      labels:
+        app: kimi-k3-gcs-uploader
+    spec:
+      restartPolicy: OnFailure
+      nodeSelector:
+        cloud.google.com/gke-accelerator: nvidia-b200
+      tolerations:
+        - operator: "Exists"
+          key: "nvidia.com/gpu"
+        - operator: "Exists"
+          key: "cloud.google.com/impending-node-termination"
+        - operator: "Exists"
+          key: "user-workload"
+      initContainers:
+      - name: download-hf
+        image: google/cloud-sdk:slim
+        command: ["/bin/sh", "-c"]
+        args:
+          - |
+            set -ex
+            echo "Installing huggingface_hub and hf_transfer for high-speed download..."
+            pip install --no-cache-dir --break-system-packages huggingface_hub hf_transfer
+            export HF_HUB_ENABLE_HF_TRANSFER=1
+            echo "Starting parallel download of moonshotai/Kimi-K3 onto /workspace/Kimi-K3..."
+            mkdir -p /workspace/Kimi-K3
+            python3 -m huggingface_hub.cli.hf download moonshotai/Kimi-K3 --local-dir /workspace/Kimi-K3 --max-workers 16
+            echo "Hugging Face download completed successfully!"
+        env:
+        - name: HF_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: hf-secret
+              key: HF_TOKEN
+              optional: true
+        resources:
+          requests:
+            cpu: "8"
+            memory: "32Gi"
+          limits:
+            cpu: "16"
+            memory: "64Gi"
+        volumeMounts:
+        - name: workspace
+          mountPath: /workspace
+      containers:
+      - name: upload-gcs
+        image: google/cloud-sdk:slim
+        command: ["/bin/sh", "-c"]
+        args:
+          - |
+            set -ex
+            echo "Removing temporary .cache directory before GCS upload..."
+            rm -rf /workspace/Kimi-K3/.cache/ || true
+            echo "Uploading /workspace/Kimi-K3 to gs://ikwak-models-gpu-launchpad-playground/Kimi-K3..."
+            gcloud storage cp -r /workspace/Kimi-K3 gs://ikwak-models-gpu-launchpad-playground/
+            echo "GCS upload complete! Model is now saved in gs://ikwak-models-gpu-launchpad-playground/Kimi-K3"
+        resources:
+          requests:
+            cpu: "8"
+            memory: "32Gi"
+          limits:
+            cpu: "16"
+            memory: "64Gi"
+        volumeMounts:
+        - name: workspace
+          mountPath: /workspace
+      volumes:
+      - name: workspace
+        emptyDir: {}
