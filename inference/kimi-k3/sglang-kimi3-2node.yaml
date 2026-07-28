@@ -152,7 +152,7 @@ spec:
         - name: GLOO_SOCKET_IFNAME
           value: "eth0"
         - name: NCCL_DEBUG
-          value: INFO
+          value: WARN
         - name: SGLANG_REQUEST_STATE_WAIT_TIMEOUT
           value: "18000"
         - name: OMP_NUM_THREADS
