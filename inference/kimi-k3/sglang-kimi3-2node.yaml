@@ -65,15 +65,6 @@ spec:
           ]
     spec:
       serviceAccountName: sglang-sa
-      initContainers:
-      - name: nccl-plugin-installer
-        image: us-docker.pkg.dev/gce-ai-infra/gpudirect-gib/nccl-plugin-gib:v1.1.0
-        args:
-        - "install"
-        - "--install-nccl"
-        volumeMounts:
-        - name: gib-nccl-plugin-volume
-          mountPath: /var/lib/gib
       containers:
       - name: sglang-container
         image: docker.io/lmsysorg/sglang:kimi-k3
@@ -140,7 +131,7 @@ spec:
               key: HF_TOKEN
               optional: true
         - name: LD_LIBRARY_PATH
-          value: /usr/local/gib/lib64:/usr/local/nvidia/lib64
+          value: /usr/local/nvidia/lib64
         - name: NCCL_DEBUG
           value: INFO
         - name: SGLANG_REQUEST_STATE_WAIT_TIMEOUT
@@ -173,7 +164,7 @@ spec:
             name: dshm
           - mountPath: /root/.cache/huggingface
             name: hf-cache
-          - name: nvidia-install-dir-host
+          - name: library-dir-host
             mountPath: /usr/local/nvidia
           - name: gib-nccl-plugin-volume
             mountPath: /usr/local/gib
@@ -189,6 +180,12 @@ spec:
         - operator: "Exists"
           key: "user-workload"
       volumes:
+      - name: library-dir-host
+        hostPath:
+          path: /home/kubernetes/bin/nvidia
+      - name: gib-nccl-plugin-volume
+        hostPath:
+          path: /home/kubernetes/bin/gib
       - emptyDir:
           medium: Memory
           sizeLimit: 100Gi
@@ -197,11 +194,6 @@ spec:
         hostPath:
           path: /mnt/stateful_partition/kube-ephemeral-ssd/huggingface_cache
           type: DirectoryOrCreate
-      - name: nvidia-install-dir-host
-        hostPath:
-          path: /home/kubernetes/bin/nvidia
-      - name: gib-nccl-plugin-volume
-        emptyDir: {}
       - name: gcs-fuse-csi-eph
         csi:
           driver: gcsfuse.csi.storage.gke.io
