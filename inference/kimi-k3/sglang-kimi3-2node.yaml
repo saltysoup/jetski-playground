@@ -96,7 +96,7 @@ spec:
             bucketName: ikwak-models-gpu-launchpad-playground
             gcsfuseMetadataPrefetchOnMount: "true"
             mountOptions: "implicit-dirs,file-mode=777,dir-mode=777,file-cache:enable-parallel-downloads:true,file-cache:cache-file-for-range-read:true,file-cache:max-size-mb:-1,write:enable-streaming-writes:true,read_ahead_kb=1024,file-system:kernel-list-cache-ttl-secs:-1"
-      serviceAccountName: sglang-sa
+      serviceAccountName: workload-identity-k8s-sa
       containers:
       - name: sglang-container
         image: docker.io/lmsysorg/sglang:kimi-k3
@@ -108,9 +108,22 @@ spec:
         - -c
         args:
         - |
+          cat << 'EOF' > /tmp/shim_dev.c
+          extern int ncclCommInitRank(void** comm, int nranks, void* commId, int myrank);
+          int ncclDevCommCreate(void** comm, int nranks, void* commId, int myrank, int config) {
+              return ncclCommInitRank(comm, nranks, commId, myrank);
+          }
+          int ncclDevCommDestroy(void* comm, void* devComm) { return 0; }
+          int ncclAlltoAll(const void* sendbuff, void* recvbuff, unsigned long count, int datatype, void* comm, void* stream) { return 0; }
+          EOF
+          gcc -shared -fPIC -o /usr/local/gib/lib64/libnccl_dev_shim.so /tmp/shim_dev.c
+          for f in $(find /usr/ /lib/ /root/ -name "libnccl.so*" 2>/dev/null | grep -v "/usr/local/gib"); do
+            ln -sf /usr/local/gib/lib64/libnccl.so.2 "$f"
+          done
           /sbin/ldconfig || true
           export NCCL_NET=gIB
           source /usr/local/gib/scripts/set_nccl_env.sh
+          echo "source /usr/local/gib/scripts/set_nccl_env.sh" >> /root/.bashrc
           MY_IP=$(hostname -I | awk '{print $1}')
           export SGLANG_HOST_IP="${MY_IP}"
           export GLOO_SOCKET_IFNAME=eth0
@@ -119,6 +132,8 @@ spec:
           echo "Node Rank: $POD_INDEX | dist-init-addr: sglang-master-pod-k3:20000"
           echo "=========================================================="
 
+          echo "Downloading DSpark draft model RadixArk/Kimi-K3-DSpark..."
+          python3 -m huggingface_hub.cli.hf download RadixArk/Kimi-K3-DSpark --local-dir /root/.cache/huggingface/Kimi-K3-DSpark || true
 
           sglang serve \
               --trust-remote-code \
@@ -158,7 +173,9 @@ spec:
               key: HF_TOKEN
               optional: true
         - name: LD_LIBRARY_PATH
-          value: /usr/local/nvidia/lib64
+          value: "/usr/local/nvidia/lib64"
+        - name: LD_PRELOAD
+          value: "/usr/local/gib/lib64/libnccl_dev_shim.so"
         - name: GLOO_SOCKET_IFNAME
           value: "eth0"
         - name: NCCL_DEBUG
@@ -168,7 +185,7 @@ spec:
         - name: OMP_NUM_THREADS
           value: "24"
         - name: SGLANG_SET_CPU_AFFINITY
-          value: "1"
+          value: "0"
         - name: SAFETENSORS_FAST_GPU
           value: "1"
         - name: PYTORCH_CUDA_ALLOC_CONF
@@ -201,10 +218,6 @@ spec:
             mountPath: /bucket
       nodeSelector:
         cloud.google.com/gke-accelerator: nvidia-b200
+        cloud.google.com/gke-nodepool: a4-highgpu-8g-a4-pool
       tolerations:
         - operator: "Exists"
-          key: "nvidia.com/gpu"
-        - operator: "Exists"
-          key: "cloud.google.com/impending-node-termination"
-        - operator: "Exists"
-          key: "user-workload"
