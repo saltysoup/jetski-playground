@@ -85,10 +85,9 @@ spec:
         - |
           set -ex
           ldconfig /usr/local/nvidia/lib64/ || true
-          export LD_LIBRARY_PATH="/usr/local/gib/lib64:/usr/local/nvidia/lib64:$LD_LIBRARY_PATH"
+          export LD_LIBRARY_PATH="/usr/local/gib/lib64:/usr/local/nvidia/lib64:/usr/local/host-lib64:$LD_LIBRARY_PATH"
           if [ -f "/usr/local/gib/scripts/set_nccl_env.sh" ]; then
               source /usr/local/gib/scripts/set_nccl_env.sh
-              export NCCL_TUNER_CONFIG_PATH=/usr/local/gib/configs/tuner_config_default.txtpb
           fi
           export NCCL_IB_GID_INDEX=3
           export NCCL_IB_ROCE_VERSION_NUM=2
@@ -174,6 +173,9 @@ spec:
             mountPath: /usr/local/nvidia
           - name: gib-nccl-plugin-volume
             mountPath: /usr/local/gib
+          - name: host-lib64
+            mountPath: /usr/local/host-lib64
+            readOnly: true
           - name: gcs-fuse-csi-eph
             mountPath: /bucket
       nodeSelector:
@@ -197,6 +199,9 @@ spec:
       - name: nvidia-install-dir-host
         hostPath:
           path: /home/kubernetes/bin/nvidia
+      - name: host-lib64
+        hostPath:
+          path: /lib64
       - name: gib-nccl-plugin-volume
         emptyDir: {}
       - name: gcs-fuse-csi-eph
