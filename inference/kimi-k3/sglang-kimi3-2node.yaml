@@ -154,7 +154,7 @@ spec:
             name: hf-cache
           - name: library-dir-host
             mountPath: /usr/local/nvidia
-          - name: gib-nccl-plugin-volume
+          - name: gib
             mountPath: /usr/local/gib
           - name: gcs-fuse-csi-eph
             mountPath: /bucket
@@ -171,7 +171,7 @@ spec:
       - name: library-dir-host
         hostPath:
           path: /home/kubernetes/bin/nvidia
-      - name: gib-nccl-plugin-volume
+      - name: gib
         hostPath:
           path: /home/kubernetes/bin/gib
       - emptyDir:
