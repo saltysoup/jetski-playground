@@ -108,7 +108,7 @@ spec:
               --watchdog-timeout 3600 \
               --reasoning-parser kimi_k3 \
               --tool-call-parser kimi_k3 \
-              --model-loader-extra-config '{"enable_multithread_load": true}' \
+              --model-loader-extra-config '{"memory_limit": 34359738368}' \
               --mamba-full-memory-ratio 0.43 \
               --host 0.0.0.0 \
               --port 30000 \
