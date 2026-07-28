@@ -74,8 +74,17 @@ spec:
           path: /home/kubernetes/bin/gib
       - emptyDir:
           medium: Memory
-          sizeLimit: 100Gi
+          sizeLimit: 250Gi
         name: dshm
+      - name: lib64
+        hostPath:
+          path: /lib64
+      - name: sys
+        hostPath:
+          path: /sys
+      - name: proc-sys
+        hostPath:
+          path: /proc/sys
       - name: hf-cache
         hostPath:
           path: /mnt/stateful_partition/kube-ephemeral-ssd/huggingface_cache
@@ -97,6 +106,8 @@ spec:
         - -c
         args:
         - |
+          /sbin/ldconfig || true
+          export NCCL_NET=gIB
           source /usr/local/gib/scripts/set_nccl_env.sh
           MY_IP=$(hostname -I | awk '{print $1}')
           export SGLANG_HOST_IP="${MY_IP}"
@@ -145,11 +156,7 @@ spec:
               key: HF_TOKEN
               optional: true
         - name: LD_LIBRARY_PATH
-          value: /usr/local/nvidia/lib64:/usr/local/gib/lib64
-        - name: NCCL_SOCKET_IFNAME
-          value: "eth0,eth1"
-        - name: NCCL_IB_DISABLE
-          value: "1"
+          value: /usr/local/nvidia/lib64
         - name: GLOO_SOCKET_IFNAME
           value: "eth0"
         - name: NCCL_DEBUG
