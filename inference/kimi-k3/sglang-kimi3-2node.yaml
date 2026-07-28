@@ -145,7 +145,11 @@ spec:
               key: HF_TOKEN
               optional: true
         - name: LD_LIBRARY_PATH
-          value: /usr/local/nvidia/lib64
+          value: /usr/local/nvidia/lib64:/usr/local/gib/lib64
+        - name: NCCL_SOCKET_IFNAME
+          value: "eth0,eth1"
+        - name: NCCL_IB_DISABLE
+          value: "1"
         - name: GLOO_SOCKET_IFNAME
           value: "eth0"
         - name: NCCL_DEBUG
