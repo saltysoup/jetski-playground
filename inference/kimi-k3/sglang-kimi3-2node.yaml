@@ -126,7 +126,6 @@ spec:
           echo "source /usr/local/gib/scripts/set_nccl_env.sh" >> /root/.bashrc
           MY_IP=$(hostname -I | awk '{print $1}')
           export SGLANG_HOST_IP="${MY_IP}"
-          export GLOO_SOCKET_IFNAME=eth0
           echo "=========================================================="
           echo "Launching SGLang multi-node for moonshotai/Kimi-K3..."
           echo "Node Rank: $POD_INDEX | dist-init-addr: sglang-master-pod-k3:20000"
