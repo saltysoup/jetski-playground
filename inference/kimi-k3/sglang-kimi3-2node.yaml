@@ -64,6 +64,28 @@ spec:
             {"interfaceName":"eth9","network":"rdma-7"}
           ]
     spec:
+      volumes:
+      - name: library-dir-host
+        hostPath:
+          path: /home/kubernetes/bin/nvidia
+      - name: gib
+        hostPath:
+          path: /home/kubernetes/bin/gib
+      - emptyDir:
+          medium: Memory
+          sizeLimit: 100Gi
+        name: dshm
+      - name: hf-cache
+        hostPath:
+          path: /mnt/stateful_partition/kube-ephemeral-ssd/huggingface_cache
+          type: DirectoryOrCreate
+      - name: gcs-fuse-csi-eph
+        csi:
+          driver: gcsfuse.csi.storage.gke.io
+          volumeAttributes:
+            bucketName: ikwak-models-gpu-launchpad-playground
+            gcsfuseMetadataPrefetchOnMount: "true"
+            mountOptions: "implicit-dirs,file-mode=777,dir-mode=777,file-cache:enable-parallel-downloads:true,file-cache:cache-file-for-range-read:true,file-cache:max-size-mb:-1,write:enable-streaming-writes:true,read_ahead_kb=1024,file-system:kernel-list-cache-ttl-secs:-1"
       serviceAccountName: sglang-sa
       containers:
       - name: sglang-container
@@ -167,25 +189,3 @@ spec:
           key: "cloud.google.com/impending-node-termination"
         - operator: "Exists"
           key: "user-workload"
-      volumes:
-      - name: library-dir-host
-        hostPath:
-          path: /home/kubernetes/bin/nvidia
-      - name: gib
-        hostPath:
-          path: /home/kubernetes/bin/gib
-      - emptyDir:
-          medium: Memory
-          sizeLimit: 100Gi
-        name: dshm
-      - name: hf-cache
-        hostPath:
-          path: /mnt/stateful_partition/kube-ephemeral-ssd/huggingface_cache
-          type: DirectoryOrCreate
-      - name: gcs-fuse-csi-eph
-        csi:
-          driver: gcsfuse.csi.storage.gke.io
-          volumeAttributes:
-            bucketName: ikwak-models-gpu-launchpad-playground
-            gcsfuseMetadataPrefetchOnMount: "true"
-            mountOptions: "implicit-dirs,file-mode=777,dir-mode=777,file-cache:enable-parallel-downloads:true,file-cache:cache-file-for-range-read:true,file-cache:max-size-mb:-1,write:enable-streaming-writes:true,read_ahead_kb=1024,file-system:kernel-list-cache-ttl-secs:-1"
