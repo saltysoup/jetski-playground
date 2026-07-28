@@ -85,7 +85,7 @@ spec:
         - |
           set -ex
           ldconfig /usr/local/nvidia/lib64/ || true
-          export LD_LIBRARY_PATH="/usr/local/gib/lib64:/usr/local/nvidia/lib64:/usr/local/host-lib64:$LD_LIBRARY_PATH"
+          export LD_LIBRARY_PATH="/usr/local/gib/lib64:/usr/local/nvidia/lib64:$LD_LIBRARY_PATH"
           if [ -f "/usr/local/gib/scripts/set_nccl_env.sh" ]; then
               source /usr/local/gib/scripts/set_nccl_env.sh
           fi
@@ -153,6 +153,10 @@ spec:
           value: "1"
         - name: PYTORCH_CUDA_ALLOC_CONF
           value: "expandable_segments:True"
+        - name: RUNAI_STREAMER_MEMORY_LIMIT
+          value: "34359738368"
+        - name: RUNAI_STREAMER_CONCURRENCY
+          value: "16"
         - name: SGLANG_USE_RUNAI_MODEL_STREAMER
           value: "true"
         resources:
@@ -173,9 +177,6 @@ spec:
             mountPath: /usr/local/nvidia
           - name: gib-nccl-plugin-volume
             mountPath: /usr/local/gib
-          - name: host-lib64
-            mountPath: /usr/local/host-lib64
-            readOnly: true
           - name: gcs-fuse-csi-eph
             mountPath: /bucket
       nodeSelector:
@@ -199,9 +200,6 @@ spec:
       - name: nvidia-install-dir-host
         hostPath:
           path: /home/kubernetes/bin/nvidia
-      - name: host-lib64
-        hostPath:
-          path: /lib64
       - name: gib-nccl-plugin-volume
         emptyDir: {}
       - name: gcs-fuse-csi-eph
