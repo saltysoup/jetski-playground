@@ -76,7 +76,6 @@ spec:
         - |
           set -ex
           ldconfig /usr/local/nvidia/lib64/ || true
-          export LD_LIBRARY_PATH="/usr/local/gib/lib64:/usr/local/nvidia/lib64:$LD_LIBRARY_PATH"
           if [ -f "/usr/local/gib/scripts/set_nccl_env.sh" ]; then
               source /usr/local/gib/scripts/set_nccl_env.sh
           fi
