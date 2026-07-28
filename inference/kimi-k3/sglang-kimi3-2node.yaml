@@ -101,7 +101,6 @@ spec:
           MY_IP=$(hostname -I | awk '{print $1}')
           export SGLANG_HOST_IP="${MY_IP}"
           export GLOO_SOCKET_IFNAME=eth0
-          export NCCL_SOCKET_IFNAME=eth0
           echo "=========================================================="
           echo "Launching SGLang multi-node for moonshotai/Kimi-K3..."
           echo "Node Rank: $POD_INDEX | dist-init-addr: sglang-master-pod-k3:20000"
@@ -146,9 +145,7 @@ spec:
               key: HF_TOKEN
               optional: true
         - name: LD_LIBRARY_PATH
-          value: /usr/local/nvidia/lib64:/usr/local/gib/lib64
-        - name: NCCL_SOCKET_IFNAME
-          value: "eth0"
+          value: /usr/local/nvidia/lib64
         - name: GLOO_SOCKET_IFNAME
           value: "eth0"
         - name: NCCL_DEBUG
