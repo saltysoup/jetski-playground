@@ -120,12 +120,9 @@ spec:
           echo "Node Rank: $POD_INDEX | dist-init-addr: sglang-master-pod-k3:20000"
           echo "=========================================================="
 
-          echo "Downloading DSpark draft model RadixArk/Kimi-K3-DSpark..."
-          python3 -m huggingface_hub.cli.hf download RadixArk/Kimi-K3-DSpark --local-dir /root/.cache/huggingface/Kimi-K3-DSpark || true
-
           sglang serve \
               --trust-remote-code \
-              --model-path /bucket/huggingface_model_cache/Kimi-K3 \
+              --model-path /bucket/Kimi-K3 \
               --served-model-name moonshotai/Kimi-K3 \
               --load-format runai_streamer \
               --enable-metrics \
@@ -143,7 +140,7 @@ spec:
               --host 0.0.0.0 \
               --port 30000 \
               --speculative-algorithm DSPARK \
-              --speculative-draft-model-path /bucket/huggingface_model_cache/Kimi-K3-DSpark \
+              --speculative-draft-model-path /bucket/Kimi-K3-DSpark \
               --speculative-dspark-block-size 7 \
               --enable-linear-replayssm-spec \
               --max-running-requests 512 \
