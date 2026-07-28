@@ -76,15 +76,6 @@ spec:
           medium: Memory
           sizeLimit: 250Gi
         name: dshm
-      - name: lib64
-        hostPath:
-          path: /lib64
-      - name: sys
-        hostPath:
-          path: /sys
-      - name: proc-sys
-        hostPath:
-          path: /proc/sys
       - name: hf-cache
         hostPath:
           path: /mnt/stateful_partition/kube-ephemeral-ssd/huggingface_cache
@@ -101,8 +92,6 @@ spec:
       - name: sglang-container
         image: docker.io/lmsysorg/sglang:kimi-k3
         imagePullPolicy: Always
-        securityContext:
-          privileged: true
         command:
         - /bin/bash
         - -c
