@@ -125,7 +125,7 @@ spec:
 
           sglang serve \
               --trust-remote-code \
-              --model-path /bucket/Kimi-K3 \
+              --model-path /bucket/huggingface_model_cache/Kimi-K3 \
               --served-model-name moonshotai/Kimi-K3 \
               --load-format runai_streamer \
               --enable-metrics \
@@ -143,7 +143,7 @@ spec:
               --host 0.0.0.0 \
               --port 30000 \
               --speculative-algorithm DSPARK \
-              --speculative-draft-model-path /root/.cache/huggingface/Kimi-K3-DSpark \
+              --speculative-draft-model-path /bucket/huggingface_model_cache/Kimi-K3-DSpark \
               --speculative-dspark-block-size 7 \
               --enable-linear-replayssm-spec \
               --max-running-requests 512 \
