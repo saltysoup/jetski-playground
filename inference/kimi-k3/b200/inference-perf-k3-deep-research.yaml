@@ -1,0 +1,133 @@
+# inference-perf Benchmark Client for MoonshotAI Kimi-K3 (Deep Research Workload)
+# Workload template from: https://github.com/kubernetes-sigs/inference-perf/tree/main/workload-catalog/deep-research
+# Pareto curve sweep across concurrency levels: 1, 2, 4, 8, 16, 32
+# Targets: http://sglang-serving-k3.default.svc.cluster.local:30000
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: inference-perf-k3-deep-research-config
+  namespace: default
+data:
+  config.yml: |
+    server:
+      type: sglang
+      base_url: http://sglang-serving-k3.default.svc.cluster.local:30000
+      model_name: moonshotai/Kimi-K3
+      ignore_eos: false
+    tokenizer:
+      pretrained_model_name_or_path: moonshotai/Kimi-K3
+      trust_remote_code: true
+    data:
+      type: conversation_replay
+      conversation_replay:
+        seed: 42
+        num_conversations: 5
+        shared_system_prompt_len: 2000
+        dynamic_system_prompt_len:
+          type: lognormal
+          min: 2000
+          max: 150000
+          mean: 45000
+          std_dev: 35000
+        turns_per_conversation:
+          type: normal
+          min: 2
+          max: 50
+          mean: 15
+          std_dev: 8.5
+        input_tokens_per_turn:
+          type: lognormal
+          min: 500
+          max: 15000
+          mean: 3000
+          std_dev: 2500
+        output_tokens_per_turn:
+          type: normal
+          min: 50
+          max: 4000
+          mean: 300
+          std_dev: 850
+        tool_call_latency_sec:
+          type: normal
+          min: 5
+          max: 60
+          mean: 25
+          std_dev: 12
+    load:
+      type: concurrent
+      num_workers: 8
+      worker_max_concurrency: 1000
+      request_timeout: 36000
+      stages:
+      - num_requests: 30
+        concurrency_level: 1
+      - num_requests: 30
+        concurrency_level: 2
+      - num_requests: 30
+        concurrency_level: 4
+      - num_requests: 30
+        concurrency_level: 8
+      - num_requests: 30
+        concurrency_level: 16
+      - num_requests: 30
+        concurrency_level: 32
+    api:
+      type: completion
+      streaming: true
+    report:
+      request_lifecycle:
+        summary: true
+        per_stage: true
+        per_request: true
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: inference-perf-k3-deep-research
+  namespace: default
+spec:
+  backoffLimit: 0
+  template:
+    metadata:
+      labels:
+        app: inference-perf-k3-deep-research
+    spec:
+      serviceAccountName: default
+      restartPolicy: Never
+      containers:
+      - name: benchmark
+        image: python:3.12-slim
+        command: ["/bin/bash", "-c"]
+        args:
+        - |
+          set -ex
+          pip install -q -U inference-perf PyYAML==6.0.3 matplotlib pandas
+          echo "======================================================================="
+          echo "Running inference-perf Deep Research benchmark for Kimi-K3"
+          echo "Workload: kubernetes-sigs/inference-perf workload-catalog/deep-research"
+          echo "Stages: Concurrency 1, 2, 4, 8, 16, 32 (30 requests/stage)"
+          echo "======================================================================="
+          inference-perf -c /config/config.yml
+          echo "Benchmark Completed Successfully!"
+        env:
+        - name: HF_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: hf-secret
+              key: HF_TOKEN
+              optional: true
+        resources:
+          requests:
+            cpu: "8"
+            memory: "16Gi"
+          limits:
+            cpu: "8"
+            memory: "16Gi"
+        volumeMounts:
+        - name: config-volume
+          mountPath: /config
+      volumes:
+      - name: config-volume
+        configMap:
+          name: inference-perf-k3-deep-research-config
