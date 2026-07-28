@@ -85,7 +85,7 @@ spec:
         - |
           set -ex
           ldconfig /usr/local/nvidia/lib64/ || true
-          export LD_LIBRARY_PATH="/usr/local/gib/lib64:/usr/local/nvidia/lib64:/lib64:$LD_LIBRARY_PATH"
+          export LD_LIBRARY_PATH="/usr/local/gib/lib64:/usr/local/nvidia/lib64:$LD_LIBRARY_PATH"
           if [ -f "/usr/local/gib/scripts/set_nccl_env.sh" ]; then
               source /usr/local/gib/scripts/set_nccl_env.sh
           fi
@@ -140,7 +140,7 @@ spec:
               key: HF_TOKEN
               optional: true
         - name: LD_LIBRARY_PATH
-          value: /usr/local/gib/lib64:/usr/local/nvidia/lib64:/lib64
+          value: /usr/local/gib/lib64:/usr/local/nvidia/lib64
         - name: NCCL_DEBUG
           value: INFO
         - name: SGLANG_REQUEST_STATE_WAIT_TIMEOUT
@@ -177,8 +177,6 @@ spec:
             mountPath: /usr/local/nvidia
           - name: gib-nccl-plugin-volume
             mountPath: /usr/local/gib
-          - name: lib64
-            mountPath: /lib64
           - name: gcs-fuse-csi-eph
             mountPath: /bucket
       nodeSelector:
@@ -202,9 +200,6 @@ spec:
       - name: nvidia-install-dir-host
         hostPath:
           path: /home/kubernetes/bin/nvidia
-      - name: lib64
-        hostPath:
-          path: /lib64
       - name: gib-nccl-plugin-volume
         emptyDir: {}
       - name: gcs-fuse-csi-eph
