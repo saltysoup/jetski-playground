@@ -101,6 +101,8 @@ spec:
       - name: sglang-container
         image: docker.io/lmsysorg/sglang:kimi-k3
         imagePullPolicy: Always
+        securityContext:
+          privileged: true
         command:
         - /bin/bash
         - -c
