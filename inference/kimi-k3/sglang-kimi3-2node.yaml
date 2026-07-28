@@ -130,7 +130,7 @@ spec:
               key: HF_TOKEN
               optional: true
         - name: LD_LIBRARY_PATH
-          value: /usr/local/nvidia/lib64
+          value: /usr/local/gib/lib64:/usr/local/nvidia/lib64
         - name: NCCL_DEBUG
           value: INFO
         - name: SGLANG_REQUEST_STATE_WAIT_TIMEOUT
