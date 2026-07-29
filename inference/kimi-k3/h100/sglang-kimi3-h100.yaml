@@ -143,8 +143,6 @@ spec:
         # 2. Shared Library & NCCL ABI Configuration
         - name: NCCL_LIB_DIR
           value: "/usr/local/nvidia/lib64"
-        - name: SGLANG_NCCL_SO_PATH
-          value: "/usr/local/nvidia/lib64/libnccl.so.2"
         - name: LD_PRELOAD
           value: "/usr/local/nvidia/lib64/libnccl.so.2"
         - name: LD_LIBRARY_PATH
