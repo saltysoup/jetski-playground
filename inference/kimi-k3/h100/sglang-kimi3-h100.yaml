@@ -1,0 +1,297 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: sglang-master-pod-k3
+  namespace: default
+  labels:
+    app: distributed-sglang-k3
+spec:
+  type: ClusterIP
+  clusterIP: None
+  selector:
+    app: distributed-sglang-k3
+    apps.kubernetes.io/pod-index: "0"
+  ports:
+  - name: dist-port
+    port: 20000
+    targetPort: 20000
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: sglang-serving-k3
+  namespace: default
+  labels:
+    app: distributed-sglang-k3
+spec:
+  type: ClusterIP
+  selector:
+    app: distributed-sglang-k3
+    apps.kubernetes.io/pod-index: "0"
+  ports:
+  - name: http
+    port: 30000
+    targetPort: 30000
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: distributed-sglang-k3
+  namespace: default
+spec:
+  serviceName: "sglang-master-pod-k3"
+  replicas: 4
+  podManagementPolicy: Parallel
+  selector:
+    matchLabels:
+      app: distributed-sglang-k3
+  template:
+    metadata:
+      labels:
+        app: distributed-sglang-k3
+        llm-d.ai/guide: optimized-baseline
+      annotations:
+        gke-gcsfuse/volumes: "true"
+        devices.gke.io/container.tcpxo-daemon: |+
+          - path: /dev/nvidia0
+          - path: /dev/nvidia1
+          - path: /dev/nvidia2
+          - path: /dev/nvidia3
+          - path: /dev/nvidia4
+          - path: /dev/nvidia5
+          - path: /dev/nvidia6
+          - path: /dev/nvidia7
+          - path: /dev/nvidiactl
+          - path: /dev/nvidia-uvm
+          - path: /dev/dmabuf_import_helper
+        networking.gke.io/default-interface: 'eth0'
+        networking.gke.io/interfaces: |
+          [
+            {"interfaceName":"eth0","network":"default"},
+            {"interfaceName":"eth1","network":"vpc1"},
+            {"interfaceName":"eth2","network":"vpc2"},
+            {"interfaceName":"eth3","network":"vpc3"},
+            {"interfaceName":"eth4","network":"vpc4"},
+            {"interfaceName":"eth5","network":"vpc5"},
+            {"interfaceName":"eth6","network":"vpc6"},
+            {"interfaceName":"eth7","network":"vpc7"},
+            {"interfaceName":"eth8","network":"vpc8"}
+          ]
+    spec:
+      serviceAccountName: workload-identity-k8s-sa
+      containers:
+      - name: sglang-container
+        securityContext:
+          privileged: true
+          capabilities:
+            add:
+              - NET_ADMIN
+              - NET_RAW
+              - SYS_ADMIN
+        image: docker.io/lmsysorg/sglang:kimi-k3
+        imagePullPolicy: Always
+        command:
+        - /bin/bash
+        - -c
+        args:
+        - |
+          exec sglang serve \
+            --trust-remote-code \
+            --model-path /bucket/Kimi-K3 \
+            --served-model-name moonshotai/Kimi-K3 \
+            --load-format runai_streamer \
+            --enable-metrics \
+            --tp-size 32 \
+            --nnodes 4 \
+            --node-rank ${POD_INDEX} \
+            --dist-init-addr sglang-master-pod-k3:20000 \
+            --ep-size 32 \
+            --moe-runner-backend marlin \
+            --decode-attention-backend flashmla \
+            --mem-fraction-static 0.85 \
+            --dist-timeout 3600 \
+            --reasoning-parser kimi_k3 \
+            --tool-call-parser kimi_k3 \
+            --mamba-full-memory-ratio 0.21 \
+            --host 0.0.0.0 \
+            --port 30000 \
+            --speculative-algorithm DSPARK \
+            --speculative-draft-model-path /bucket/Kimi-K3-DSpark \
+            --speculative-dspark-block-size 7 \
+            --enable-linear-replayssm-spec \
+            --max-running-requests 512 \
+            --cuda-graph-max-bs 512
+        env:
+        # 1. Pod & Network Identification
+        - name: POD_INDEX
+          valueFrom:
+            fieldRef:
+              apiVersion: v1
+              fieldPath: metadata.labels['apps.kubernetes.io/pod-index']
+        - name: SGLANG_HOST_IP
+          valueFrom:
+            fieldRef:
+              apiVersion: v1
+              fieldPath: status.podIP
+        - name: HF_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: hf-secret
+              key: HF_TOKEN
+              optional: true
+
+        # 2. Shared Library & NCCL ABI Configuration
+        - name: NCCL_LIB_DIR
+          value: "/usr/local/nvidia/lib64"
+        - name: SGLANG_NCCL_SO_PATH
+          value: "/usr/local/nvidia/lib64/libnccl.so.2"
+        - name: LD_PRELOAD
+          value: "/usr/local/nvidia/lib64/libnccl.so.2"
+        - name: LD_LIBRARY_PATH
+          value: "/usr/local/nvidia/lib64:/usr/lib/x86_64-linux-gnu"
+
+        # 3. PyTorch Memory Allocator & Runtime Optimizations
+        - name: PYTORCH_CUDA_ALLOC_CONF
+          value: "expandable_segments:False"
+        - name: SAFETENSORS_FAST_GPU
+          value: "1"
+        - name: RUNAI_STREAMER_MEMORY_LIMIT
+          value: "34359738368"
+        - name: RUNAI_STREAMER_CONCURRENCY
+          value: "32"
+        - name: PYTHONUNBUFFERED
+          value: "1"
+        - name: PYTHONFAULTHANDLER
+          value: "1"
+
+        # 4. PyTorch Distributed & NCCL Watchdog Settings
+        - name: TORCH_NCCL_ASYNC_ERROR_HANDLING
+          value: "0"
+        - name: TORCH_NCCL_BLOCKING_WAIT
+          value: "1"
+        - name: NCCL_ASYNC_ERROR_HANDLING
+          value: "0"
+
+        # 5. Socket Interfaces & Device Binding
+        - name: GLOO_SOCKET_IFNAME
+          value: "eth0"
+        - name: TP_SOCKET_IFNAME
+          value: "eth0"
+        - name: NCCL_SOCKET_IFNAME
+          value: "eth0"
+        - name: CUDA_VISIBLE_DEVICES
+          value: "0,1,2,3,4,5,6,7"
+
+        # 6. Canonical 25 Google GPUDirect TCPXO Settings
+        - name: NCCL_FASTRAK_CTRL_DEV
+          value: "eth0"
+        - name: NCCL_FASTRAK_IFNAME
+          value: "eth1,eth2,eth3,eth4,eth5,eth6,eth7,eth8"
+        - name: NCCL_CROSS_NIC
+          value: "0"
+        - name: NCCL_ALGO
+          value: "Ring,Tree"
+        - name: NCCL_PROTO
+          value: "Simple,LL128"
+        - name: NCCL_MIN_NCHANNELS
+          value: "4"
+        - name: NCCL_TUNER_PLUGIN
+          value: "libnccl-tuner.so"
+        - name: NCCL_TUNER_CONFIG_PATH
+          value: "/usr/local/nvidia/lib64/a3plus_tuner_config.textproto"
+        - name: NCCL_SHIMNET_GUEST_CONFIG_CHECKER_CONFIG_FILE
+          value: "/usr/local/nvidia/lib64/a3plus_guest_config.textproto"
+        - name: NCCL_DYNAMIC_CHUNK_SIZE
+          value: "524288"
+        - name: NCCL_P2P_NET_CHUNKSIZE
+          value: "524288"
+        - name: NCCL_P2P_PCI_CHUNKSIZE
+          value: "524288"
+        - name: NCCL_P2P_NVL_CHUNKSIZE
+          value: "1048576"
+        - name: NCCL_FASTRAK_NUM_FLOWS
+          value: "2"
+        - name: NCCL_FASTRAK_USE_SNAP
+          value: "1"
+        - name: NCCL_FASTRAK_PLUGIN_ACCEPT_TIMEOUT_MS
+          value: "600000"
+        - name: NCCL_FASTRAK_ENABLE_CONTROL_CHANNEL
+          value: "0"
+        - name: NCCL_BUFFSIZE
+          value: "8388608"
+        - name: NCCL_NET_GDR_LEVEL
+          value: "PIX"
+        - name: NCCL_FASTRAK_ENABLE_HOTPATH_LOGGING
+          value: "0"
+        - name: NCCL_FASTRAK_USE_LLCM
+          value: "1"
+        - name: NCCL_NVLS_ENABLE
+          value: "0"
+        volumeMounts:
+        - name: nvidia
+          mountPath: /usr/local/nvidia/lib64
+        - name: dshm
+          mountPath: /dev/shm
+        - name: aperture-devices
+          mountPath: /dev/aperture_devices
+        - name: hf-cache
+          mountPath: /mnt/stateful_partition/kube-ephemeral-ssd/huggingface_cache
+        - name: gcs-fuse-csi-eph
+          mountPath: /bucket
+          readOnly: true
+        resources:
+          limits:
+            nvidia.com/gpu: 8
+      - name: tcpxo-daemon
+        image: us-docker.pkg.dev/gce-ai-infra/gpudirect-tcpxo/tcpgpudmarxd-dev:v1.0.23
+        imagePullPolicy: Always
+        command: ["/bin/sh", "-c"]
+        args:
+          - |
+            set -ex
+            chmod 755 /fts/entrypoint_rxdm_container.sh
+            /fts/entrypoint_rxdm_container.sh --num_hops=2 --num_nics=8 --uid= --alsologtostderr
+        securityContext:
+          privileged: true
+          capabilities:
+            add:
+              - NET_ADMIN
+              - NET_BIND_SERVICE
+        volumeMounts:
+        - name: nvidia
+          mountPath: /usr/local/nvidia/lib64
+        - name: sys
+          mountPath: /hostsysfs
+        - name: proc-sys
+          mountPath: /hostprocsysfs
+        env:
+        - name: LD_LIBRARY_PATH
+          value: /usr/local/nvidia/lib64
+      volumes:
+      - name: nvidia
+        hostPath:
+          path: /home/kubernetes/bin/nvidia/lib64
+      - name: sys
+        hostPath:
+          path: /sys
+      - name: proc-sys
+        hostPath:
+          path: /proc/sys
+      - name: dshm
+        emptyDir:
+          medium: Memory
+          sizeLimit: 250Gi
+      - name: aperture-devices
+        hostPath:
+          path: /dev/aperture_devices
+      - name: hf-cache
+        hostPath:
+          path: /mnt/stateful_partition/kube-ephemeral-ssd/huggingface_cache
+          type: DirectoryOrCreate
+      - name: gcs-fuse-csi-eph
+        csi:
+          driver: gcsfuse.csi.storage.gke.io
+          volumeAttributes:
+            bucketName: ikwak-models-gpu-launchpad-playground
+            gcsfuseMetadataPrefetchOnMount: "true"
+            mountOptions: "implicit-dirs,file-mode=777,dir-mode=777,file-cache:enable-parallel-downloads:true,file-cache:cache-file-for-range-read:true,file-cache:max-size-mb:-1,write:enable-streaming-writes:true,read_ahead_kb=1024,file-system:kernel-list-cache-ttl-secs:-1"
