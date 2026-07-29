@@ -151,8 +151,8 @@ kubectl --context=gke_gpu-launchpad-playground_europe-west4_ikwak-reliability \
 ```
 
 ### Verified B200 Performance Results (`0.0% Error Rate`)
-* **Optimal Operating Knee ($c = 8$)**: `167.7 tok/s` output throughput | `37.5 ms` mean ITL | `7.70 s` mean TTFT
-* **Pareto Saturation Wall ($c = 512$)**: `170.1 tok/s` output throughput | `191.0 ms` mean ITL (5.1× rise) | `1,363 s` (`22.7 min`) mean TTFT
+* **Optimal Operating Knee ($c = 8$)**: `167.7 tok/s` output throughput | `37.5 ms` mean ITL | `7,697 ms` mean TTFT
+* **Pareto Saturation Wall ($c = 512$)**: `170.1 tok/s` output throughput | `191.0 ms` mean ITL (5.1× rise) | `1,363,000 ms` mean TTFT
 * **Architectural Baseline**: Demonstrates 100% SM occupancy and 100% physical HBM3e KV cache saturation (`full token usage = 1.00`) at $c = 512$, providing the exact baseline for **Lustre KV Cache Offloading** and **LLM-D Disaggregated Prefill-Decode Routing (`llm-d-router`)**.
 
 #### B200 Pareto Saturation Curve Graph ($c = 1 \text{ to } 512$)

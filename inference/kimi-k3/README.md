@@ -79,27 +79,27 @@ PEAK OUTPUT THROUGHPUT AT SATURATION WALL (c = 512) — HIGHER IS BETTER
 B200 (16 GPUs)  : 170.1 tok/s | ████████████████████████████████████████ (2.79×)
 H100 (32 GPUs)  :  60.9 tok/s | ██████████████
 ================================================================================
-TIME TO FIRST TOKEN (TTFT) AT PEAK SATURATION (c = 512) — LOWER IS BETTER
+TIME TO FIRST TOKEN (TTFT) AT PEAK SATURATION (c = 512) — LOWER IS BETTER (in ms)
 --------------------------------------------------------------------------------
-B200 (16 GPUs)  : 1,363 s     | ████████████ (22.7 min — 3.10× faster TTFT)
-H100 (32 GPUs)  : 4,219 s     | ████████████████████████████████████████ (70.3 min)
+B200 (16 GPUs)  : 1,363,000 ms | ████████████ (3.10× faster TTFT)
+H100 (32 GPUs)  : 4,219,000 ms | ████████████████████████████████████████
 ================================================================================
 ```
 
 ### Complete Verified Side-by-Side Pareto Saturation Table ($c = 1 \text{ to } 512$)
 
-| Stage (Concurrency $c$) | B200 Output tok/s | H100 Output tok/s | B200 Mean ITL | H100 Mean ITL | B200 Mean TTFT | H100 Mean TTFT | B200 vs. H100 Architectural Gain |
+| Stage (Concurrency $c$) | B200 Output tok/s | H100 Output tok/s | B200 Mean ITL | H100 Mean ITL | B200 Mean TTFT (ms) | H100 Mean TTFT (ms) | B200 vs. H100 Architectural Gain |
 | :--- | :---: | :---: | :---: | :---: | :---: | :---: | :--- |
-| **Stage 0 ($c = 1$)** | `41.7` | `22.3` | `20.0 ms` | `38.0 ms` | `1.71 s` | `5.08 s` | **+87.0% Output / 2.97× Faster TTFT** |
-| **Stage 1 ($c = 2$)** | `72.9` | `38.7` | `22.8 ms` | `42.5 ms` | `2.48 s` | `7.69 s` | **+88.4% Output / 3.10× Faster TTFT** |
-| **Stage 2 ($c = 4$)** | `111.1` | `60.2` | `28.9 ms` | `53.3 ms` | `3.55 s` | `11.84 s` | **+84.6% Output / 3.34× Faster TTFT** |
-| **Stage 3 ($c = 8$)** | **`167.7`** ⭐ *(B200 Knee)* | **`59.7`** ⭐ *(H100 Knee)* | **`37.5 ms`** | **`58.8 ms`** | **`7.70 s`** | **`58.99 s`** | **+180.9% Output / 7.66× Faster TTFT** |
-| **Stage 4 ($c = 16$)** | `165.2` | `59.6` | `45.6 ms` | `58.2 ms` | `28.9 s` | `111.6 s` | **+177.2% Output / 3.86× Faster TTFT** |
-| **Stage 5 ($c = 32$)** | `159.3` | `61.0` | `57.4 ms` | `59.1 ms` | `72.2 s` | `243.1 s` | **+161.1% Output / 3.37× Faster TTFT** |
-| **Stage 6 ($c = 64$)** | `164.3` | `60.3` | `68.7 ms` | `60.3 ms` | `155.7 s` | `515.1 s` | **+172.5% Output / 3.31× Faster TTFT** |
-| **Stage 7 ($c = 128$)** | `168.1` | `61.0` | `86.8 ms` | `60.0 ms` | `328.5 s` | `1,045 s` (`17.4 min`) | **+175.6% Output / 3.18× Faster TTFT** |
-| **Stage 8 ($c = 256$)** | `170.0` | `60.7` | `114.3 ms` | `60.5 ms` | `670.1 s` | `2,089 s` (`34.8 min`) | **+180.1% Output / 3.12× Faster TTFT** |
-| **Stage 9 ($c = 512$)** | **`170.1`** 🧱 *(B200 Wall)* | **`60.9`** 🧱 *(H100 Wall)* | **`191.0 ms`** | **`60.5 ms`** | **`1,363 s` (`22.7 min`)** | **`4,219 s` (`70.3 min`)** | **+179.3% Output / 3.10× Faster TTFT** |
+| **Stage 0 ($c = 1$)** | `41.7` | `22.3` | `20.0 ms` | `38.0 ms` | `1,712 ms` | `5,082 ms` | **+87.0% Output / 2.97× Faster TTFT** |
+| **Stage 1 ($c = 2$)** | `72.9` | `38.7` | `22.8 ms` | `42.5 ms` | `2,476 ms` | `7,692 ms` | **+88.4% Output / 3.10× Faster TTFT** |
+| **Stage 2 ($c = 4$)** | `111.1` | `60.2` | `28.9 ms` | `53.3 ms` | `3,548 ms` | `11,840 ms` | **+84.6% Output / 3.34× Faster TTFT** |
+| **Stage 3 ($c = 8$)** | **`167.7`** ⭐ *(B200 Knee)* | **`59.7`** ⭐ *(H100 Knee)* | **`37.5 ms`** | **`58.8 ms`** | **`7,697 ms`** | **`58,990 ms`** | **+180.9% Output / 7.66× Faster TTFT** |
+| **Stage 4 ($c = 16$)** | `165.2` | `59.6` | `45.6 ms` | `58.2 ms` | `28,860 ms` | `111,600 ms` | **+177.2% Output / 3.86× Faster TTFT** |
+| **Stage 5 ($c = 32$)** | `159.3` | `61.0` | `57.4 ms` | `59.1 ms` | `72,150 ms` | `243,100 ms` | **+161.1% Output / 3.37× Faster TTFT** |
+| **Stage 6 ($c = 64$)** | `164.3` | `60.3` | `68.7 ms` | `60.3 ms` | `155,700 ms` | `515,100 ms` | **+172.5% Output / 3.31× Faster TTFT** |
+| **Stage 7 ($c = 128$)** | `168.1` | `61.0` | `86.8 ms` | `60.0 ms` | `328,500 ms` | `1,045,000 ms` | **+175.6% Output / 3.18× Faster TTFT** |
+| **Stage 8 ($c = 256$)** | `170.0` | `60.7` | `114.3 ms` | `60.5 ms` | `670,100 ms` | `2,089,000 ms` | **+180.1% Output / 3.12× Faster TTFT** |
+| **Stage 9 ($c = 512$)** | **`170.1`** 🧱 *(B200 Wall)* | **`60.9`** 🧱 *(H100 Wall)* | **`191.0 ms`** | **`60.5 ms`** | **`1,363,000 ms`** | **`4,219,000 ms`** | **+179.3% Output / 3.10× Faster TTFT** |
 
 ### Key Architectural Takeaways
 
