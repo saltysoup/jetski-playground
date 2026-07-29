@@ -15,9 +15,10 @@ This directory contains production-ready Kubernetes manifests and performance be
 * **[`h100/`](h100/)** — **NVIDIA H100 GPUs (Hopper SM90)**
   * 4-Node distributed serving across 32 × NVIDIA H100 80GB SXM5 GPUs on GKE A3 Mega (`a3-megagpu-8g` VMs).
   * High-performance **GPUDirect TCPXO Networking** over 8 dedicated 200 Gbps NICs (`eth1..eth8`) per node (`187.08 GB/s` AllReduce bus bandwidth across 32 GPUs).
+  * **Prerequisite (`v1.0.17+` Installer DaemonSet)**: Requires Google's canonical `nccl-tcpxo-installer.yaml` DaemonSet deployed across nodes to install `libnccl.so.2.28.7-1` and FasTrak plugin `libnccl-net.so`.
   * **Declarative Single-File Serving Manifest (`sglang-kimi3-h100.yaml`)**: Features zero startup scripts, declaring all 25 canonical Google-recommended GPUDirect TCPXO environment variables in the Kubernetes `env:` block.
   * **Critical Architecture Fixes**:
-    * Preloads open-source `libnccl.so.2.28.7-1` via `LD_PRELOAD` to resolve PyTorch bundled NCCL ABI mismatches with Google's FasTrak network plugin (`libnccl-net.so`).
+    * Preloads open-source `libnccl.so.2.28.7-1` via `LD_PRELOAD` to resolve PyTorch bundled NCCL ABI mismatches (rendering `SGLANG_NCCL_SO_PATH` redundant and omitted).
     * Configures `securityContext: privileged: true` for write-combining RDMA access to `/sys/bus/pci/devices/.../resource0_wc`.
     * Preserves pod-native `/sys` filesystem (no host `/sys` mount) for multi-NIC PCIe topology discovery and `GDR=PIX` enabling.
   * Includes multi-node PyTorch Distributed NCCL benchmark suites (`nccl-test-kimi-k3.yaml`) and full deployment instructions.

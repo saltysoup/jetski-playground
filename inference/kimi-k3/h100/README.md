@@ -16,6 +16,33 @@ This directory contains declarative, single-file Kubernetes manifests and benchm
 
 ---
 
+## Prerequisites: Installing / Updating the NCCL TCPXO Installer DaemonSet (`v1.0.17+`)
+
+Before deploying distributed GPU workloads on GKE A3 Mega (`a3-megagpu-8g`), your cluster must have Google's **NCCL TCPXO Installer DaemonSet** deployed across all GPU nodes. This DaemonSet installs Google's qualified open-source NCCL library (`libnccl.so.2.28.7-1`) and FasTrak TCPXO network plugin (`libnccl-net.so`) into `/home/kubernetes/bin/nvidia/lib64` on the host filesystem.
+
+### 1. Apply or Update the DaemonSet
+Run the following command to deploy or upgrade the canonical TCPXO installer DaemonSet from Google's `container-engine-accelerators` repository:
+
+```bash
+kubectl apply -f https://raw.githubusercontent.com/GoogleCloudPlatform/container-engine-accelerators/master/gpudirect-tcpxo/nccl-tcpxo-installer.yaml
+```
+
+*Note: The canonical manifest installs the updated **`v1.0.17`** (or later) installer image (`us-docker.pkg.dev/gce-ai-infra/gpudirect-tcpxo/nccl-plugin-gpudirecttcpx-dev:v1.0.17`).*
+
+### 2. Verify DaemonSet Rollout & Node Installation
+Wait for the installer pods to finish updating `/home/kubernetes/bin/nvidia/lib64` across all A3 Mega nodes:
+
+```bash
+kubectl get pods -n kube-system -l app=nccl-tcpxo-installer
+```
+
+Verify that the installed libraries exist on your nodes and match version `2.28.7-1` or newer:
+```bash
+kubectl exec -n kube-system ds/nccl-tcpxo-installer -- ls -lah /var/lib/tcpxo/lib64/ | grep libnccl
+```
+
+---
+
 ## Directory Contents
 
 | File | Description |
@@ -29,12 +56,17 @@ This directory contains declarative, single-file Kubernetes manifests and benchm
 
 To achieve zero-error PyTorch Distributed collective communication and SGLang serving over GPUDirect TCPXO on GKE A3 Mega, the manifests implement four mandatory architectural configurations:
 
-### 1. Open-Source NCCL Library Override (`LD_PRELOAD`)
+### 1. Open-Source NCCL Library Override via `LD_PRELOAD` (Why `SGLANG_NCCL_SO_PATH` is Omitted)
 PyTorch 2.11 (`torch-2.11.0+cu130`) bundles an internal copy of NCCL (`2.28.9`). However, Google's TCPXO network plugin (`libnccl-net.so` / FasTrak) is compiled against open-source **NCCL 2.28.7-1**. Without overriding the library, an ABI/struct mismatch between 2.28.9 core and 2.28.7-1 plugin corrupts memory handle registration flags (`mhandle`), causing `INVALID_ARGUMENT: Attempted to Send/Recv from host buffer`.
-```yaml
-- name: LD_PRELOAD
-  value: "/usr/local/nvidia/lib64/libnccl.so.2"
-```
+
+* **Why `LD_PRELOAD` is used**:
+  ```yaml
+  - name: LD_PRELOAD
+    value: "/usr/local/nvidia/lib64/libnccl.so.2"
+  ```
+  `LD_PRELOAD` forces Python, PyTorch, and all C++ extensions to load the host's open-source `libnccl.so.2.28.7-1` before any bundled libraries are initialized, ensuring 100% ABI compatibility with `libnccl-net.so`.
+* **Why `SGLANG_NCCL_SO_PATH` is unnecessary**:
+  Because `LD_PRELOAD` globally overrides symbol resolution for the entire process tree, setting `SGLANG_NCCL_SO_PATH` is redundant. In fact, setting `SGLANG_NCCL_SO_PATH` triggers a harmless warning from Google's TCPXO guest config checker (`mismatch recommended: SGLANG_NCCL_SO_PATH=... (expected unset)`). Therefore, `SGLANG_NCCL_SO_PATH` is intentionally omitted from `sglang-kimi3-h100.yaml`.
 
 ### 2. Privileged Container Access (`resource0_wc`)
 Google's FasTrak network plugin requires read/write access to PCIe device files (`/sys/bus/pci/devices/.../resource0_wc`) for write-combining RDMA memory mapping. Without `privileged: true`, Kubernetes mounts `/sys` as read-only inside the container, causing FasTrak to abort with `PERMISSION_DENIED: Read-only file system`.
