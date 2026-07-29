@@ -16,29 +16,31 @@ When selecting a 4-node A3 Mega Spot footprint (`4 × a3-megagpu-8g` = 32 GPUs),
 
 | Region | Available Zonal Capacity | Historical Preemption Rate | Total Hourly Cost (4 × `a3-megagpu-8g`) | Cost per VM Hour | Strategic Recommendation |
 | :--- | :---: | :---: | :---: | :---: | :--- |
-| **`us-west1`** | `us-west1-a` (High)<br>`us-west1-b` (Limited) | **`0 - 5%`** *(Very Low)* | **`$158.53` / hour** (`$39.6336/VM`) | `$39.6336 / hr` | **High-Stability Backup Fleet**: Low preemption risk, ideal for elastic failover. |
-| **`us-east4`** | `us-east4-a` (High)<br>`us-east4-c` (High) | **`6 - 10%`** *(Moderate)* | **`$86.80` / hour** (`$21.7005/VM`) | `$21.7005 / hr` | **Cost-Optimized Primary Fleet**: **45% cheaper hourly cost** (`$21.70/hr` vs `$39.63/hr`), ideal for primary serving. |
+| **`us-west1`** | `us-west1-a` (High)<br>`us-west1-b` (Limited) | **`0 - 5%`** *(Very Low)* | **`$213.41` / hour** (`$53.352/VM`) | `$53.352 / hr` | **High-Stability Backup Fleet**: Low preemption risk, ideal for elastic failover. |
+| **`us-east4`** | `us-east4-a` (High)<br>`us-east4-c` (High) | **`6 - 10%`** *(Moderate)* | **`$86.80` / hour** (`$21.70/VM`) | `$21.70 / hr` | **Cost-Optimized Primary Fleet**: **59.3% cheaper hourly cost** (`$21.70/hr` vs `$53.35/hr`), ideal for primary serving. |
 
 > [!TIP]
-> **The Multi-Region Elastic Strategy**: Instead of choosing between price and stability, deploy a **Multi-Cluster Inference Gateway** that spans both `us-east4` (primary cost-optimized fleet at `$21.70/VM/hr`) and `us-west1` (elastic failover fleet at `$39.63/VM/hr`). If Spot capacity in `us-east4` is reclaimed, incoming requests seamlessly fail over to `us-west1` with zero downtime.
+> **The Multi-Region Elastic Strategy**: Instead of choosing between price and stability, deploy a **Multi-Cluster Inference Gateway** that spans both `us-east4` (primary cost-optimized fleet at `$21.70/VM/hr`) and `us-west1` (elastic failover fleet at `$53.352/VM/hr`). If Spot capacity in `us-east4` is reclaimed, incoming requests seamlessly fail over to `us-west1` with zero downtime.
 
 ---
 
-## 2. Cost per 1M Output Tokens Comparison: B200 DWS Calendar vs. H100 Spot
+## 2. Cost per 1M Output Tokens Comparison: H100 On-Demand vs. H100 Spot
 
-To understand the financial trade-offs between dynamic workload scheduler (DWS) calendar reservations on Blackwell B200 GPUs and Spot pricing on Hopper H100 GPUs, we analyze the **Cost per 1 Million Output Tokens ($\text{\$/1M Tok}$)** using our verified **Stage 3 ($c = 8$) Output Throughput** (`B200: 167.7 tok/s` vs. `H100: 59.7 tok/s`).
+To quantify the financial advantage of Spot GPU capacity and evaluate regional pricing trade-offs for deploying MoonshotAI Kimi-K3, we compare the **Cost per 1 Million Output Tokens ($\text{\$/1M Tok}$)** across **On-Demand vs. Spot** pricing in `us-west1` and `us-east4`. All calculations use our verified **Stage 3 ($c = 8$) H100 Output Throughput** (`59.7 tok/s` = `214,920 tok/hr` across 4 × `a3-megagpu-8g` nodes).
 
-### Financial Comparison Table ($c = 8$ Knee of the Curve)
+### Financial Comparison Table ($c = 8$ Saturation Knee)
 
-| Region & Deployment Option | VMs & Cluster Configuration | Price per VM Hour | Total Cluster Hourly Cost | Verified Stage 3 Output tok/s | Output Tokens per Hour | **Cost per 1M Output Tokens ($\text{\$/1M Tok}$)** | Architectural & Financial Analysis |
+| Region & Pricing Model | VMs & Cluster Configuration | Price per VM Hour | Total Cluster Hourly Cost | Verified Stage 3 Output tok/s | Output Tokens per Hour | **Cost per 1M Output Tokens ($\text{\$/1M Tok}$)** | Financial & Regional Analysis |
 | :--- | :---: | :---: | :---: | :---: | :---: | :---: | :--- |
-| **`us-west1` — B200 DWS Calendar** | 2 × `a4-highgpu-8g-a4`<br>*(16 × B200 GPUs)* | `$90.22` | **`$180.44` / hr** | `167.7 tok/s` | `603,720 tok/hr` | **`$298.88` / 1M tok** | **2.47× Cheaper per 1M Tokens**: Despite a slightly higher hourly cluster rate (`$180.44/hr` vs `$158.53/hr`), B200 delivers 2.81× higher output throughput. |
-| **`us-west1` — H100 Spot** | 4 × `a3-megagpu-8g`<br>*(32 × H100 GPUs)* | `$39.6336` | **`$158.53` / hr** | `59.7 tok/s` | `214,920 tok/hr` | **`$737.64` / 1M tok** | High-stability Spot baseline (`0-5%` preemption). Higher cost per million tokens due to TCPXO AllReduce and FP8 Marlin decode speed. |
-| **`us-east4` — B200 DWS Calendar** | 2 × `a4-highgpu-8g-a4`<br>*(16 × B200 GPUs)* | `$90.22` | **`$180.44` / hr** | `167.7 tok/s` | `603,720 tok/hr` | **`$298.88` / 1M tok** | **26% Cheaper per 1M Tokens**: Outperforms even deeply discounted Spot H100 pricing (`$21.70/VM/hr`). |
-| **`us-east4` — H100 Spot** | 4 × `a3-megagpu-8g`<br>*(32 × H100 GPUs)* | `$21.7005` | **`$86.80` / hr** | `59.7 tok/s` | `214,920 tok/hr` | **`$403.88` / 1M tok** | Deeply discounted Spot pricing (`6-10%` preemption). Reduces H100 token cost by 45% (`$403.88` vs `$737.64`), making it an excellent Spot primary target. |
+| **`us-west1` — H100 On-Demand** | 4 × `a3-megagpu-8g`<br>*(32 × H100 GPUs)* | `$93.40` | **`$373.60` / hr** | `59.7 tok/s` | `214,920 tok/hr` | **`$1,738.32` / 1M tok** | High-cost On-Demand baseline (`0%` preemption). Serves as the benchmark for evaluating Spot discounts. |
+| **`us-west1` — H100 Spot** | 4 × `a3-megagpu-8g`<br>*(32 × H100 GPUs)* | `$53.352` | **`$213.41` / hr** | `59.7 tok/s` | `214,920 tok/hr` | **`$992.96` / 1M tok** | **42.9% Cost Reduction**: Saves `$745.36` per million tokens vs. On-Demand while maintaining ultra-low preemption risk (`0-5%`). Ideal elastic backup fleet. |
+| **`us-east4` — H100 On-Demand** | 4 × `a3-megagpu-8g`<br>*(32 × H100 GPUs)* | `$93.466` | **`$373.86` / hr** | `59.7 tok/s` | `214,920 tok/hr` | **`$1,739.55` / 1M tok** | On-Demand baseline for `us-east4` (`0%` preemption). Virtually identical to `us-west1` On-Demand pricing. |
+| **`us-east4` — H100 Spot** | 4 × `a3-megagpu-8g`<br>*(32 × H100 GPUs)* | `$21.70` | **`$86.80` / hr** | `59.7 tok/s` | `214,920 tok/hr` | **`$403.87` / 1M tok** | **76.8% Cost Reduction**: Saves **`$1,335.68` per million tokens** vs. On-Demand and **59.3% cheaper than `us-west1` Spot** (`$403.87` vs `$992.96`). Ideal Spot primary fleet. |
 
-#### Why B200 DWS Calendar Wins on Cost per Token:
-Even when H100 Spot pricing drops to **`$21.70 / VM / hour`** in `us-east4`, **16 × B200 GPUs on DWS Calendar (`$90.22 / VM / hr`) remain 26% cheaper per million output tokens (`$298.88` vs. `$403.88`)**. This is because Blackwell's native FP4/FP8 compute density and RoCEv2 RDMA generate `167.7 tokens/sec` compared to `59.7 tokens/sec` on Hopper.
+#### Financial & Architectural Takeaways:
+1. **The Massive Advantage of Spot Pricing**: Using Spot H100 capacity in `us-east4` cuts the token generation cost by **76.8% compared to On-Demand (`$403.87 / 1M tok` vs. `$1,739.55 / 1M tok`)**, transforming unit economics for serving 671B MoE models.
+2. **The Importance of Regional Selection**: Even between Spot regions, choosing `us-east4` (`$21.70/VM/hr`) over `us-west1` (`$53.352/VM/hr`) reduces cost per million tokens by **59.3% (`$403.87` vs. `$992.96`)**.
+3. **Why Multi-Cluster Inference Gateway is Critical**: By routing primary traffic to `us-east4` (`$403.87 / 1M tok`) and configuring `us-west1` (`$992.96 / 1M tok`) as an elastic failover cluster, you capture 76.8% Spot cost savings on primary traffic while being 100% protected against `6-10%` Spot capacity preemption!
 
 ---
 
@@ -58,7 +60,7 @@ To enable cross-region Spot elasticity without duplicating 671 GB model checkpoi
          +-------------------------------+                         +-------------------------------+
          |     GKE Cluster: us-east4     |                         |     GKE Cluster: us-west1     |
          |  (4 × a3-megagpu-8g Spot VMs) |                         |  (4 × a3-megagpu-8g Spot VMs) |
-         |   Price: $21.70/hr (6-10%)    |                         |   Price: $39.63/hr (0-5%)     |
+         |   Price: $21.70/hr (6-10%)    |                         |   Price: $53.35/hr (0-5%)     |
          +---------------+---------------+                         +---------------+---------------+
                          |                                                         |
                          +----------------------------+----------------------------+
@@ -153,7 +155,7 @@ gcloud container node-pools create spot-h100-pool \
   --spot \
   --node-locations=us-east4-a,us-east4-c
 
-# 2. Elastic Failover Cluster ($39.63/hr — us-west1)
+# 2. Elastic Failover Cluster ($53.35/hr — us-west1)
 gcloud container clusters create us-west1-kimi-k3 \
   --region=us-west1 \
   --workload-pool=${PROJECT_ID}.svc.id.goog \
@@ -255,5 +257,5 @@ curl -i -X POST http://${GATEWAY_IP}/v1/chat/completions \
 When routed through GKE Multi-Cluster Inference Gateway / Cloud Load Balancing, inspect the response headers in the `curl -i` output:
 * **`X-Google-Backend`**: Displays the exact regional backend service that served the request:
   * Primary Cost-Optimized Answer: `X-Google-Backend: us-east4-spot-h100-pool` (`$21.70/hr`)
-  * Failover Backup Answer: `X-Google-Backend: us-west1-spot-h100-pool` (`$39.63/hr`)
+  * Failover Backup Answer: `X-Google-Backend: us-west1-spot-h100-pool` (`$53.35/hr`)
 * **`X-Served-By-Hostname`**: In SGLang, the generating pod's rank-0 hostname (`distributed-sglang-k3-0`) and cluster DNS suffix indicate the active cluster location.
