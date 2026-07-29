@@ -154,3 +154,22 @@ kubectl --context=gke_gpu-launchpad-playground_europe-west4_ikwak-reliability \
 * **Optimal Operating Knee ($c = 8$)**: `167.7 tok/s` output throughput | `37.5 ms` mean ITL | `7.70 s` mean TTFT
 * **Pareto Saturation Wall ($c = 512$)**: `170.1 tok/s` output throughput | `191.0 ms` mean ITL (5.1× rise) | `1,363 s` (`22.7 min`) mean TTFT
 * **Architectural Baseline**: Demonstrates 100% SM occupancy and 100% physical HBM3e KV cache saturation (`full token usage = 1.00`) at $c = 512$, providing the exact baseline for **Lustre KV Cache Offloading** and **LLM-D Disaggregated Prefill-Decode Routing (`llm-d-router`)**.
+
+#### B200 Pareto Saturation Curve Graph ($c = 1 \text{ to } 512$)
+```mermaid
+xychart-beta
+  title "B200 (16 GPUs) Pareto Wall: Output Throughput (tok/s) vs Concurrency (c)"
+  x-axis ["c=1", "c=2", "c=4", "c=8", "c=16", "c=32", "c=64", "c=128", "c=256", "c=512"]
+  y-axis "Output Throughput (tok/s)" 0 --> 200
+  line [41.7, 72.9, 111.1, 167.7, 165.2, 159.3, 164.3, 168.1, 170.0, 170.1]
+```
+
+```
+================================================================================
+B200 vs H100 PEAK OUTPUT THROUGHPUT AT SATURATION WALL (c = 512) — HIGHER IS BETTER
+--------------------------------------------------------------------------------
+B200 (16 GPUs)  : 170.1 tok/s | ████████████████████████████████████████ (2.79×)
+H100 (32 GPUs)  :  60.9 tok/s | ██████████████
+================================================================================
+```
+*For interactive charts, view [`b200_vs_h100_pareto_curve.html`](../b200_vs_h100_pareto_curve.html).*
