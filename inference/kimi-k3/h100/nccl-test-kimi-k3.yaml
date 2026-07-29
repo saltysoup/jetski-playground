@@ -1,0 +1,318 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: nccl-test-k3-svc
+  namespace: default
+spec:
+  clusterIP: None
+  publishNotReadyAddresses: true
+  selector:
+    app: nccl-test-kimi-k3
+  ports:
+    - name: master
+      port: 20000
+      targetPort: 20000
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: nccl-test-master-k3-svc
+  namespace: default
+spec:
+  clusterIP: None
+  publishNotReadyAddresses: true
+  selector:
+    statefulset.kubernetes.io/pod-name: nccl-test-kimi-k3-0
+  ports:
+    - name: master
+      port: 20000
+      targetPort: 20000
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: nccl-test-kimi-k3
+  namespace: default
+spec:
+  serviceName: nccl-test-k3-svc
+  replicas: 2
+  selector:
+    matchLabels:
+      app: nccl-test-kimi-k3
+  template:
+    metadata:
+      labels:
+        app: nccl-test-kimi-k3
+      annotations:
+        devices.gke.io/container.tcpxo-daemon: |+
+          - path: /dev/nvidia0
+          - path: /dev/nvidia1
+          - path: /dev/nvidia2
+          - path: /dev/nvidia3
+          - path: /dev/nvidia4
+          - path: /dev/nvidia5
+          - path: /dev/nvidia6
+          - path: /dev/nvidia7
+          - path: /dev/nvidiactl
+          - path: /dev/nvidia-uvm
+          - path: /dev/dmabuf_import_helper
+        networking.gke.io/default-interface: 'eth0'
+        networking.gke.io/interfaces: |
+          [
+            {"interfaceName":"eth0","network":"default"},
+            {"interfaceName":"eth1","network":"vpc1"},
+            {"interfaceName":"eth2","network":"vpc2"},
+            {"interfaceName":"eth3","network":"vpc3"},
+            {"interfaceName":"eth4","network":"vpc4"},
+            {"interfaceName":"eth5","network":"vpc5"},
+            {"interfaceName":"eth6","network":"vpc6"},
+            {"interfaceName":"eth7","network":"vpc7"},
+            {"interfaceName":"eth8","network":"vpc8"}
+          ]
+    spec:
+      hostNetwork: false
+      dnsPolicy: ClusterFirst
+      tolerations:
+      - operator: "Exists"
+        key: "nvidia.com/gpu"
+      - operator: "Exists"
+        key: "on-demand"
+      containers:
+      - name: main-container
+        image: docker.io/lmsysorg/sglang:kimi-k3
+        imagePullPolicy: Always
+        command:
+        - /bin/bash
+        - -c
+        args:
+        - |
+          set -e
+          export NCCL_LIB_DIR="/usr/local/nvidia/lib64"
+          if [ -f /usr/local/nvidia/lib64/nccl-env-profile.sh ]; then
+            source /usr/local/nvidia/lib64/nccl-env-profile.sh
+            echo "source /usr/local/nvidia/lib64/nccl-env-profile.sh" >> /root/.bashrc
+          fi
+          export LD_LIBRARY_PATH="${LD_LIBRARY_PATH}:/usr/local/nvidia/lib64"
+          export LD_PRELOAD="/usr/local/nvidia/lib64/libnccl.so.2"
+          export NCCL_FASTRAK_CTRL_DEV=eth0
+          export NCCL_FASTRAK_IFNAME=eth1,eth2,eth3,eth4,eth5,eth6,eth7,eth8
+          export NCCL_SOCKET_IFNAME=eth0
+          export NCCL_CROSS_NIC=0
+          export NCCL_ALGO=Ring,Tree
+          export NCCL_PROTO=Simple,LL128
+          export NCCL_MIN_NCHANNELS=4
+          export NCCL_TUNER_PLUGIN=libnccl-tuner.so
+          export NCCL_TUNER_CONFIG_PATH=/usr/local/nvidia/lib64/a3plus_tuner_config.textproto
+          export NCCL_SHIMNET_GUEST_CONFIG_CHECKER_CONFIG_FILE=/usr/local/nvidia/lib64/a3plus_guest_config.textproto
+          export NCCL_DYNAMIC_CHUNK_SIZE=524288
+          export NCCL_P2P_NET_CHUNKSIZE=524288
+          export NCCL_P2P_PCI_CHUNKSIZE=524288
+          export NCCL_P2P_NVL_CHUNKSIZE=1048576
+          export NCCL_FASTRAK_NUM_FLOWS=2
+          export NCCL_FASTRAK_USE_SNAP=1
+          export NCCL_FASTRAK_PLUGIN_ACCEPT_TIMEOUT_MS=600000
+          export NCCL_FASTRAK_ENABLE_CONTROL_CHANNEL=0
+          export NCCL_BUFFSIZE=8388608
+          export CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7
+          export NCCL_NET_GDR_LEVEL=PIX
+          export NCCL_FASTRAK_ENABLE_HOTPATH_LOGGING=0
+          export NCCL_FASTRAK_USE_LLCM=1
+          export NCCL_NVLS_ENABLE=0
+          
+          export TORCH_NCCL_ASYNC_ERROR_HANDLING=0
+          export TORCH_NCCL_BLOCKING_WAIT=1
+          export NCCL_ASYNC_ERROR_HANDLING=0
+          export PYTORCH_CUDA_ALLOC_CONF="expandable_segments:False"
+          export GLOO_SOCKET_IFNAME="eth0"
+          export TP_SOCKET_IFNAME="eth0"
+          
+          MY_IP=$(hostname -I | awk '{print $1}')
+          POD_INDEX=$(echo $HOSTNAME | awk -F'-' '{print $NF}')
+          
+          echo "=========================================================="
+          echo "Launching PyTorch Distributed NCCL Benchmark in Kimi-K3 Container..."
+          echo "Hostname: $HOSTNAME | Pod Index: $POD_INDEX | MY_IP: $MY_IP"
+          echo "=========================================================="
+          
+          python3 -c "import textwrap, pathlib; pathlib.Path('/tmp/test_nccl_benchmark.py').write_text(textwrap.dedent('''
+          import os
+          import time
+          import torch
+          import torch.distributed as dist
+
+          def run_benchmark():
+              local_rank = int(os.environ.get('LOCAL_RANK', 0))
+              global_rank = int(os.environ.get('RANK', 0))
+              world_size = int(os.environ.get('WORLD_SIZE', 1))
+              
+              torch.cuda.set_device(local_rank)
+              device = torch.device(f'cuda:{local_rank}')
+              
+              if global_rank == 0:
+                  print('===============================================================')
+                  print(f'PyTorch version: {torch.__version__}')
+                  print(f'CUDA available: {torch.cuda.is_available()} | CUDA version: {torch.version.cuda}')
+                  try:
+                      print(f'NCCL version: {torch.cuda.nccl.version()}')
+                  except Exception as e:
+                      print(f'NCCL version lookup failed: {e}')
+                  print(f'World Size: {world_size} GPUs across 4 nodes')
+                  print('===============================================================', flush=True)
+              
+              dist.init_process_group(
+                  backend='nccl',
+                  init_method='env://',
+                  rank=global_rank,
+                  world_size=world_size
+              )
+              
+              if global_rank == 0:
+                  print('Process group successfully initialized! Starting NCCL Warmup...', flush=True)
+                  
+              num_elements = 128 * 1024 * 1024
+              tensor = torch.ones(num_elements, dtype=torch.float32, device=device)
+              
+              for _ in range(10):
+                  dist.all_reduce(tensor, op=dist.ReduceOp.SUM)
+              torch.cuda.synchronize()
+              
+              if global_rank == 0:
+                  print('Warmup complete. Running AllReduce benchmark (20 iterations, 512MB message)...', flush=True)
+                  
+              iters = 20
+              start_time = time.perf_counter()
+              for _ in range(iters):
+                  dist.all_reduce(tensor, op=dist.ReduceOp.SUM)
+              torch.cuda.synchronize()
+              elapsed_time = time.perf_counter() - start_time
+              
+              avg_latency = (elapsed_time / iters) * 1e6
+              size_in_bytes = num_elements * 4
+              alg_bw = (size_in_bytes / (elapsed_time / iters)) / 1e9
+              bus_bw = alg_bw * (2 * (world_size - 1) / world_size)
+              
+              if global_rank == 0:
+                  print('===============================================================')
+                  print(f'ALL-REDUCE RESULTS (512MB float32 message, {world_size} GPUs):')
+                  print(f'  Avg Latency:        {avg_latency:10.2f} us')
+                  print(f'  Algorithm Bandwidth: {alg_bw:10.2f} GB/s')
+                  print(f'  Bus Bandwidth:       {bus_bw:10.2f} GB/s')
+                  print('===============================================================', flush=True)
+
+              if global_rank == 0:
+                  print('Running AllGather benchmark (20 iterations, 512MB per rank, 16GB total across ranks)...', flush=True)
+              gather_list = [torch.empty_like(tensor) for _ in range(world_size)]
+              for _ in range(10):
+                  dist.all_gather(gather_list, tensor)
+              torch.cuda.synchronize()
+              
+              start_time = time.perf_counter()
+              for _ in range(iters):
+                  dist.all_gather(gather_list, tensor)
+              torch.cuda.synchronize()
+              elapsed_time = time.perf_counter() - start_time
+              
+              avg_latency_ag = (elapsed_time / iters) * 1e6
+              alg_bw_ag = (size_in_bytes * world_size / (elapsed_time / iters)) / 1e9
+              bus_bw_ag = alg_bw_ag * ((world_size - 1) / world_size)
+              
+              if global_rank == 0:
+                  print('===============================================================')
+                  print(f'ALL-GATHER RESULTS ({world_size} GPUs):')
+                  print(f'  Avg Latency:        {avg_latency_ag:10.2f} us')
+                  print(f'  Algorithm Bandwidth: {alg_bw_ag:10.2f} GB/s')
+                  print(f'  Bus Bandwidth:       {bus_bw_ag:10.2f} GB/s')
+                  print('===============================================================', flush=True)
+                  print('SUCCESS! PyTorch NCCL over GPUDirect-TCPXO is working perfectly!', flush=True)
+                  
+              dist.destroy_process_group()
+
+          if __name__ == '__main__':
+              run_benchmark()
+          '''))"
+          
+          # Determine MASTER_IP (pod 0 uses its own IP directly)
+          if [ "${POD_INDEX}" = "0" ]; then
+            MASTER_IP="${MY_IP}"
+          else
+            until MASTER_IP=$(getent ahosts nccl-test-kimi-k3-0.nccl-test-k3-svc | grep -E '^[0-9]+\.' | head -n 1 | awk '{print $1}') && [ -n "$MASTER_IP" ]; do
+              echo "Waiting for master pod DNS..."
+              sleep 2
+            done
+          fi
+          echo "Resolved Master IP: ${MASTER_IP}"
+
+          # Launch via torchrun
+          torchrun \
+            --nproc_per_node=8 \
+            --nnodes=2 \
+            --node_rank=${POD_INDEX} \
+            --master_addr=${MASTER_IP} \
+            --master_port=20000 \
+            /tmp/test_nccl_benchmark.py
+            
+          echo "Benchmark complete! Sleeping for inspection..."
+          sleep 3600
+        env:
+        - name: POD_INDEX
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.labels['statefulset.kubernetes.io/pod-name']
+        - name: NCCL_DEBUG
+          value: "INFO"
+        - name: NCCL_DEBUG_SUBSYS
+          value: "INIT,NET,ENV,COLL"
+        - name: OMP_NUM_THREADS
+          value: "8"
+        securityContext:
+          privileged: true
+          capabilities:
+            add:
+              - NET_ADMIN
+              - NET_RAW
+              - SYS_ADMIN
+        volumeMounts:
+        - name: nvidia
+          mountPath: /usr/local/nvidia/lib64
+        - name: dshm
+          mountPath: /dev/shm
+        resources:
+          limits:
+            nvidia.com/gpu: 8
+      - name: tcpxo-daemon
+        image: us-docker.pkg.dev/gce-ai-infra/gpudirect-tcpxo/tcpgpudmarxd-dev:v1.0.23
+        imagePullPolicy: Always
+        command: ["/bin/sh", "-c"]
+        args:
+          - |
+            set -ex
+            chmod 755 /fts/entrypoint_rxdm_container.sh
+            /fts/entrypoint_rxdm_container.sh --num_hops=2 --num_nics=8 --uid= --alsologtostderr
+        securityContext:
+          privileged: true
+          capabilities:
+            add:
+              - NET_ADMIN
+              - NET_BIND_SERVICE
+        volumeMounts:
+        - name: nvidia
+          mountPath: /usr/local/nvidia/lib64
+        - name: sys
+          mountPath: /hostsysfs
+        - name: proc-sys
+          mountPath: /hostprocsysfs
+        - name: dshm
+          mountPath: /dev/shm
+      volumes:
+      - name: nvidia
+        hostPath:
+          path: /home/kubernetes/bin/nvidia/lib64
+      - name: sys
+        hostPath:
+          path: /sys
+      - name: proc-sys
+        hostPath:
+          path: /proc/sys
+      - name: dshm
+        emptyDir:
+          medium: Memory
