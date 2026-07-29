@@ -24,27 +24,7 @@ When selecting a 4-node A3 Mega Spot footprint (`4 × a3-megagpu-8g` = 32 GPUs),
 
 ---
 
-## 2. Cost per 1M Output Tokens Comparison: H100 On-Demand vs. H100 Spot
-
-To quantify the financial advantage of Spot GPU capacity and evaluate regional pricing trade-offs for deploying MoonshotAI Kimi-K3, we compare the **Cost per 1 Million Output Tokens ($\text{\$/1M Tok}$)** across **On-Demand vs. Spot** pricing in `us-west1` and `us-east4`. All calculations use our verified **Stage 3 ($c = 8$) H100 Output Throughput** (`59.7 tok/s` = `214,920 tok/hr` across 4 × `a3-megagpu-8g` nodes).
-
-### Financial Comparison Table ($c = 8$ Saturation Knee)
-
-| Region & Pricing Model | VMs & Cluster Configuration | Price per VM Hour | Total Cluster Hourly Cost | Verified Stage 3 Output tok/s | Output Tokens per Hour | **Cost per 1M Output Tokens ($\text{\$/1M Tok}$)** | Financial & Regional Analysis |
-| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :--- |
-| **`us-west1` — H100 On-Demand** | 4 × `a3-megagpu-8g`<br>*(32 × H100 GPUs)* | `$93.40` | **`$373.60` / hr** | `59.7 tok/s` | `214,920 tok/hr` | **`$1,738.32` / 1M tok** | High-cost On-Demand baseline (`0%` preemption). Serves as the benchmark for evaluating Spot discounts. |
-| **`us-west1` — H100 Spot** | 4 × `a3-megagpu-8g`<br>*(32 × H100 GPUs)* | `$53.352` | **`$213.41` / hr** | `59.7 tok/s` | `214,920 tok/hr` | **`$992.96` / 1M tok** | **42.9% Cost Reduction**: Saves `$745.36` per million tokens vs. On-Demand while maintaining ultra-low preemption risk (`0-5%`). Ideal elastic backup fleet. |
-| **`us-east4` — H100 On-Demand** | 4 × `a3-megagpu-8g`<br>*(32 × H100 GPUs)* | `$93.466` | **`$373.86` / hr** | `59.7 tok/s` | `214,920 tok/hr` | **`$1,739.55` / 1M tok** | On-Demand baseline for `us-east4` (`0%` preemption). Virtually identical to `us-west1` On-Demand pricing. |
-| **`us-east4` — H100 Spot** | 4 × `a3-megagpu-8g`<br>*(32 × H100 GPUs)* | `$21.70` | **`$86.80` / hr** | `59.7 tok/s` | `214,920 tok/hr` | **`$403.87` / 1M tok** | **76.8% Cost Reduction**: Saves **`$1,335.68` per million tokens** vs. On-Demand and **59.3% cheaper than `us-west1` Spot** (`$403.87` vs `$992.96`). Ideal Spot primary fleet. |
-
-#### Financial & Architectural Takeaways:
-1. **The Massive Advantage of Spot Pricing**: Using Spot H100 capacity in `us-east4` cuts the token generation cost by **76.8% compared to On-Demand (`$403.87 / 1M tok` vs. `$1,739.55 / 1M tok`)**, transforming unit economics for serving 671B MoE models.
-2. **The Importance of Regional Selection**: Even between Spot regions, choosing `us-east4` (`$21.70/VM/hr`) over `us-west1` (`$53.352/VM/hr`) reduces cost per million tokens by **59.3% (`$403.87` vs. `$992.96`)**.
-3. **Why Multi-Cluster Inference Gateway is Critical**: By routing primary traffic to `us-east4` (`$403.87 / 1M tok`) and configuring `us-west1` (`$992.96 / 1M tok`) as an elastic failover cluster, you capture 76.8% Spot cost savings on primary traffic while being 100% protected against `6-10%` Spot capacity preemption!
-
----
-
-## 3. Architecture & Multi-Region GCS Planning
+## 2. Architecture & Multi-Region GCS Planning
 
 To enable cross-region Spot elasticity without duplicating 671 GB model checkpoints across multiple regional storage buckets, we use a single **US Multi-Region Google Cloud Storage (GCS) Bucket**.
 
@@ -80,7 +60,7 @@ To enable cross-region Spot elasticity without duplicating 671 GB model checkpoi
 
 ---
 
-## 4. Creating a Multi-Region GCS Bucket & Pre-Uploading Checkpoints
+## 3. Creating a Multi-Region GCS Bucket & Pre-Uploading Checkpoints
 
 ### 1. Create the US Multi-Region Bucket (with Standard / Rapid Cache Storage Class)
 ```bash
@@ -116,7 +96,7 @@ gcloud storage cp -r ./Kimi-K3-DSpark gs://${MULTI_REGION_BUCKET}/Kimi-K3-DSpark
 
 ---
 
-## 5. Provisioning Multi-Cluster Spot GPU Pools with Elastic Cross-Region High Availability
+## 4. Provisioning Multi-Cluster Spot GPU Pools with Elastic Cross-Region High Availability
 
 We configure two autonomous GKE clusters (`us-east4-kimi-k3` and `us-west1-kimi-k3`) using **GKE Custom Compute Classes** and **Elastic Cross-Region High Availability** ([GKE Documentation](https://docs.cloud.google.com/kubernetes-engine/docs/how-to/configure-elastic-cross-region-high-availability)).
 
@@ -173,7 +153,7 @@ gcloud container node-pools create spot-h100-pool \
 
 ---
 
-## 6. Deploying the TCPXO DaemonSet & Kimi-K3 Serving Fleet
+## 5. Deploying the TCPXO DaemonSet & Kimi-K3 Serving Fleet
 
 For each cluster (`us-east4-kimi-k3` and `us-west1-kimi-k3`), apply the canonical GPUDirect TCPXO installer DaemonSet and declarative 4-Node SGLang Kimi-K3 manifest from [`/inference/kimi-k3/h100`](https://github.com/saltysoup/jetski-playground/tree/main/inference/kimi-k3/h100):
 
@@ -193,7 +173,7 @@ done
 
 ---
 
-## 7. Configuring Multi-Cluster Inference Gateway & Verifying Served Region
+## 6. Configuring Multi-Cluster Inference Gateway & Verifying Served Region
 
 We use GKE **Multi-Cluster Services (MCS)** and **Inference Gateway** ([Setup Guide](https://docs.cloud.google.com/kubernetes-engine/docs/how-to/setup-multicluster-inference-gateway)) to expose a single global HTTP/S endpoint across both Spot clusters.
 
