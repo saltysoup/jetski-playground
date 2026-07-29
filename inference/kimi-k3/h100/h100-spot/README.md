@@ -106,12 +106,26 @@ gcloud storage cp -r ./Kimi-K3-DSpark gs://${MULTI_REGION_BUCKET}/Kimi-K3-DSpark
 
 ## 4. Provisioning Multi-Cluster Spot GPU Pools with Elastic Cross-Region High Availability
 
-We configure two autonomous GKE clusters (`us-east4-kimi-k3` and `us-west1-kimi-k3`) using **GKE Custom Compute Classes** and **Elastic Cross-Region High Availability** ([GKE Documentation](https://docs.cloud.google.com/kubernetes-engine/docs/how-to/configure-elastic-cross-region-high-availability)).
+We configure two autonomous GKE clusters (`us-east4-kimi-k3` and `us-west1-kimi-k3`) using **GKE Custom Compute Classes**, **Extended Graceful Node Shutdown (`120s`)**, and **Elastic Cross-Region High Availability** ([GKE Documentation](https://docs.cloud.google.com/kubernetes-engine/docs/how-to/configure-elastic-cross-region-high-availability)).
 
-### 1. Create Custom Compute Class for Spot A3 Mega (`a3-megagpu-8g`)
-Apply this `CustomComputeClass` manifest in both clusters to define automatic zone/region fallback rules for Spot H100 GPUs:
+> [!IMPORTANT]
+> **Why Extended Graceful Shutdown (`120s`) is Essential for Spot LLM Serving**:  
+> By default, Spot VM preemption provides a 30-second shutdown window. By extending `shutdownGracePeriodSeconds` to **`120 seconds` (2 full minutes)** ([GKE Spot VM Graceful Shutdown Docs](https://docs.cloud.google.com/kubernetes-engine/docs/concepts/spot-vms#termination-graceful-shutdown)):
+> 1. **Maximum Replacement Runway**: GKE immediately cordons the preempted node and gives Cluster Autoscaler / CustomComputeClass 120 seconds of runway to spin up a replacement Spot node in an alternate zone (`us-east4-c` or failover cluster `us-west1-a`) before workloads are forcefully terminated.
+> 2. **Zero-Disruption Request Draining**: LLM inference requests in-flight on `sglang serve` have up to 2 minutes to finish generating, while GKE Multi-Cluster Inference Gateway redirects all new incoming traffic to healthy peer pods.
+
+### 1. Create Custom Compute Class & Extended KubeletConfig for Spot A3 Mega
+Apply this `CustomComputeClass` and `KubeletConfig` manifest in both clusters to define automatic zone/region fallback rules and enforce the **120-second graceful shutdown period**:
 
 ```yaml
+apiVersion: node.gke.io/v1beta1
+kind: KubeletConfig
+metadata:
+  name: spot-120s-grace-period
+spec:
+  shutdownGracePeriodSeconds: 120
+  shutdownGracePeriodCriticalPodsSeconds: 30
+---
 apiVersion: cloud.google.com/v1
 kind: CustomComputeClass
 metadata:
@@ -126,9 +140,17 @@ spec:
       maxNodeCount: 8
 ```
 
-### 2. Create the Regional GKE Clusters & Spot Node Pools
+### 2. Create the Regional GKE Clusters & Spot Node Pools (with 120s Graceful Shutdown)
+To explicitly configure the 120-second graceful shutdown window on node pool creation:
+
 ```bash
-# 1. Primary Cost-Optimized Cluster ($21.70/hr — us-east4)
+# 1. Create local Kubelet configuration file for 120s Spot graceful shutdown
+cat <<EOF > kubelet-config.yaml
+shutdownGracePeriodSeconds: 120
+shutdownGracePeriodCriticalPodsSeconds: 30
+EOF
+
+# 2. Primary Cost-Optimized Cluster ($21.70/hr — us-east4)
 gcloud container clusters create us-east4-kimi-k3 \
   --region=us-east4 \
   --workload-pool=${PROJECT_ID}.svc.id.goog \
@@ -141,9 +163,10 @@ gcloud container node-pools create spot-h100-pool \
   --machine-type=a3-megagpu-8g \
   --num-nodes=4 \
   --spot \
+  --node-kubelet-config=kubelet-config.yaml \
   --node-locations=us-east4-a,us-east4-c
 
-# 2. Elastic Failover Cluster ($53.35/hr — us-west1)
+# 3. Elastic Failover Cluster ($53.35/hr — us-west1)
 gcloud container clusters create us-west1-kimi-k3 \
   --region=us-west1 \
   --workload-pool=${PROJECT_ID}.svc.id.goog \
@@ -156,6 +179,7 @@ gcloud container node-pools create spot-h100-pool \
   --machine-type=a3-megagpu-8g \
   --num-nodes=4 \
   --spot \
+  --node-kubelet-config=kubelet-config.yaml \
   --node-locations=us-west1-a
 ```
 
