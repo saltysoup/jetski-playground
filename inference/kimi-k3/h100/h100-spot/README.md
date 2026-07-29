@@ -14,6 +14,14 @@ Before provisioning GPU clusters, use Google Cloud Console's **[Capacity Advisor
 
 When selecting a 4-node A3 Mega Spot footprint (`4 × a3-megagpu-8g` = 32 GPUs), Capacity Advisor reveals significant regional pricing and stability trade-offs:
 
+#### 1. `us-west1` Spot Capacity Advisor (High Stability: `0-5%` Preemption Rate — `$53.35 / VM / hr`)
+![Capacity Advisor - us-west1 Spot VM Availability, 0-5% Preemption Rate, $53.35/hr](images/capacity-advisor-us-west1.png)
+
+#### 2. `us-east4` Spot Capacity Advisor (Cost-Optimized: `6-10%` Preemption Rate — `$21.70 / VM / hr`)
+![Capacity Advisor - us-east4 Spot VM Availability, 6-10% Preemption Rate, $21.70/hr](images/capacity-advisor-us-east4.png)
+
+### Summary of Regional Trade-offs
+
 | Region | Available Zonal Capacity | Historical Preemption Rate | Total Hourly Cost (4 × `a3-megagpu-8g`) | Cost per VM Hour | Strategic Recommendation |
 | :--- | :---: | :---: | :---: | :---: | :--- |
 | **`us-west1`** | `us-west1-a` (High)<br>`us-west1-b` (Limited) | **`0 - 5%`** *(Very Low)* | **`$213.41` / hour** (`$53.352/VM`) | `$53.352 / hr` | **High-Stability Backup Fleet**: Low preemption risk, ideal for elastic failover. |
