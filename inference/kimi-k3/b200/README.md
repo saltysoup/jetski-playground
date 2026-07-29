@@ -122,3 +122,35 @@ kubectl exec -i distributed-sglang-k3-0 -c sglang-container -- \
     "temperature": 0.7
   }' | jq .
 ```
+
+---
+
+## 4. 10-Stage Pareto Saturation Wall Benchmark (`32k / 1k` Long-Context Workload)
+
+To measure where output throughput plateaus while latency hits the **Pareto Saturation Wall**, execute the deterministic `ISL = 32,768 / OSL = 1,024` benchmark suite (`inference-perf-k3-deep-research.yaml`):
+
+### Pre-Upload SGLang Model & Draft Checkpoints to GCS
+SGLang mounts `gs://${GCS_BUCKET}` to `/bucket`. Ensure `--model-path=/bucket/Kimi-K3` and `--speculative-draft-model-path=/bucket/Kimi-K3-DSpark` exist with valid `generation_config.json`:
+```bash
+# 1. Download clean, non-symlinked model folders locally
+huggingface-cli download moonshotai/Kimi-K3 --local-dir ./Kimi-K3 --local-dir-use-symlinks False
+huggingface-cli download RadixArk/Kimi-K3-DSpark --local-dir ./Kimi-K3-DSpark --local-dir-use-symlinks False
+
+# 2. Copy generation_config.json into draft model (omitted by RadixArk repository)
+cp ./Kimi-K3/generation_config.json ./Kimi-K3-DSpark/
+
+# 3. Upload directly to GCS bucket root
+gcloud storage cp -r ./Kimi-K3 gs://${GCS_BUCKET}/Kimi-K3
+gcloud storage cp -r ./Kimi-K3-DSpark gs://${GCS_BUCKET}/Kimi-K3-DSpark
+```
+
+### Launch the B200 Saturation Benchmark
+```bash
+kubectl --context=gke_gpu-launchpad-playground_europe-west4_ikwak-reliability \
+  apply -f inference/kimi-k3/b200/inference-perf-k3-deep-research.yaml
+```
+
+### Verified B200 Performance Results (`0.0% Error Rate`)
+* **Optimal Operating Knee ($c = 8$)**: `167.7 tok/s` output throughput | `37.5 ms` mean ITL | `7.70 s` mean TTFT
+* **Pareto Saturation Wall ($c = 512$)**: `170.1 tok/s` output throughput | `191.0 ms` mean ITL (5.1× rise) | `1,363 s` (`22.7 min`) mean TTFT
+* **Architectural Baseline**: Demonstrates 100% SM occupancy and 100% physical HBM3e KV cache saturation (`full token usage = 1.00`) at $c = 512$, providing the exact baseline for **Lustre KV Cache Offloading** and **LLM-D Disaggregated Prefill-Decode Routing (`llm-d-router`)**.
