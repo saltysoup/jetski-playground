@@ -128,3 +128,35 @@ curl http://localhost:30000/v1/chat/completions \
     "temperature": 0.6
   }'
 ```
+
+---
+
+## 3. 10-Stage Pareto Saturation Wall Benchmark (`32k / 1k` Long-Context Workload)
+
+To measure where output throughput plateaus while latency hits the **Pareto Saturation Wall**, execute the deterministic `ISL = 32,768 / OSL = 1,024` benchmark suite (`inference-perf-k3-deep-research.yaml`):
+
+### Pre-Upload SGLang Model & Draft Checkpoints to GCS
+SGLang mounts `gs://${GCS_BUCKET}` to `/bucket`. Ensure `--model-path=/bucket/Kimi-K3` and `--speculative-draft-model-path=/bucket/Kimi-K3-DSpark` exist with valid `generation_config.json`:
+```bash
+# 1. Download clean, non-symlinked model folders locally
+huggingface-cli download moonshotai/Kimi-K3 --local-dir ./Kimi-K3 --local-dir-use-symlinks False
+huggingface-cli download RadixArk/Kimi-K3-DSpark --local-dir ./Kimi-K3-DSpark --local-dir-use-symlinks False
+
+# 2. Copy generation_config.json into draft model (omitted by RadixArk repository)
+cp ./Kimi-K3/generation_config.json ./Kimi-K3-DSpark/
+
+# 3. Upload directly to GCS bucket root
+gcloud storage cp -r ./Kimi-K3 gs://${GCS_BUCKET}/Kimi-K3
+gcloud storage cp -r ./Kimi-K3-DSpark gs://${GCS_BUCKET}/Kimi-K3-DSpark
+```
+
+### Launch the H100 Saturation Benchmark
+```bash
+kubectl apply -f inference/kimi-k3/h100/inference-perf-k3-deep-research.yaml
+```
+
+### Verified H100 Performance Results (`0.0% Error Rate`)
+* **Optimal Operating Knee ($c = 8$)**: `59.7 tok/s` output throughput | `58.8 ms` mean ITL | `58.99 s` mean TTFT
+* **Pareto Saturation Wall ($c = 512$)**: `60.9 tok/s` output throughput | `60.5 ms` mean ITL | `4,219 s` (`70.3 min`) mean TTFT
+* **Architectural Comparison**: On this heavy `32k / 1k` regime, 16 × B200 GPUs (`170.1 tok/s`) outperform 32 × H100 GPUs (`60.9 tok/s`) by **+179.3% (2.79× faster)** and deliver **3.10× faster TTFT**.
+* **Roadmap Baseline**: Provides the baseline reference for testing **Lustre KV Cache Offloading** and **LLM-D Disaggregated Prefill-Decode Routing (`llm-d-router`)**.

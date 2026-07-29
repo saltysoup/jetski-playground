@@ -1,4 +1,4 @@
-# inference-perf Benchmark Client for MoonshotAI Kimi-K3 (Deep Research Workload)
+# inference-perf Benchmark Client for MoonshotAI Kimi-K3 (Deep Research Workload on H100)
 # Workload template from: https://github.com/kubernetes-sigs/inference-perf/tree/main/workload-catalog/deep-research
 # Pareto curve sweep across concurrency levels: 1, 2, 4, 8, 16, 32
 # Targets: http://sglang-serving-k3.default.svc.cluster.local:30000
@@ -79,6 +79,10 @@ spec:
     spec:
       serviceAccountName: default
       restartPolicy: Never
+      tolerations:
+      - key: "nvidia.com/gpu"
+        operator: "Exists"
+        effect: "NoSchedule"
       containers:
       - name: benchmark
         image: python:3.12-slim
@@ -90,7 +94,7 @@ spec:
           echo "======================================================================="
           echo "Running inference-perf Deep Research benchmark for Kimi-K3"
           echo "Workload: kubernetes-sigs/inference-perf workload-catalog/deep-research"
-          echo "Stages: Concurrency 1, 2, 4, 8, 16, 32 (30 requests/stage)"
+          echo "Stages: Concurrency 1, 2, 4, 8, 16, 32 (20 requests/stage)"
           echo "======================================================================="
           inference-perf -c /config/config.yml
           echo "Benchmark Completed Successfully!"
