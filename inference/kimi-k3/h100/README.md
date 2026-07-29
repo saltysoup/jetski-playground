@@ -160,3 +160,22 @@ kubectl apply -f inference/kimi-k3/h100/inference-perf-k3-deep-research.yaml
 * **Pareto Saturation Wall ($c = 512$)**: `60.9 tok/s` output throughput | `60.5 ms` mean ITL | `4,219 s` (`70.3 min`) mean TTFT
 * **Architectural Comparison**: On this heavy `32k / 1k` regime, 16 × B200 GPUs (`170.1 tok/s`) outperform 32 × H100 GPUs (`60.9 tok/s`) by **+179.3% (2.79× faster)** and deliver **3.10× faster TTFT**.
 * **Roadmap Baseline**: Provides the baseline reference for testing **Lustre KV Cache Offloading** and **LLM-D Disaggregated Prefill-Decode Routing (`llm-d-router`)**.
+
+#### H100 Pareto Saturation Curve Graph ($c = 1 \text{ to } 512$)
+```mermaid
+xychart-beta
+  title "H100 (32 GPUs) Pareto Wall: Output Throughput (tok/s) vs Concurrency (c)"
+  x-axis ["c=1", "c=2", "c=4", "c=8", "c=16", "c=32", "c=64", "c=128", "c=256", "c=512"]
+  y-axis "Output Throughput (tok/s)" 0 --> 100
+  line [22.3, 38.7, 60.2, 59.7, 59.6, 61.0, 60.3, 61.0, 60.7, 60.9]
+```
+
+```
+================================================================================
+B200 vs H100 PEAK OUTPUT THROUGHPUT AT SATURATION WALL (c = 512) — HIGHER IS BETTER
+--------------------------------------------------------------------------------
+B200 (16 GPUs)  : 170.1 tok/s | ████████████████████████████████████████ (2.79×)
+H100 (32 GPUs)  :  60.9 tok/s | ██████████████
+================================================================================
+```
+*For interactive charts, view [`b200_vs_h100_pareto_curve.html`](../b200_vs_h100_pareto_curve.html).*

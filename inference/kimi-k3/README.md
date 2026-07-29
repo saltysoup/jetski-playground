@@ -41,6 +41,51 @@ This directory contains production-ready Kubernetes manifests and performance be
 
 To establish an apple-to-apples architectural baseline across clusters and provide a reference target for testing **Lustre KV Cache Offloading** and **LLM-D (`llm-d-router`)**, we executed a 10-stage deterministic saturation sweep (`ISL = 32,768` prompt tokens, `OSL = 1,024` output tokens) across concurrency levels $c = 1 \text{ to } 512$ using `kubernetes-sigs/inference-perf` (`0.0% Error Rate`).
 
+### Interactive & Visual Pareto Saturation Graphs
+
+An interactive standalone HTML chart artifact is included in this repository:
+👉 **[`b200_vs_h100_pareto_curve.html`](b200_vs_h100_pareto_curve.html)** *(Open locally in a browser to inspect interactive Chart.js Pareto curves and hover over data points).*
+
+#### 1. Output Throughput Saturation Wall ($c = 1 \text{ to } 512$)
+The following chart shows both clusters scaling along the linear slope until reaching their optimal operating knee at $c = 8$, after which output throughput plateaus horizontally as hardware SM compute and HBM memory bandwidth saturate:
+
+```mermaid
+xychart-beta
+  title "Pareto Saturation Wall: Output Throughput (tok/s) vs Concurrency (c)"
+  x-axis ["c=1", "c=2", "c=4", "c=8", "c=16", "c=32", "c=64", "c=128", "c=256", "c=512"]
+  y-axis "Output Throughput (tok/s - Higher is Better)" 0 --> 200
+  line [41.7, 72.9, 111.1, 167.7, 165.2, 159.3, 164.3, 168.1, 170.0, 170.1]
+  line [22.3, 38.7, 60.2, 59.7, 59.6, 61.0, 60.3, 61.0, 60.7, 60.9]
+```
+*(Blue / Top Curve: 16 × B200 GPUs @ 170.1 tok/s | Red / Bottom Curve: 32 × H100 GPUs @ 60.9 tok/s)*
+
+#### 2. Inter-Token Latency (ITL) Saturation Curve ($c = 1 \text{ to } 512$)
+The following chart illustrates the Pareto Saturation Wall: as output throughput plateaus between $c = 8 \text{ and } 512$, Inter-Token Latency ($\text{ITL}$) curves vertically upward as physical HBM KV cache reaches 100% occupancy:
+
+```mermaid
+xychart-beta
+  title "Pareto Saturation Wall: Inter-Token Latency - ITL (ms) vs Concurrency (c)"
+  x-axis ["c=1", "c=2", "c=4", "c=8", "c=16", "c=32", "c=64", "c=128", "c=256", "c=512"]
+  y-axis "ITL (ms - Lower is Better)" 0 --> 200
+  line [20.0, 22.8, 28.9, 37.5, 45.6, 57.4, 68.7, 86.8, 114.3, 191.0]
+  line [38.0, 42.5, 53.3, 58.8, 58.2, 59.1, 60.3, 60.0, 60.5, 60.9]
+```
+
+#### 3. Visual Performance Comparison Bar Chart (B200 vs. H100)
+```
+================================================================================
+PEAK OUTPUT THROUGHPUT AT SATURATION WALL (c = 512) — HIGHER IS BETTER
+--------------------------------------------------------------------------------
+B200 (16 GPUs)  : 170.1 tok/s | ████████████████████████████████████████ (2.79×)
+H100 (32 GPUs)  :  60.9 tok/s | ██████████████
+================================================================================
+TIME TO FIRST TOKEN (TTFT) AT PEAK SATURATION (c = 512) — LOWER IS BETTER
+--------------------------------------------------------------------------------
+B200 (16 GPUs)  : 1,363 s     | ████████████ (22.7 min — 3.10× faster TTFT)
+H100 (32 GPUs)  : 4,219 s     | ████████████████████████████████████████ (70.3 min)
+================================================================================
+```
+
 ### Complete Verified Side-by-Side Pareto Saturation Table ($c = 1 \text{ to } 512$)
 
 | Stage (Concurrency $c$) | B200 Output tok/s | H100 Output tok/s | B200 Mean ITL | H100 Mean ITL | B200 Mean TTFT | H100 Mean TTFT | B200 vs. H100 Architectural Gain |
