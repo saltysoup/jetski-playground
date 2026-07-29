@@ -156,8 +156,8 @@ kubectl apply -f inference/kimi-k3/h100/inference-perf-k3-deep-research.yaml
 ```
 
 ### Verified H100 Performance Results (`0.0% Error Rate`)
-* **Optimal Operating Knee ($c = 8$)**: `59.7 tok/s` output throughput | `58.8 ms` mean ITL | `58.99 s` mean TTFT
-* **Pareto Saturation Wall ($c = 512$)**: `60.9 tok/s` output throughput | `60.5 ms` mean ITL | `4,219 s` (`70.3 min`) mean TTFT
+* **Optimal Operating Knee ($c = 8$)**: `59.7 tok/s` output throughput | `58.8 ms` mean ITL | `58,990 ms` mean TTFT
+* **Pareto Saturation Wall ($c = 512$)**: `60.9 tok/s` output throughput | `60.5 ms` mean ITL | `4,219,000 ms` mean TTFT
 * **Architectural Comparison**: On this heavy `32k / 1k` regime, 16 × B200 GPUs (`170.1 tok/s`) outperform 32 × H100 GPUs (`60.9 tok/s`) by **+179.3% (2.79× faster)** and deliver **3.10× faster TTFT**.
 * **Roadmap Baseline**: Provides the baseline reference for testing **Lustre KV Cache Offloading** and **LLM-D Disaggregated Prefill-Decode Routing (`llm-d-router`)**.
 
