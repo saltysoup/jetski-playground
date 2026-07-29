@@ -26,17 +26,17 @@ This directory contains production-ready Kubernetes deployments, distributed mul
 
 ---
 
-### 2. [`kimi-k3/`](./kimi-k3/README.md) — MoonshotAI Kimi-K3 (TP=16 Low-Latency + DSpark Speculative Decoding)
+### 2. [`kimi-k3/`](./kimi-k3/README.md) — MoonshotAI Kimi-K3 (B200 & H100 Multi-Node Serving + DSpark Speculative Decoding)
 * **Model Checkpoint:** `moonshotai/Kimi-K3`
 * **Speculative Decoding:** `DSpark` using `RadixArk/Kimi-K3-DSpark` draft checkpoint (`block-size=7`) with **Linear Replay SSM** verification (`--enable-linear-replayssm-spec`).
-* **Deployment Topology:**
-  * **2-Node Low-Latency Strategy (`16 × NVIDIA B200 GPUs`):** Spans all 16 GPUs across two `a4-highgpu-8g-a4` worker nodes (`--tp-size 16 --nnodes 2 --dp-size 1`) using `sglang serve` with `docker.io/lmsysorg/sglang:kimi-k3` ([`sglang-kimi3-2node.yaml`](./kimi-k3/sglang-kimi3-2node.yaml)).
-  * Head Node (`pod-index: 0`) coordinates NCCL / Gloo distributed initialization over headless Service `sglang-master-pod-k3:20000` and serves inference endpoints on port `30000`.
-* **Cross-Node RDMA & NIC Pinning (`100 Gbps`):**
-  * Pinned explicitly to `eth0` (`GLOO_SOCKET_IFNAME=eth0`, `NCCL_SOCKET_IFNAME=eth0`, `SGLANG_HOST_IP`) with Google gIB RDMA (`nccl-plugin-gib:v1.1.2`).
-* **High-Speed GCS Transfer & NVMe RAID Caching:**
-  * Includes dedicated parallel downloader/uploader Job ([`kimi-k3-gcs-uploader-job.yaml`](./kimi-k3/kimi-k3-gcs-uploader-job.yaml)) utilizing 16 parallel workers via `hf_transfer` to sync `moonshotai/Kimi-K3` directly to `gs://ikwak-models-gpu-launchpad-playground/Kimi-K3`.
-  * Server pods use `pull-model-from-gcs` initContainer to rsync weights from GCS onto the node's **12 TB NVMe RAID 0 (`/dev/md0`)** storage for 0.01-second instant restarts.
+* **Deployment Topologies:**
+  * **[`b200/`](./kimi-k3/b200/) — 2-Node Low-Latency Strategy (`16 × NVIDIA B200 GPUs`):** Spans all 16 GPUs across two `a4-highgpu-8g-a4` worker nodes (`--tp-size 16 --nnodes 2 --dp-size 1`) using `sglang serve` with `docker.io/lmsysorg/sglang:kimi-k3` ([`sglang-kimi3-2node.yaml`](./kimi-k3/b200/sglang-kimi3-2node.yaml)). Utilizes FP4 MoE quantization (`mxfp4`) and GPUDirect RDMA over RoCEv2 (`gIB` / Dataplane V2).
+  * **[`h100/`](./kimi-k3/h100/) — 4-Node Serving Strategy (`32 × NVIDIA H100 SXM5 GPUs`):** Spans all 32 GPUs across four `a3-megagpu-8g` GKE A3 Mega nodes (`--tp-size 32 --nnodes 4`) using declarative single-file manifest ([`sglang-kimi3-h100.yaml`](./kimi-k3/h100/sglang-kimi3-h100.yaml)). Utilizes W8A8 / FP8 Marlin quantization and **GPUDirect TCPXO Networking** (`187.08 GB/s` AllReduce bus bandwidth over 8 dedicated 200 Gbps NICs `eth1..eth8`).
+* **Declarative Single-File H100 Manifest & Architecture Fixes:**
+  * **Zero Startup Scripts:** Declares all 25 canonical Google-recommended GPUDirect TCPXO environment variables in the Kubernetes `env:` block.
+  * **`LD_PRELOAD` Library Override:** Preloads host open-source `libnccl.so.2.28.7-1` to prevent ABI mismatches with Google's FasTrak network plugin (`libnccl-net.so`).
+  * **Privileged `resource0_wc` Access:** Grants `securityContext: privileged: true` for write-combining RDMA access to PCIe memory-mapped device files.
+  * **Native Pod `/sys` Discovery:** Preserves container-native `/sys` filesystem (no host `/sys` volume mount) to enable multi-NIC PCIe topology discovery and `GDR=PIX`.
 
 ---
 
