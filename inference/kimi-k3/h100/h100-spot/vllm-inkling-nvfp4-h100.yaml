@@ -35,6 +35,7 @@ spec:
           - "--enable-expert-parallel"
           - "--tensor-parallel-size=8"
           - "--max-model-len=131072"
+          - "--gpu-memory-utilization=0.85"
           - "--enable-auto-tool-choice"
           - "--tool-call-parser=inkling"
           - "--reasoning-parser=inkling"
@@ -49,6 +50,10 @@ spec:
             value: "Socket"
           - name: NCCL_NET_GDR_LEVEL
             value: "0"
+          - name: GLOO_SOCKET_IFNAME
+            value: "eth0"
+          - name: NCCL_SOCKET_IFNAME
+            value: "eth0"
           - name: PYTHONUNBUFFERED
             value: "1"
           - name: PYTHONFAULTHANDLER
@@ -56,7 +61,7 @@ spec:
           - name: VLLM_LOGGING_LEVEL
             value: "INFO"
           - name: VLLM_USE_V2_MODEL_RUNNER
-            value: "0"
+            value: "1"
           - name: FLASH_ATTENTION_CUTE_DSL_CACHE_ENABLED
             value: "1"
           - name: HF_TOKEN
