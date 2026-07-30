@@ -38,7 +38,7 @@ spec:
           - "--enable-auto-tool-choice"
           - "--tool-call-parser=inkling"
           - "--reasoning-parser=inkling"
-          - "--speculative-config={'method': 'mtp', 'num_speculative_tokens': 1}"
+          - '--speculative-config={"method": "mtp", "num_speculative_tokens": 1}'
           - "--host=0.0.0.0"
           - "--port=8000"
         env:
@@ -68,6 +68,11 @@ spec:
             nvidia.com/gpu: 8
             memory: "400Gi"
             cpu: "60"
+        securityContext:
+          capabilities:
+            add:
+              - SYS_PTRACE
+              - IPC_LOCK
         volumeMounts:
           - name: dshm
             mountPath: /dev/shm
