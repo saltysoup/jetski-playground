@@ -1,18 +1,18 @@
-# MoonshotAI Kimi-K3 (`moonshotai/Kimi-K3`): Deploying on Spot H100 GPUs with GKE Multi-Cluster Elastic Cross-Region High Availability
+# ThinkingMachines Inkling-Small-NVFP4 (`thinkingmachines/Inkling-Small-NVFP4`): Deploying on Spot H100 GPUs with GKE Multi-Cluster Elastic Cross-Region High Availability
 
-This guide walks through deploying the 671B MoE **MoonshotAI Kimi-K3** model with **DSpark Speculative Decoding** (`RadixArk/Kimi-K3-DSpark`) across **NVIDIA H100 80GB SXM5 Spot GPUs** on Google Kubernetes Engine (GKE) A3 Mega (`a3-megagpu-8g`).
+This guide walks through deploying **ThinkingMachines Inkling-Small-NVFP4** (`thinkingmachines/Inkling-Small-NVFP4`)—an NVFP4 (4-bit floating point) quantized checkpoint derived from MoonshotAI Kimi-K3—across **NVIDIA H100 80GB SXM5 Spot GPUs** on Google Kubernetes Engine (GKE) A3 Mega (`a3-megagpu-8g`).
 
-By combining Google Cloud Console **Capacity Advisor**, a **US Multi-Region GCS Bucket**, **GKE Custom Compute Classes for Elastic Cross-Region High Availability**, and the **GKE Multi-Cluster Inference Gateway (`llm-d`)**, you can capture ultra-low Spot GPU pricing while protecting your production serving endpoint against Spot capacity preemption.
+By leveraging **NVFP4 Quantization**, the model fits on a **single 8-GPU H100 node (`--tensor-parallel-size=8`)**, leaving massive physical HBM headroom to support a **128k context window (`--max-model-len=131072`)** and speculative MTP decoding. Combined with Google Cloud Console **Capacity Advisor**, a **US Multi-Region GCS Bucket**, **GKE Custom Compute Classes for Extended Graceful Node Shutdown (`120s`)**, and the **GKE Multi-Cluster Inference Gateway (`llm-d`)**, you capture ultra-low Spot GPU pricing (`$21.70 / VM / hr` in `us-east4`) while protecting your production serving endpoint against Spot preemption.
 
 ---
 
 ## 1. Finding Spot GPU Capacity Using Capacity Advisor
 
-Before provisioning GPU clusters, use Google Cloud Console's **[Capacity Advisor](https://console.cloud.google.com/compute/capacityAdvisor)** to identify regions and zones with high Spot VM availability, compare historical preemption rates, and evaluate hourly Spot pricing for 4 × `a3-megagpu-8g` (32 × H100 GPUs total).
+Before provisioning GPU clusters, use Google Cloud Console's **[Capacity Advisor](https://console.cloud.google.com/compute/capacityAdvisor)** to identify regions and zones with high Spot VM availability, compare historical preemption rates, and evaluate hourly Spot pricing for `a3-megagpu-8g` (8 × H100 SXM5 GPUs per node).
 
 ### Analyzing Console Insights (Example Trade-off: `us-west1` vs. `us-east4`)
 
-When selecting a 4-node A3 Mega Spot footprint (`4 × a3-megagpu-8g` = 32 GPUs), Capacity Advisor reveals significant regional pricing and stability trade-offs:
+When selecting an A3 Mega Spot footprint (`1 × a3-megagpu-8g` per cluster = 8 GPUs), Capacity Advisor reveals significant regional pricing and stability trade-offs:
 
 #### 1. `us-west1` Spot Capacity Advisor (High Stability: `0-5%` Preemption Rate — `$53.35 / VM / hr`)
 ![Capacity Advisor - us-west1 Spot VM Availability, 0-5% Preemption Rate, $53.35/hr](images/capacity-advisor-us-west1.png)
@@ -26,10 +26,10 @@ Include example of spot advisor API for next level info on capacity assurance/pl
 
 ### Summary of Regional Trade-offs
 
-| Region | Available Zonal Capacity | Historical Preemption Rate | Total Hourly Cost (4 × `a3-megagpu-8g`) | Cost per VM Hour | Strategic Recommendation |
-| :--- | :---: | :---: | :---: | :---: | :--- |
-| **`us-west1`** | `us-west1-a` (High)<br>`us-west1-b` (Limited) | **`0 - 5%`** *(Very Low)* | **`$213.41` / hour** (`$53.352/VM`) | `$53.352 / hr` | **High-Stability Backup Fleet**: Low preemption risk, ideal for elastic failover. |
-| **`us-east4`** | `us-east4-a` (High)<br>`us-east4-c` (High) | **`6 - 10%`** *(Moderate)* | **`$86.80` / hour** (`$21.70/VM`) | `$21.70 / hr` | **Cost-Optimized Primary Fleet**: **59.3% cheaper hourly cost** (`$21.70/hr` vs `$53.35/hr`), ideal for primary serving. |
+| Region | Available Zonal Capacity | Historical Preemption Rate | Hourly Cost per A3 Mega VM (`8 × H100`) | Strategic Recommendation |
+| :--- | :---: | :---: | :---: | :--- |
+| **`us-west1`** | `us-west1-a` (High)<br>`us-west1-b` (Limited) | **`0 - 5%`** *(Very Low)* | **`$53.352` / hr** | **High-Stability Backup Fleet**: Low preemption risk, ideal for elastic failover. |
+| **`us-east4`** | `us-east4-a` (High)<br>`us-east4-c` (High) | **`6 - 10%`** *(Moderate)* | **`$21.700` / hr** | **Cost-Optimized Primary Fleet**: **59.3% cheaper hourly cost** (`$21.70/hr` vs `$53.35/hr`), ideal for primary serving. |
 
 > [!TIP]
 > **The Multi-Region Elastic Strategy**: Instead of choosing between price and stability, deploy a **Multi-Cluster Inference Gateway** that spans both `us-east4` (primary cost-optimized fleet at `$21.70/VM/hr`) and `us-west1` (elastic failover fleet at `$53.352/VM/hr`). If Spot capacity in `us-east4` is reclaimed, incoming requests seamlessly fail over to `us-west1` with zero downtime.
@@ -38,7 +38,7 @@ Include example of spot advisor API for next level info on capacity assurance/pl
 
 ## 2. Architecture & Multi-Region GCS Planning
 
-To enable cross-region Spot elasticity without duplicating 671 GB model checkpoints across multiple regional storage buckets, we use a single **US Multi-Region Google Cloud Storage (GCS) Bucket**.
+To enable cross-region Spot elasticity without duplicating model checkpoints across multiple regional storage buckets, we use a single **US Multi-Region Google Cloud Storage (GCS) Bucket**.
 
 ```
                            +------------------------------------------------------+
@@ -51,7 +51,7 @@ To enable cross-region Spot elasticity without duplicating 671 GB model checkpoi
                          v                                                         v
          +-------------------------------+                         +-------------------------------+
          |     GKE Cluster: us-east4     |                         |     GKE Cluster: us-west1     |
-         |  (4 × a3-megagpu-8g Spot VMs) |                         |  (4 × a3-megagpu-8g Spot VMs) |
+         |  (1 × a3-megagpu-8g Spot VM)  |                         |  (1 × a3-megagpu-8g Spot VM)  |
          |   Price: $21.70/hr (6-10%)    |                         |   Price: $53.35/hr (0-5%)     |
          +---------------+---------------+                         +---------------+---------------+
                          |                                                         |
@@ -60,13 +60,13 @@ To enable cross-region Spot elasticity without duplicating 671 GB model checkpoi
                                                       v
                            +------------------------------------------------------+
                            |         US Multi-Region GCS Storage Bucket           |
-                           |       (gs://multi-region-kimi-k3-cache/bucket/)      |
-                           |    Rapid Cache Enabled | Shared across US regions    |
+                           |    (gs://multi-region-inkling-cache/bucket/)         |
+                           |  Shared across US regions | /bucket/Inkling-Small    |
                            +------------------------------------------------------+
 ```
 
 ### Benefits of a Multi-Region Bucket for Spot Workloads
-1. **One-Time Model Upload**: Upload `moonshotai/Kimi-K3` and `RadixArk/Kimi-K3-DSpark` once to `gs://${MULTI_REGION_BUCKET}/`.
+1. **One-Time Model Upload**: Upload `thinkingmachines/Inkling-Small-NVFP4` once to `gs://${MULTI_REGION_BUCKET}/Inkling-Small-NVFP4`.
 2. **Zero Regional Replication Cost**: Both `us-east4` and `us-west1` GKE clusters mount the bucket root to `/bucket` via `gke-gcsfuse`.
 3. **Rapid Cache Integration**: When combined with GKE Rapid Cache or local SSD/NVMe caching, replacement Spot pods in any US region initialize and stream checkpoints in seconds.
 
@@ -76,7 +76,7 @@ To enable cross-region Spot elasticity without duplicating 671 GB model checkpoi
 
 ### 1. Create the US Multi-Region Bucket (with Standard / Rapid Cache Storage Class)
 ```bash
-export MULTI_REGION_BUCKET="multi-region-kimi-k3-cache-${USER}"
+export MULTI_REGION_BUCKET="multi-region-inkling-cache-${USER}"
 
 # Create a US multi-region GCS bucket
 gcloud storage buckets create gs://${MULTI_REGION_BUCKET} \
@@ -85,38 +85,30 @@ gcloud storage buckets create gs://${MULTI_REGION_BUCKET} \
   --uniform-bucket-level-access
 ```
 
-### 2. Download Models Locally & Upload to Bucket Root
-To ensure `--model-path=/bucket/Kimi-K3` and `--speculative-draft-model-path=/bucket/Kimi-K3-DSpark` resolve correctly inside SGLang containers:
+### 2. Download Model Locally & Upload to Bucket Root
+To ensure `--model=/bucket/Inkling-Small-NVFP4` resolves correctly inside vLLM containers:
 
 ```bash
-# 1. Download target and draft models locally without symlinks
-huggingface-cli download moonshotai/Kimi-K3 \
-  --local-dir ./Kimi-K3 \
-  --local-dir-use-symlinks False
+# 1. Download Inkling-Small-NVFP4 checkpoint locally without symlinks
+export HF_TOKEN="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"
+hf download thinkingmachines/Inkling-Small-NVFP4 \
+  --local-dir ./Inkling-Small-NVFP4
 
-huggingface-cli download RadixArk/Kimi-K3-DSpark \
-  --local-dir ./Kimi-K3-DSpark \
-  --local-dir-use-symlinks False
-
-# 2. Copy generation_config.json into draft model (omitted by RadixArk repository)
-cp ./Kimi-K3/generation_config.json ./Kimi-K3-DSpark/
-
-# 3. Upload directly to the GCS bucket root
-gcloud storage cp -r ./Kimi-K3 gs://${MULTI_REGION_BUCKET}/Kimi-K3
-gcloud storage cp -r ./Kimi-K3-DSpark gs://${MULTI_REGION_BUCKET}/Kimi-K3-DSpark
+# 2. Upload directly to the GCS bucket root
+gcloud storage cp -r ./Inkling-Small-NVFP4 gs://${MULTI_REGION_BUCKET}/Inkling-Small-NVFP4
 ```
 
 ---
 
 ## 4. Provisioning Multi-Cluster Spot GPU Pools with Elastic Cross-Region High Availability
 
-We configure two autonomous GKE clusters (`us-east4-kimi-k3` and `us-west1-kimi-k3`) using **GKE Custom Compute Classes**, **Extended Graceful Node Shutdown (`120s`)**, and **Elastic Cross-Region High Availability** ([GKE Documentation](https://docs.cloud.google.com/kubernetes-engine/docs/how-to/configure-elastic-cross-region-high-availability)).
+We configure two autonomous GKE clusters (`us-east4-inkling` and `us-west1-inkling`) using **GKE Custom Compute Classes**, **Extended Graceful Node Shutdown (`120s`)**, and **Elastic Cross-Region High Availability** ([GKE Documentation](https://docs.cloud.google.com/kubernetes-engine/docs/how-to/configure-elastic-cross-region-high-availability)).
 
 > [!IMPORTANT]
 > **Why Extended Graceful Shutdown (`120s`) is Essential for Spot LLM Serving**:  
 > By default, Spot VM preemption provides a 30-second shutdown window. By extending `shutdownGracePeriodSeconds` to **`120 seconds` (2 full minutes)** ([GKE Spot VM Graceful Shutdown Docs](https://docs.cloud.google.com/kubernetes-engine/docs/concepts/spot-vms#termination-graceful-shutdown)):
 > 1. **Maximum Replacement Runway**: GKE immediately cordons the preempted node and gives Cluster Autoscaler / CustomComputeClass 120 seconds of runway to spin up a replacement Spot node in an alternate zone (`us-east4-c` or failover cluster `us-west1-a`) before workloads are forcefully terminated.
-> 2. **Zero-Disruption Request Draining**: LLM inference requests in-flight on `sglang serve` have up to 2 minutes to finish generating, while GKE Multi-Cluster Inference Gateway redirects all new incoming traffic to healthy peer pods.
+> 2. **Zero-Disruption Request Draining**: LLM inference requests in-flight on `vllm` have up to 2 minutes to finish generating, while GKE Multi-Cluster Inference Gateway redirects all new incoming traffic to healthy peer pods.
 
 ### 1. Create Custom Compute Class & Extended KubeletConfig for Spot A3 Mega
 Apply this `CustomComputeClass` and `KubeletConfig` manifest in both clusters to define automatic zone/region fallback rules and enforce the **120-second graceful shutdown period**:
@@ -140,8 +132,8 @@ spec:
     machineType: a3-megagpu-8g
     spot: true
     scaling:
-      minNodeCount: 4
-      maxNodeCount: 8
+      minNodeCount: 1
+      maxNodeCount: 4
 ```
 
 ### 2. Create the Regional GKE Clusters & Spot Node Pools (with 120s Graceful Shutdown)
@@ -155,33 +147,33 @@ shutdownGracePeriodCriticalPodsSeconds: 30
 EOF
 
 # 2. Primary Cost-Optimized Cluster ($21.70/hr — us-east4)
-gcloud container clusters create us-east4-kimi-k3 \
+gcloud container clusters create us-east4-inkling \
   --region=us-east4 \
   --workload-pool=${PROJECT_ID}.svc.id.goog \
   --enable-ip-alias \
   --enable-dataplane-v2
 
 gcloud container node-pools create spot-h100-pool \
-  --cluster=us-east4-kimi-k3 \
+  --cluster=us-east4-inkling \
   --region=us-east4 \
   --machine-type=a3-megagpu-8g \
-  --num-nodes=4 \
+  --num-nodes=1 \
   --spot \
   --node-kubelet-config=kubelet-config.yaml \
   --node-locations=us-east4-a,us-east4-c
 
 # 3. Elastic Failover Cluster ($53.35/hr — us-west1)
-gcloud container clusters create us-west1-kimi-k3 \
+gcloud container clusters create us-west1-inkling \
   --region=us-west1 \
   --workload-pool=${PROJECT_ID}.svc.id.goog \
   --enable-ip-alias \
   --enable-dataplane-v2
 
 gcloud container node-pools create spot-h100-pool \
-  --cluster=us-west1-kimi-k3 \
+  --cluster=us-west1-inkling \
   --region=us-west1 \
   --machine-type=a3-megagpu-8g \
-  --num-nodes=4 \
+  --num-nodes=1 \
   --spot \
   --node-kubelet-config=kubelet-config.yaml \
   --node-locations=us-west1-a
@@ -189,21 +181,22 @@ gcloud container node-pools create spot-h100-pool \
 
 ---
 
-## 5. Deploying the TCPXO DaemonSet & Kimi-K3 Serving Fleet
+## 5. Deploying vLLM Inkling-Small-NVFP4 Serving Fleet (Single-Node TP8 / 128k Context)
 
-For each cluster (`us-east4-kimi-k3` and `us-west1-kimi-k3`), apply the canonical GPUDirect TCPXO installer DaemonSet and declarative 4-Node SGLang Kimi-K3 manifest from [`/inference/kimi-k3/h100`](https://github.com/saltysoup/jetski-playground/tree/main/inference/kimi-k3/h100):
+For each cluster (`us-east4-inkling` and `us-west1-inkling`), apply the declarative single-node vLLM deployment manifest from [`vllm-inkling-nvfp4-h100.yaml`](vllm-inkling-nvfp4-h100.yaml):
 
 ```bash
-for CONTEXT in gke_${PROJECT_ID}_us-east4_us-east4-kimi-k3 gke_${PROJECT_ID}_us-west1_us-west1-kimi-k3; do
+for CONTEXT in gke_${PROJECT_ID}_us-east4_us-east4-inkling gke_${PROJECT_ID}_us-west1_us-west1-inkling; do
   echo "=== Deploying to cluster: ${CONTEXT} ==="
   
-  # 1. Deploy canonical TCPXO installer DaemonSet (v1.0.17+)
-  kubectl --context=${CONTEXT} apply -f \
-    https://raw.githubusercontent.com/GoogleCloudPlatform/container-engine-accelerators/master/gpudirect-tcpxo/nccl-tcpxo-installer.yaml
+  # 1. (Optional) Create Hugging Face token secret if needed for restricted tokenizers
+  kubectl --context=${CONTEXT} create secret generic hf-secret \
+    --from-literal=token="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" \
+    --dry-run=client -o yaml | kubectl --context=${CONTEXT} apply -f -
 
-  # 2. Apply SGLang Kimi-K3 4-Node serving manifest (TP32 / EP32)
-  # Ensure GCS bucket annotation matches MULTI_REGION_BUCKET
-  kubectl --context=${CONTEXT} apply -f inference/kimi-k3/h100/sglang-kimi3-h100.yaml
+  # 2. Apply vLLM Inkling-Small-NVFP4 single-node serving manifest
+  # Configured with TP8, 128k max-model-len, non-privileged securityContext, and gke-gcsfuse bucket mounting
+  kubectl --context=${CONTEXT} apply -f inference/kimi-k3/h100/h100-spot/vllm-inkling-nvfp4-h100.yaml
 done
 ```
 
@@ -214,55 +207,55 @@ done
 We use GKE **Multi-Cluster Services (MCS)** and **Inference Gateway** ([Setup Guide](https://docs.cloud.google.com/kubernetes-engine/docs/how-to/setup-multicluster-inference-gateway)) to expose a single global HTTP/S endpoint across both Spot clusters.
 
 ### 1. Export Multi-Cluster Service & HTTPRoute
-Apply the `MultiClusterService` and `HTTPRoute` in your Gateway configuration cluster to unify `sglang-serving-k3` across `us-east4` and `us-west1`:
+Apply the `MultiClusterService` and `HTTPRoute` in your Gateway configuration cluster to unify `vllm-inkling-nvfp4` across `us-east4` and `us-west1`:
 
 ```yaml
 apiVersion: net.gke.io/v1
 kind: MultiClusterService
 metadata:
-  name: sglang-serving-k3-mcs
+  name: vllm-inkling-nvfp4-mcs
   namespace: default
 spec:
   template:
     spec:
       selector:
-        app: sglang-kimi3-h100
+        app: vllm-inkling-nvfp4
       ports:
       - name: http
-        port: 30000
-        targetPort: 30000
+        port: 8000
+        targetPort: 8000
 ---
 apiVersion: gateway.networking.k8s.io/v1
 kind: HTTPRoute
 metadata:
-  name: kimi-k3-global-route
+  name: inkling-nvfp4-global-route
   namespace: default
 spec:
   parentRefs:
-  - name: kimi-k3-external-gateway
+  - name: inkling-external-gateway
   rules:
   - matches:
     - path:
         type: PathPrefix
         value: /v1
     backendRefs:
-    - name: sglang-serving-k3-mcs
-      port: 30000
+    - name: vllm-inkling-nvfp4-mcs
+      port: 8000
 ```
 
 ### 2. Verify Deployment & See Which Regional Cluster Served the Request
 To verify where the request is being served from (identifying whether `us-east4` or `us-west1` answered the request), send a completion request to the external Gateway IP with `curl -i` (to inspect HTTP response headers):
 
 ```bash
-export GATEWAY_IP=$(kubectl get gateway kimi-k3-external-gateway -o jsonpath='{.status.addresses[0].value}')
+export GATEWAY_IP=$(kubectl get gateway inkling-external-gateway -o jsonpath='{.status.addresses[0].value}')
 
 # Send test request and inspect regional routing headers
 curl -i -X POST http://${GATEWAY_IP}/v1/chat/completions \
   -H "Content-Type: application/json" \
   -d '{
-    "model": "moonshotai/Kimi-K3",
+    "model": "thinkingmachines/Inkling-Small-NVFP4",
     "messages": [
-      {"role": "user", "content": "Explain the significance of speculative decoding for MoE models in 1 sentence."}
+      {"role": "user", "content": "Explain the architectural advantages of NVFP4 quantization for MoE models in 1 sentence."}
     ],
     "max_tokens": 128,
     "temperature": 0.6
@@ -274,4 +267,4 @@ When routed through GKE Multi-Cluster Inference Gateway / Cloud Load Balancing, 
 * **`X-Google-Backend`**: Displays the exact regional backend service that served the request:
   * Primary Cost-Optimized Answer: `X-Google-Backend: us-east4-spot-h100-pool` (`$21.70/hr`)
   * Failover Backup Answer: `X-Google-Backend: us-west1-spot-h100-pool` (`$53.35/hr`)
-* **`X-Served-By-Hostname`**: In SGLang, the generating pod's rank-0 hostname (`distributed-sglang-k3-0`) and cluster DNS suffix indicate the active cluster location.
+* **`X-Served-By-Hostname`**: The generating pod's hostname (`vllm-inkling-nvfp4-h100-...`) and cluster DNS suffix indicate the active cluster location.

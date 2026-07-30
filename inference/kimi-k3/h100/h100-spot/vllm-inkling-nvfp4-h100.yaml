@@ -1,0 +1,128 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: vllm-inkling-nvfp4-h100
+  namespace: default
+  labels:
+    app: vllm-inkling-nvfp4
+    llm-d.ai/guide: spot-h100-nvfp4
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: vllm-inkling-nvfp4
+  template:
+    metadata:
+      labels:
+        app: vllm-inkling-nvfp4
+      annotations:
+        gke-gcsfuse/volumes: "true"
+        gke-gcsfuse/memory-limit: "25000Mi"
+    spec:
+      serviceAccountName: default
+      hostIPC: true # Enables host IPC for high-performance NCCL TP8 shared memory on a single node
+      containers:
+      - name: vllm-server
+        image: vllm/vllm-openai:nightly
+        imagePullPolicy: IfNotPresent
+        command: ["python3", "-m", "vllm.entrypoints.openai.api_server"]
+        args:
+          - "--model=/bucket/Inkling-Small-NVFP4"
+          - "--served-model-name=thinkingmachines/Inkling-Small-NVFP4"
+          - "--trust-remote-code"
+          - "--tokenizer-mode=inkling"
+          - "--kernel-config.enable_flashinfer_autotune=False"
+          - "--enable-expert-parallel"
+          - "--tensor-parallel-size=8"
+          - "--max-model-len=131072"
+          - "--enable-auto-tool-choice"
+          - "--tool-call-parser=inkling"
+          - "--reasoning-parser=inkling"
+          - "--speculative-config={'method': 'mtp', 'num_speculative_tokens': 1}"
+          - "--host=0.0.0.0"
+          - "--port=8000"
+        env:
+          - name: VLLM_USE_V2_MODEL_RUNNER
+            value: "1"
+          - name: FLASH_ATTENTION_CUTE_DSL_CACHE_ENABLED
+            value: "1"
+          - name: HF_TOKEN
+            valueFrom:
+              secretKeyRef:
+                name: hf-secret
+                key: token
+                optional: true
+          - name: PYTHONUNBUFFERED
+            value: "1"
+          - name: SAFETENSORS_FAST_GPU
+            value: "1"
+        ports:
+          - containerPort: 8000
+            name: http
+        resources:
+          limits:
+            nvidia.com/gpu: 8
+            memory: "600Gi"
+            cpu: "80"
+          requests:
+            nvidia.com/gpu: 8
+            memory: "400Gi"
+            cpu: "60"
+        volumeMounts:
+          - name: dshm
+            mountPath: /dev/shm
+          - name: gcs-fuse-csi-eph
+            mountPath: /bucket
+            readOnly: true
+          - name: hf-cache
+            mountPath: /root/.cache/huggingface
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 60
+          periodSeconds: 15
+          timeoutSeconds: 5
+      volumes:
+        - name: dshm
+          emptyDir:
+            medium: Memory
+            sizeLimit: 250Gi
+        - name: hf-cache
+          hostPath:
+            path: /mnt/stateful_partition/kube-ephemeral-ssd/huggingface_cache
+            type: DirectoryOrCreate
+        - name: gcs-fuse-csi-eph
+          csi:
+            driver: gcsfuse.csi.storage.gke.io
+            volumeAttributes:
+              bucketName: ikwak-models-gpu-launchpad-playground
+              gcsfuseMetadataPrefetchOnMount: "true"
+              mountOptions: "implicit-dirs,file-mode=777,dir-mode=777,file-cache:enable-parallel-downloads:true,file-cache:cache-file-for-range-read:true,file-cache:max-size-mb:-1,write:enable-streaming-writes:true,read_ahead_kb=1024"
+      nodeSelector:
+        cloud.google.com/gke-accelerator: nvidia-h100-80gb
+        cloud.google.com/gke-spot: "true"
+      tolerations:
+        - key: "nvidia.com/gpu"
+          operator: "Exists"
+          effect: "NoSchedule"
+        - key: "cloud.google.com/gke-spot"
+          operator: "Equal"
+          value: "true"
+          effect: "NoSchedule"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: vllm-inkling-nvfp4-service
+  namespace: default
+  labels:
+    app: vllm-inkling-nvfp4
+spec:
+  type: ClusterIP
+  ports:
+    - port: 8000
+      targetPort: 8000
+      name: http
+  selector:
+    app: vllm-inkling-nvfp4
