@@ -38,12 +38,25 @@ spec:
           - "--enable-auto-tool-choice"
           - "--tool-call-parser=inkling"
           - "--reasoning-parser=inkling"
-          - '--speculative-config={"method": "mtp", "num_speculative_tokens": 1}'
           - "--host=0.0.0.0"
           - "--port=8000"
         env:
-          - name: VLLM_USE_V2_MODEL_RUNNER
+          - name: NCCL_TUNER_PLUGIN
+            value: "none"
+          - name: NCCL_NET_PLUGIN
+            value: "none"
+          - name: NCCL_NET
+            value: "Socket"
+          - name: NCCL_NET_GDR_LEVEL
+            value: "0"
+          - name: PYTHONUNBUFFERED
             value: "1"
+          - name: PYTHONFAULTHANDLER
+            value: "1"
+          - name: VLLM_LOGGING_LEVEL
+            value: "INFO"
+          - name: VLLM_USE_V2_MODEL_RUNNER
+            value: "0"
           - name: FLASH_ATTENTION_CUTE_DSL_CACHE_ENABLED
             value: "1"
           - name: HF_TOKEN
@@ -52,8 +65,6 @@ spec:
                 name: hf-secret
                 key: token
                 optional: true
-          - name: PYTHONUNBUFFERED
-            value: "1"
           - name: SAFETENSORS_FAST_GPU
             value: "1"
         ports:
