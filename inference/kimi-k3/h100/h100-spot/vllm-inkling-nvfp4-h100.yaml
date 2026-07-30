@@ -100,7 +100,7 @@ spec:
               gcsfuseMetadataPrefetchOnMount: "true"
               mountOptions: "implicit-dirs,file-mode=777,dir-mode=777,file-cache:enable-parallel-downloads:true,file-cache:cache-file-for-range-read:true,file-cache:max-size-mb:-1,write:enable-streaming-writes:true,read_ahead_kb=1024"
       nodeSelector:
-        cloud.google.com/gke-accelerator: nvidia-h100-80gb
+        cloud.google.com/gke-accelerator: nvidia-h100-mega-80gb
         cloud.google.com/gke-spot: "true"
       tolerations:
         - key: "nvidia.com/gpu"
