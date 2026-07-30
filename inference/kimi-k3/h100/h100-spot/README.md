@@ -20,6 +20,10 @@ When selecting a 4-node A3 Mega Spot footprint (`4 × a3-megagpu-8g` = 32 GPUs),
 #### 2. `us-east4` Spot Capacity Advisor (Cost-Optimized: `6-10%` Preemption Rate — `$21.70 / VM / hr`)
 ![Capacity Advisor - us-east4 Spot VM Availability, 6-10% Preemption Rate, $21.70/hr](images/capacity-advisor-us-east4.png)
 
+Include example of spot advisor API for next level info on capacity assurance/planning  
+- Filter on minimum duration of estimated run time eg. 1 hour
+- Show example of request and response and highlight key insights to support above console experience
+
 ### Summary of Regional Trade-offs
 
 | Region | Available Zonal Capacity | Historical Preemption Rate | Total Hourly Cost (4 × `a3-megagpu-8g`) | Cost per VM Hour | Strategic Recommendation |
