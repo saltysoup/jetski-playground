@@ -62,11 +62,11 @@ spec:
         resources:
           limits:
             nvidia.com/gpu: 8
-            memory: "600Gi"
+            memory: "1500Gi"
             cpu: "80"
           requests:
             nvidia.com/gpu: 8
-            memory: "400Gi"
+            memory: "1000Gi"
             cpu: "60"
         securityContext:
           capabilities:
