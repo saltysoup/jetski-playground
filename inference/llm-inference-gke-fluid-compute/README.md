@@ -1,8 +1,11 @@
-# ThinkingMachines Inkling-Small-NVFP4 (`thinkingmachines/Inkling-Small-NVFP4`): Deploying on Spot H100 GPUs with GKE Multi-Cluster Elastic Cross-Region High Availability
+# Deploying LLM inference on GKE using Fluid Compute
 
-This guide walks through deploying **ThinkingMachines Inkling-Small-NVFP4** (`thinkingmachines/Inkling-Small-NVFP4`)—an NVFP4 (4-bit floating point) quantized checkpoint derived from MoonshotAI Kimi-K3—across **NVIDIA H100 80GB SXM5 Spot GPUs** on Google Kubernetes Engine (GKE) A3 Mega (`a3-megagpu-8g`).
+This guide walks through how you can architect a LLM serving platform using diverse GPU consumption types to maximize cost efficiency and increasing capacity obtainability, whilst minimizing workload disruptions through fault tolerant architecture.
 
-By leveraging **NVFP4 Quantization**, the model fits on a **single 8-GPU H100 node (`--tensor-parallel-size=8`)**, leaving massive physical HBM headroom to support a **128k context window (`--max-model-len=131072`)** and speculative MTP decoding. Combined with Google Cloud Console **Capacity Advisor**, a **US Multi-Region GCS Bucket**, **GKE Custom Compute Classes for Extended Graceful Node Shutdown (`120s`)**, and the **GKE Multi-Cluster Inference Gateway (`llm-d`)**, you capture ultra-low Spot GPU pricing (`$21.70 / VM / hr` in `us-east4`) while protecting your production serving endpoint against Spot preemption.
+For our example model, we will be using Thinking Machines Lab's new [Inkling-Small](https://huggingface.co/thinkingmachines/Inkling-Small-NVFP4) model in NVFP4 quantized weights. If you'd like to run in BF16 format or with larger context windows, it's highly recommended to run the model in multi-node deployment or on accelerators with larger HBM memory per VM such as H200, B200 or GB200.
+
+> [!NOTE]
+> This architectural guide will apply to any ML models being served on accelerators and recommendations are model agnostic
 
 ---
 
