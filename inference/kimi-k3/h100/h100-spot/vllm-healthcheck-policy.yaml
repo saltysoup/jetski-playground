@@ -1,0 +1,33 @@
+apiVersion: networking.gke.io/v1
+kind: HealthCheckPolicy
+metadata:
+  name: vllm-health-check-policy-import
+  namespace: default
+spec:
+  default:
+    config:
+      type: HTTP
+      httpHealthCheck:
+        requestPath: /health
+        port: 8000
+  targetRef:
+    group: net.gke.io
+    kind: ServiceImport
+    name: vllm-inkling-nvfp4-service
+---
+apiVersion: networking.gke.io/v1
+kind: HealthCheckPolicy
+metadata:
+  name: vllm-health-check-policy-export
+  namespace: default
+spec:
+  default:
+    config:
+      type: HTTP
+      httpHealthCheck:
+        requestPath: /health
+        port: 8000
+  targetRef:
+    group: net.gke.io
+    kind: ServiceExport
+    name: vllm-inkling-nvfp4-service

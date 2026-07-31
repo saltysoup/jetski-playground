@@ -1,0 +1,25 @@
+apiVersion: networking.gke.io/v1
+kind: GCPBackendPolicy
+metadata:
+  name: vllm-backend-policy-import
+  namespace: default
+spec:
+  default:
+    timeoutSec: 600
+  targetRef:
+    group: net.gke.io
+    kind: ServiceImport
+    name: vllm-inkling-nvfp4-service
+---
+apiVersion: networking.gke.io/v1
+kind: GCPBackendPolicy
+metadata:
+  name: vllm-backend-policy-export
+  namespace: default
+spec:
+  default:
+    timeoutSec: 600
+  targetRef:
+    group: net.gke.io
+    kind: ServiceExport
+    name: vllm-inkling-nvfp4-service
