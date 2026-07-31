@@ -100,6 +100,85 @@ gcloud storage cp -r ./Inkling-Small-NVFP4 gs://${MULTI_REGION_BUCKET}/Inkling-S
 
 ---
 
+## 3.5. Accelerating Multi-Region Bucket Reads with GKE Cloud Storage FUSE Profiles (`gcsfusecsi-serving` & Zonal Rapid Cache)
+
+We use a **Multi-Region GCS Bucket** (`gs://ikwak-models-mr-gpu-launchpad-playground` in `US`) as a single global namespace for our `Inkling-Small-NVFP4` model weights. To achieve sub-millisecond TTFB and up to **2.5 TB/s zonal SSD throughput** without paying cross-region data transfer fees, we combine **Zonal Rapid Cache** with **GKE Cloud Storage FUSE Profiles (`gke-gcsfuse/profile`)** ([GKE FUSE Profiles Documentation](https://docs.cloud.google.com/kubernetes-engine/docs/how-to/persistent-volumes/gcsfuse-profiles)).
+
+### 1. Create Zonal Rapid Caches Across Compute Zones
+Using the GA Cloud Storage syntax ([Rapid Cache CLI Docs](https://docs.cloud.google.com/storage/docs/rapid/use-rapid-cache#command-line)), create SSD-backed zonal read caches on the multi-region bucket across our member cluster zones (`us-west1-a` and `us-east4-a`) with a single command:
+
+```bash
+gcloud storage buckets anywhere-caches create gs://ikwak-models-mr-gpu-launchpad-playground \
+  us-west1-a \
+  us-east4-a \
+  --ttl=604800 \
+  --admission-policy=ADMIT_ON_FIRST_MISS
+```
+* **`--ttl=604800`**: Sets a 7-day Time to Live for static LLM weights.
+* **`ADMIT_ON_FIRST_MISS`**: The first pod read in each zone automatically ingests and SSD-caches the model chunks locally.
+
+### 2. Grant Workload Identity & FUSE Profile Permissions
+Bind `roles/storage.objectViewer` to your GKE Workload Identity service account on the multi-region bucket:
+
+```bash
+gcloud storage buckets add-iam-policy-binding gs://ikwak-models-mr-gpu-launchpad-playground \
+  --member="principal://iam.googleapis.com/projects/${PROJECT_NUMBER}/locations/global/workloadIdentityPools/${PROJECT_ID}.svc.id.goog/subject/ns/default/sa/default" \
+  --role="roles/storage.objectViewer"
+```
+
+### 3. Deploy Workload with `gcsfusecsi-serving` Profile
+In place of manual FUSE cache tuning, our deployment manifest ([`vllm-inkling-nvfp4-h100.yaml`](vllm-inkling-nvfp4-h100.yaml)) defines a static PersistentVolume (`PV`) and PersistentVolumeClaim (`PVC`) using `storageClassName: gcsfusecsi-serving`:
+
+```yaml
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: gcsfuse-serving-pv
+spec:
+  accessModes:
+  - ReadWriteMany
+  capacity:
+    storage: 250Gi
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: gcsfusecsi-serving
+  csi:
+    driver: gcsfuse.csi.storage.gke.io
+    volumeHandle: ikwak-models-mr-gpu-launchpad-playground
+    volumeAttributes:
+      gcsfuseMetadataPrefetchOnMount: "true"
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: gcsfuse-serving-pvc
+spec:
+  accessModes:
+  - ReadWriteMany
+  resources:
+    requests:
+      storage: 250Gi
+  volumeName: gcsfuse-serving-pv
+  storageClassName: gcsfusecsi-serving
+```
+* **Automated Caching & Tuning**: GKE's CSI Node Server automatically scans the bucket and inspects your H100 node's RAM and NVMe Local SSDs (`ephemeral-storage`), dynamically calculating and applying optimal metadata and file caching for vLLM.
+
+### 4. Verifying Profile & Local Cache Usage in Container Logs
+To verify that `gcsfusecsi-serving` applied profile optimizations and is utilizing the cache, inspect the `gke-gcsfuse-sidecar` container logs:
+
+```bash
+kubectl logs -c gke-gcsfuse-sidecar -l app=vllm-inkling-nvfp4 --tail=20
+```
+
+#### Expected Log Verification Output:
+```json
+{"severity":"INFO","message":"GCSFuse Config","Applied optimizations for bucket-type: ":"flat","Full Config":{"metadata-cache.ttl-secs":{"final_value":-1,"optimization_reason":"profile \"aiml-serving\""}}}
+{"severity":"INFO","message":"Mounting file system \"ikwak-models-mr-gpu-launchpad-playground\"..."}
+{"severity":"INFO","message":"File system has been successfully mounted."}
+```
+* Notice `"optimization_reason":"profile \"aiml-serving\""` confirming that GKE FUSE Profile automated tuning is active.
+
+---
+
 ## 4. Provisioning Multi-Cluster Spot GPU Pools with Elastic Cross-Region High Availability
 
 We configure two autonomous GKE clusters (`us-east4-inkling` and `us-west1-inkling`) using **GKE Custom Compute Classes**, **Extended Graceful Node Shutdown (`120s`)**, and **Elastic Cross-Region High Availability** ([GKE Documentation](https://docs.cloud.google.com/kubernetes-engine/docs/how-to/configure-elastic-cross-region-high-availability)).
