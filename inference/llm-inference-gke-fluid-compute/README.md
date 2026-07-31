@@ -40,34 +40,9 @@ Alternatively, we can also use an chat interface with [Compute Advisor](https://
 
 ---
 
-## 2. Architecture & Multi-Region GCS Planning
+## 2. Solution Architecture
 
-To enable cross-region Spot elasticity without duplicating model checkpoints across multiple regional storage buckets, we use a single **US Multi-Region Google Cloud Storage (GCS) Bucket**.
-
-```
-                           +------------------------------------------------------+
-                           |          GKE Multi-Cluster Inference Gateway         |
-                           |               (Global External HTTP/S)               |
-                           +--------------------------+---------------------------+
-                                                      |
-                         +----------------------------+----------------------------+
-                         | (Primary Routing - Cost)                                | (Failover Routing - Stability)
-                         v                                                         v
-         +-------------------------------+                         +-------------------------------+
-         |     GKE Cluster: us-east4     |                         |     GKE Cluster: us-west1     |
-         |  (1 × a3-megagpu-8g Spot VM)  |                         |  (1 × a3-megagpu-8g Spot VM)  |
-         |   Price: $21.70/hr (6-10%)    |                         |   Price: $53.35/hr (0-5%)     |
-         +---------------+---------------+                         +---------------+---------------+
-                         |                                                         |
-                         +----------------------------+----------------------------+
-                                                      |
-                                                      v
-                           +------------------------------------------------------+
-                           |         US Multi-Region GCS Storage Bucket           |
-                           |    (gs://multi-region-inkling-cache/bucket/)         |
-                           |  Shared across US regions | /bucket/Inkling-Small    |
-                           +------------------------------------------------------+
-```
+![Reference Architecture - Deploy LLM inference on GKE using Fluid Compute](images/reference-architecture.png)
 
 ### Benefits of a Multi-Region Bucket for Spot Workloads
 1. **One-Time Model Upload**: Upload `thinkingmachines/Inkling-Small-NVFP4` once to `gs://${MULTI_REGION_BUCKET}/Inkling-Small-NVFP4`.
