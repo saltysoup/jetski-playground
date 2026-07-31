@@ -205,6 +205,7 @@ EOF
 gcloud container clusters create ikwak-a3m-spot \
   --region=us-west1 \
   --workload-pool=${PROJECT_ID}.svc.id.goog \
+  --addons=GcsFuseCsiDriver \
   --enable-ip-alias \
   --enable-dataplane-v2
 
@@ -222,6 +223,7 @@ gcloud container node-pools create spot-h100-pool \
 gcloud container clusters create ikwak-a3h-spot \
   --region=us-east4 \
   --workload-pool=${PROJECT_ID}.svc.id.goog \
+  --addons=GcsFuseCsiDriver \
   --enable-ip-alias \
   --enable-dataplane-v2
 
