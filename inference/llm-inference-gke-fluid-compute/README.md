@@ -5,7 +5,7 @@ This guide walks through how you can architect a LLM serving platform using dive
 For our example model, we will be using Thinking Machines Lab's new [Inkling-Small](https://huggingface.co/thinkingmachines/Inkling-Small-NVFP4) model in NVFP4 quantized weights. If you'd like to run in BF16 format or with larger context windows, it's highly recommended to run the model in multi-node deployment or on accelerators with larger HBM memory per VM such as H200, B200 or GB200.
 
 > [!NOTE]
-> This architectural guide will apply to any ML models being served on accelerators and recommendations are model agnostic
+> This architectural guide will apply to serving any LLMs using accelerators and recommendations are model agnostic
 
 ---
 
