@@ -30,7 +30,7 @@ spec:
         type: PathPrefix
         value: /v1
     backendRefs:
-    - name: vllm-inkling-nvfp4-service
-      kind: ServiceImport
-      group: net.gke.io
-      port: 8000
+    - name: gaie
+      kind: InferencePool
+      group: inference.networking.k8s.io
+      weight: 1

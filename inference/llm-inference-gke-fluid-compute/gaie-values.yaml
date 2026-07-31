@@ -1,0 +1,27 @@
+# Helm values for installing llm-d Gateway API Inference Extension (GAIE + EPP Router)
+# Target chart: oci://registry.k8s.io/gateway-api-inference-extension/charts/inferencepool (v1.2.0-rc.1)
+
+inferenceExtension:
+  replicas: 1
+  flags:
+    kv-cache-usage-percentage-metric: "vllm:kv_cache_usage_perc"
+  image:
+    name: epp
+    hub: registry.k8s.io/gateway-api-inference-extension
+    tag: v1.2.0-rc.1
+    pullPolicy: Always
+  extProcPort: 9002
+  pluginsConfigFile: "default-plugins.yaml"
+  monitoring:
+    interval: "10s"
+    prometheus:
+      enabled: false
+    gke:
+      enabled: true
+inferencePool:
+  apiVersion: inference.networking.k8s.io/v1
+  targetPortNumber: 8000
+  modelServerType: vllm
+  modelServers:
+    matchLabels:
+      app: "vllm-inkling-nvfp4"

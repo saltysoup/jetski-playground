@@ -348,8 +348,8 @@ done
 We use **GKE Multi-Cluster Gateway** (`ServiceExport` / `ServiceImport` + `gke-l7-rilb-mc`) to expose a single HTTP endpoint across both Spot clusters, providing automatic cross-region failover when Spot nodes are preempted or stock out.
 
 > [!NOTE]
-> **Multi-Cluster Gateway vs. Multi-Cluster Inference Gateway (`llm-d`) CRDs**:
-> This guide uses standard GA GKE Multi-Cluster Gateway API (`ServiceExport`, `ServiceImport`, `HTTPRoute`, `HealthCheckPolicy`, `GCPBackendPolicy`) to achieve elastic cross-region high availability and Spot failover across our fleet. The optional Public Preview **GKE Multi-Cluster Inference Gateway (`llm-d`)** CRDs (`InferencePool` and `InferenceObjective`) can be layered on top of this architecture if you require metric-aware token and KV-cache utilization routing across model server pods.
+> **Integrating GKE Multi-Cluster Gateway with llm-d Well-Lit Paths (`GAIE` + `EPP Router`)**:
+> This guide implements the **[llm-d Well-Lit Paths](https://llm-d.ai/docs/guides)** architecture on GKE using **Gateway API Inference Extension (GAIE)** (`InferencePool` + Endpoint Picker EPP Router pod) layered with GKE Multi-Cluster Gateway (`ServiceExport` / `ServiceImport`). This combines intelligent KV-cache utilization and queue-depth aware scheduling across model server pods with elastic cross-region Spot failover across our fleet.
 > Additionally, due to organization policy restrictions on public IPs in this project, our Gateway uses `gatewayClassName: gke-l7-rilb-mc` (Regional Internal Application Load Balancer).
 
 ### 1. Configure Non-Colliding Regional Proxy-Only Subnets
@@ -367,8 +367,23 @@ gcloud compute networks subnets create proxy-only-subnet-east4 \
   --region=us-east4 --network=default --range=172.23.2.0/24
 ```
 
-### 2. Apply Multi-Cluster Gateway, HealthCheckPolicy, and GCPBackendPolicy
-Apply `multi-cluster-gateway.yaml`, `vllm-healthcheck-policy.yaml`, and `vllm-backend-policy.yaml` on your configuration cluster (`ikwak-a3m-spot`):
+### 2. Deploy llm-d Gateway API Inference Extension (`GAIE` + `EPP Router`)
+Install the upstream GAIE custom resource definitions (`InferenceObjective` and `InferenceModelRewrite`) and deploy the `InferencePool` (`gaie`) with its Endpoint Picker (EPP Router) using Helm and `gaie-values.yaml`:
+
+```bash
+# 1. Install upstream GAIE CRDs
+kubectl apply -f https://raw.githubusercontent.com/kubernetes-sigs/gateway-api-inference-extension/v1.2.0-rc.1/config/crd/bases/inference.networking.x-k8s.io_inferenceobjectives.yaml
+kubectl apply -f https://raw.githubusercontent.com/kubernetes-sigs/gateway-api-inference-extension/v1.2.0-rc.1/config/crd/bases/inference.networking.x-k8s.io_inferencemodelrewrites.yaml
+
+# 2. Deploy InferencePool and EPP Router via Helm
+helm upgrade --install gaie oci://registry.k8s.io/gateway-api-inference-extension/charts/inferencepool \
+  --version v1.2.0-rc.1 \
+  --namespace default \
+  -f gaie-values.yaml
+```
+
+### 3. Apply Multi-Cluster Gateway, HTTPRoute (Targeting InferencePool `gaie`), and Policies
+Apply `multi-cluster-gateway.yaml`, `vllm-healthcheck-policy.yaml`, and `vllm-backend-policy.yaml` on your configuration cluster (`ikwak-a3m-spot`). Notice how `HTTPRoute` references `kind: InferencePool, name: gaie` so requests are intelligently scheduled by the EPP Router:
 
 ```yaml
 apiVersion: net.gke.io/v1
@@ -403,10 +418,10 @@ spec:
         type: PathPrefix
         value: /v1
     backendRefs:
-    - name: vllm-inkling-nvfp4-service
-      kind: ServiceImport
-      group: net.gke.io
-      port: 8000
+    - name: gaie
+      kind: InferencePool
+      group: inference.networking.k8s.io
+      weight: 1
 ```
 
 Configure `/health` on port `8000` (`HealthCheckPolicy`) and a 600-second backend timeout (`GCPBackendPolicy`) targeting **both `ServiceImport` and `ServiceExport`** (`net.gke.io/v1`):
