@@ -1,0 +1,3 @@
+kubeletConfig:
+  shutdownGracePeriodSeconds: 120
+  shutdownGracePeriodCriticalPodsSeconds: 30
