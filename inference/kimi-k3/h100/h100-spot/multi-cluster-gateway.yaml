@@ -10,7 +10,7 @@ metadata:
   name: inkling-internal-gateway
   namespace: default
 spec:
-  gatewayClassName: gke-l7-ilb-mc
+  gatewayClassName: gke-l7-rilb-mc
   listeners:
   - name: http
     protocol: HTTP
@@ -31,4 +31,6 @@ spec:
         value: /v1
     backendRefs:
     - name: vllm-inkling-nvfp4-service
+      kind: ServiceImport
+      group: net.gke.io
       port: 8000
