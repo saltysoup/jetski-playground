@@ -184,23 +184,103 @@ gcloud container node-pools create spot-h100-pool-a \
 
 ---
 
-## 5. Deploying vLLM Inkling-Small-NVFP4 Serving Fleet (Single-Node TP8 / 128k Context)
+## 5. Configuring Custom Compute Class (DWS Flex Start, Spot, On-Demand Scaling Priorities)
 
-For each cluster (`ikwak-a3m-spot` and `ikwak-a3h-spot`), apply the declarative single-node vLLM deployment manifest from [`vllm-inkling-nvfp4-h100.yaml`](vllm-inkling-nvfp4-h100.yaml):
+We use **GKE Custom Compute Classes (`ComputeClass`)** ([GKE Documentation](https://docs.cloud.google.com/kubernetes-engine/docs/how-to/dws-flex-start-inference#custom-compute-classes)) to define an intelligent, multi-tier fallback priority for GPU capacity across our regions:
+
+1. **Priority 1**: `a3-highgpu-8g` Spot VM (`--spot`)
+2. **Priority 2**: `a3-highgpu-8g` DWS Flex Start (`flexStart: enabled: true`) — discounted up to 53% off on-demand, up to 7-day duration
+3. **Priority 3**: `a3-megagpu-8g` DWS Flex Start (`flexStart: enabled: true`)
+4. **Priority 4**: `a3-highgpu-8g` On-Demand VM (standard fallback)
+
+> [!TIP]
+> **Why `activeMigration: optimizeRulePriority: true` is Critical**:  
+> When `optimizeRulePriority: true` is enabled, GKE constantly checks for available capacity in higher priorities (e.g., Spot or DWS Flex). As soon as capacity frees up, GKE automatically evicts pods from expensive fallback nodes (like On-Demand) and migrates them back to Spot/Flex, terminating the costlier nodes.
+
+### 1. Enable Node Auto-Provisioning (NAP) with H100 & H100 Mega Limits
+To allow GKE to dynamically auto-provision fallback node pools for either `a3-highgpu-8g` (`nvidia-h100-80gb`) or `a3-megagpu-8g` (`nvidia-h100-mega-80gb`), configure NAP resource limits on both clusters:
+
+```bash
+for CLUSTER in ikwak-a3m-spot:us-west1 ikwak-a3h-spot:us-east4; do
+  NAME=${CLUSTER%%:*}
+  LOC=${CLUSTER##*:}
+  gcloud container clusters update ${NAME} --location=${LOC} \
+    --enable-autoprovisioning --min-cpu=1 --max-cpu=10000 --min-memory=1 --max-memory=100000 \
+    --min-accelerator=type=nvidia-h100-80gb,count=0 --max-accelerator=type=nvidia-h100-80gb,count=16 \
+    --min-accelerator=type=nvidia-h100-mega-80gb,count=0 --max-accelerator=type=nvidia-h100-mega-80gb,count=16 \
+    --autoprovisioning-scopes="https://www.googleapis.com/auth/cloud-platform" --quiet
+done
+```
+
+### 2. Apply Declarative `ComputeClass` (`inkling-compute-class.yaml`)
+Apply [`inkling-compute-class.yaml`](inkling-compute-class.yaml) to both clusters:
+
+```yaml
+apiVersion: cloud.google.com/v1
+kind: ComputeClass
+metadata:
+  name: inkling-gpu-class
+  namespace: default
+spec:
+  nodePoolAutoCreation:
+    enabled: true
+  activeMigration:
+    optimizeRulePriority: true
+  autoscalingPolicy:
+    consolidationDelayMinutes: 5
+  whenUnsatisfiable: DoNotScaleUp
+  priorities:
+  # Priority 1: a3-highgpu-8g Spot
+  - machineType: a3-highgpu-8g
+    spot: true
+  # Priority 2: a3-highgpu-8g DWS Flex
+  - machineType: a3-highgpu-8g
+    capacityCheckWaitTimeSeconds: 600
+    flexStart:
+      enabled: true
+  # Priority 3: a3-megagpu-8g DWS Flex
+  - machineType: a3-megagpu-8g
+    capacityCheckWaitTimeSeconds: 600
+    flexStart:
+      enabled: true
+  # Priority 4: a3-highgpu-8g On-Demand
+  - machineType: a3-highgpu-8g
+```
+
+---
+
+## 6. Deploying vLLM Inkling-Small-NVFP4 Serving Fleet (Single-Node TP8 / 128k Context)
+
+For each cluster (`ikwak-a3m-spot` and `ikwak-a3h-spot`), apply the declarative single-node vLLM deployment manifest from [`vllm-inkling-nvfp4-h100.yaml`](vllm-inkling-nvfp4-h100.yaml).
+In place of hardcoded node pools, the workload references our Custom Compute Class (`nodeSelector: cloud.google.com/compute-class: inkling-gpu-class`) and includes tolerations for `cloud.google.com/gke-queued` (DWS Flex) and `cloud.google.com/gke-spot`:
+
+```yaml
+      nodeSelector:
+        cloud.google.com/compute-class: inkling-gpu-class
+      tolerations:
+        - key: "nvidia.com/gpu"
+          operator: "Exists"
+          effect: "NoSchedule"
+        - key: "cloud.google.com/gke-spot"
+          operator: "Equal"
+          value: "true"
+          effect: "NoSchedule"
+        - key: "cloud.google.com/gke-queued"
+          operator: "Equal"
+          value: "true"
+          effect: "NoSchedule"
+```
 
 ```bash
 for CONTEXT in gke_${PROJECT_ID}_us-west1_ikwak-a3m-spot gke_${PROJECT_ID}_us-east4_ikwak-a3h-spot; do
   echo "=== Deploying to cluster: ${CONTEXT} ==="
-  
-  # 1. Apply vLLM Inkling-Small-NVFP4 single-node serving manifest
-  # Configured with TP8, 128k max-model-len, and gke-gcsfuse bucket mounting
   kubectl --context=${CONTEXT} apply -f inference/kimi-k3/h100/h100-spot/vllm-inkling-nvfp4-h100.yaml
 done
 ```
 
 ---
 
-## 6. Configuring Multi-Cluster Gateway & Verifying Served Region
+## 7. Configuring Multi-Cluster Gateway & Verifying Served Region
 
 We use **GKE Multi-Cluster Gateway** (`ServiceExport` / `ServiceImport` + `gke-l7-rilb-mc`) to expose a single HTTP endpoint across both Spot clusters, providing automatic cross-region failover when Spot nodes are preempted or stock out.
 
