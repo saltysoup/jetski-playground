@@ -354,9 +354,7 @@ We use **GKE Multi-Cluster Gateway** (`ServiceExport` / `ServiceImport` + `gke-l
 
 ### 1. Configure Non-Colliding Regional Proxy-Only Subnets
 
-> [!CAUTION]
-> **CRITICAL ARCHITECTURAL LESSON: A3 GPU Secondary NIC Collision with `192.168.0.0/16`**:  
-> On Google Cloud **A3 MegaGPU (`a3-megagpu-8g` / `a3-highgpu-8g`)** VMs, Google automatically attaches 8 additional high-performance storage/GPU ROce secondary NICs (`eth1` through `eth8`) subnetted from `192.168.0.0/16` (`192.168.0.0/20`, ... `192.168.96.0/20`). You **must** create your Gateway regional proxy-only subnets in an RFC1918 CIDR completely outside `192.168.0.0/16` (such as `172.23.1.0/24` and `172.23.2.0/24`). If a proxy subnet like `192.168.105.0/24` is used, reply packets from the vLLM pod on the GKE node back to the Envoy proxy collide with GPU NIC `eth7` (`192.168.96.0/20`), causing the Gateway connection to hang and time out after 98 seconds (`exit code 28`).
+To deploy a GKE Regional Internal Application Load Balancer (`gke-l7-rilb-mc`), we must create a proxy-only subnet in each region that hosts the managed Envoy proxy instances. We allocate these subnets in RFC1918 ranges outside `192.168.0.0/16` (`172.23.1.0/24` and `172.23.2.0/24`) to ensure clean routing across all regional cluster VPCs.
 
 ```bash
 # Create non-colliding regional proxy-only subnets in us-west1 and us-east4
