@@ -364,7 +364,7 @@ In place of hardcoded node pools, the workload references our Custom Compute Cla
 ```bash
 for CONTEXT in gke_${PROJECT_ID}_us-west1_ikwak-a3m-spot gke_${PROJECT_ID}_us-east4_ikwak-a3h-spot; do
   echo "=== Deploying to cluster: ${CONTEXT} ==="
-  kubectl --context=${CONTEXT} apply -f inference/kimi-k3/h100/h100-spot/vllm-inkling-nvfp4-h100.yaml
+  kubectl --context=${CONTEXT} apply -f inference/llm-inference-gke-fluid-compute/vllm-inkling-nvfp4-h100.yaml
 done
 ```
 
