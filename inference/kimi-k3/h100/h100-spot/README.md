@@ -34,6 +34,10 @@ Include example of spot advisor API for next level info on capacity assurance/pl
 > [!TIP]
 > **The Multi-Region Elastic Strategy**: Instead of choosing between price and stability, deploy a **Multi-Cluster Inference Gateway** that spans both `us-east4` (primary cost-optimized fleet at `$21.70/VM/hr`) and `us-west1` (elastic failover fleet at `$53.352/VM/hr`). If Spot capacity in `us-east4` is reclaimed, incoming requests seamlessly fail over to `us-west1` with zero downtime.
 
+Alternatively, we can also use an chat interface with [Compute Advisor](https://console.cloud.google.com/compute/advisor/) to find real-time obtainability of Spot and DWS-Flex accelerators across regions, verify project quotas are sufficient and get example commands to deploy.
+
+![Compute Advisor](images/compute-advisor.png)
+
 ---
 
 ## 2. Architecture & Multi-Region GCS Planning
