@@ -20,10 +20,6 @@ When selecting an A3 Mega Spot footprint (`1 × a3-megagpu-8g` per cluster = 8 G
 #### 2. `us-east4` Spot Capacity Advisor (Cost-Optimized: `6-10%` Preemption Rate — `$21.70 / VM / hr`)
 ![Capacity Advisor - us-east4 Spot VM Availability, 6-10% Preemption Rate, $21.70/hr](images/capacity-advisor-us-east4.png)
 
-Include example of spot advisor API for next level info on capacity assurance/planning  
-- Filter on minimum duration of estimated run time eg. 1 hour
-- Show example of request and response and highlight key insights to support above console experience
-
 ### Summary of Regional Trade-offs
 
 | Region | Available Zonal Capacity | Historical Preemption Rate | Hourly Cost per A3 Mega VM (`8 × H100`) | Strategic Recommendation |
@@ -44,10 +40,10 @@ Alternatively, we can also use an chat interface with [Compute Advisor](https://
 
 ![Reference Architecture - Deploy LLM inference on GKE using Fluid Compute](images/reference-architecture.png)
 
-### Benefits of a Multi-Region Bucket for Spot Workloads
-1. **One-Time Model Upload**: Upload `thinkingmachines/Inkling-Small-NVFP4` once to `gs://${MULTI_REGION_BUCKET}/Inkling-Small-NVFP4`.
-2. **Zero Regional Replication Cost**: Both `us-east4` and `us-west1` GKE clusters mount the bucket root to `/bucket` via `gke-gcsfuse`.
-3. **Rapid Cache Integration**: When combined with GKE Rapid Cache or local SSD/NVMe caching, replacement Spot pods in any US region initialize and stream checkpoints in seconds.
+### Key Architectural Components
+- **Storage**: By leveraging a multi-region bucket combined with Zonal Rapid Cache, we can achieve data consistency for storing new models across regions, whilst ensuring that models are downloaded into our compute nodes from respective local caches to increase scheduling and workload goodput.
+- **GKE Platform**: By architecting our serving fleet with multi regional clusters, custom compute class and extended shutdown period for Spot VMs, we are able to increase elasticity, capacity obtainability and workload resiliency whilst achieving cost efficiency. By integrating inference gateway, we also optimize performance with KV aware routing and fault tolerance with automatic failovers in case of compute node preemptions.
+- **Fluid Compute**: By leveraging Capacity Advisor and Compute Advisor, we can plan and monitor our deployments through real-time obtainability insights and make better understand architectural tradeoffs between cost/perf efficiency vs historical preemption rates through the console UI or build programmatic workflows using [Capacity Advisor API](https://docs.cloud.google.com/compute/docs/reference/rest/beta/advice/capacityHistory).
 
 ---
 
