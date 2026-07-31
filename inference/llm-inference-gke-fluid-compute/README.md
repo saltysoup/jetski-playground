@@ -353,10 +353,10 @@ We use **GKE Multi-Cluster Gateway** (`ServiceExport` / `ServiceImport` + `gke-l
 > Additionally, due to organization policy restrictions on public IPs in this project, our Gateway uses `gatewayClassName: gke-l7-rilb-mc` (Regional Internal Application Load Balancer).
 
 ### 1. Configure Non-Colliding Regional Proxy-Only Subnets
+
 > [!CAUTION]
 > **CRITICAL ARCHITECTURAL LESSON: A3 GPU Secondary NIC Collision with `192.168.0.0/16`**:  
-> On Google Cloud **A3 MegaGPU (`a3-megagpu-8g` / `a3-highgpu-8g`)** VMs, Google automatically attaches 8 additional high-performance storage/GPU ROce secondary NICs (`eth1` through `eth8`) subnetted from `192.168.0.0/16` (`192.168.0.0/20`, ... `192.168.96.0/20`).
-> You **must** create your Gateway regional proxy-only subnets in an RFC1918 CIDR completely outside `192.168.0.0/16` (such as **`172.23.1.0/24`** and **`172.23.2.0/24`**). If a proxy subnet like `192.168.105.0/24` is used, reply packets from the vLLM pod on the GKE node back to the Envoy proxy collide with GPU NIC `eth7` (`192.168.96.0/20`), causing the Gateway connection to hang and time out after 98 seconds (`exit code 28`).
+> On Google Cloud **A3 MegaGPU (`a3-megagpu-8g` / `a3-highgpu-8g`)** VMs, Google automatically attaches 8 additional high-performance storage/GPU ROce secondary NICs (`eth1` through `eth8`) subnetted from `192.168.0.0/16` (`192.168.0.0/20`, ... `192.168.96.0/20`). You **must** create your Gateway regional proxy-only subnets in an RFC1918 CIDR completely outside `192.168.0.0/16` (such as `172.23.1.0/24` and `172.23.2.0/24`). If a proxy subnet like `192.168.105.0/24` is used, reply packets from the vLLM pod on the GKE node back to the Envoy proxy collide with GPU NIC `eth7` (`192.168.96.0/20`), causing the Gateway connection to hang and time out after 98 seconds (`exit code 28`).
 
 ```bash
 # Create non-colliding regional proxy-only subnets in us-west1 and us-east4
@@ -369,23 +369,7 @@ gcloud compute networks subnets create proxy-only-subnet-east4 \
   --region=us-east4 --network=default --range=172.23.2.0/24
 ```
 
-### 2. Automated Firewall Cleaner (`gceenforcer`) Workaround
-> [!IMPORTANT]
-> **Surviving Automated Firewall Deletion Scripts**:  
-> If your project runs an automated policy enforcer (`gceenforcer`) that deletes newly created manual firewall rules every 2–3 minutes, modify GKE's permanent baseline firewall rules (`gke-<cluster>-mcsd`, `all`, `vms`). Because these rule names are whitelisted by `gceenforcer`, updating their `--source-ranges` allows Gateway health checkers and Envoy proxies without being deleted:
-
-```bash
-gcloud compute firewall-rules update gke-ikwak-a3m-spot-1b226b51-mcsd \
-  --source-ranges=35.191.0.0/16,130.211.0.0/22,172.20.0.0/16,10.53.0.0/17,10.4.0.0/14,172.23.1.0/24,172.23.2.0/24 --quiet
-
-gcloud compute firewall-rules update gke-ikwak-a3m-spot-1b226b51-all \
-  --source-ranges=10.4.0.0/14,172.23.1.0/24,172.23.2.0/24 --quiet
-
-gcloud compute firewall-rules update gke-ikwak-a3m-spot-1b226b51-vms \
-  --source-ranges=10.0.0.0/24,172.23.1.0/24,172.23.2.0/24 --quiet
-```
-
-### 3. Apply Multi-Cluster Gateway, HealthCheckPolicy, and GCPBackendPolicy
+### 2. Apply Multi-Cluster Gateway, HealthCheckPolicy, and GCPBackendPolicy
 Apply `multi-cluster-gateway.yaml`, `vllm-healthcheck-policy.yaml`, and `vllm-backend-policy.yaml` on your configuration cluster (`ikwak-a3m-spot`):
 
 ```yaml
