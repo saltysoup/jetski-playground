@@ -12,18 +12,25 @@ spec:
     consolidationDelayMinutes: 5
   whenUnsatisfiable: DoNotScaleUp
   priorities:
-  # Priority 1: a3-highgpu-8g Spot
+  # Priority 1: a3-highgpu-8g Specific Reservation (myh100cud)
+  # Note: capacityCheckWaitTimeSeconds is only supported on Flex Start / multi-host TPUs; reservations are checked instantaneously by GKE.
+  - machineType: a3-highgpu-8g
+    reservations:
+      affinity: Specific
+      specific:
+      - name: myh100cud
+  # Priority 2: a3-highgpu-8g Spot
   - machineType: a3-highgpu-8g
     spot: true
-  # Priority 2: a3-highgpu-8g DWS Flex
+  # Priority 3: a3-highgpu-8g DWS Flex Start (queue wait time: 300s)
   - machineType: a3-highgpu-8g
-    capacityCheckWaitTimeSeconds: 600
+    capacityCheckWaitTimeSeconds: 300
     flexStart:
       enabled: true
-  # Priority 3: a3-megagpu-8g DWS Flex
+  # Priority 4: a3-megagpu-8g DWS Flex Start (queue wait time: 300s)
   - machineType: a3-megagpu-8g
-    capacityCheckWaitTimeSeconds: 600
+    capacityCheckWaitTimeSeconds: 300
     flexStart:
       enabled: true
-  # Priority 4: a3-highgpu-8g On-Demand
+  # Priority 5: a3-highgpu-8g On-Demand
   - machineType: a3-highgpu-8g

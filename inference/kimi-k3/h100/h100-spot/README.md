@@ -188,14 +188,15 @@ gcloud container node-pools create spot-h100-pool-a \
 
 We use **GKE Custom Compute Classes (`ComputeClass`)** ([GKE Documentation](https://docs.cloud.google.com/kubernetes-engine/docs/how-to/dws-flex-start-inference#custom-compute-classes)) to define an intelligent, multi-tier fallback priority for GPU capacity across our regions:
 
-1. **Priority 1**: `a3-highgpu-8g` Spot VM (`--spot`)
-2. **Priority 2**: `a3-highgpu-8g` DWS Flex Start (`flexStart: enabled: true`) — discounted up to 53% off on-demand, up to 7-day duration
-3. **Priority 3**: `a3-megagpu-8g` DWS Flex Start (`flexStart: enabled: true`)
-4. **Priority 4**: `a3-highgpu-8g` On-Demand VM (standard fallback)
+1. **Priority 1**: `a3-highgpu-8g` Specific Reservation (`myh100cud`) — instant capacity check against existing committed capacity
+2. **Priority 2**: `a3-highgpu-8g` Spot VM (`--spot`) — instant capacity check against Spot pools
+3. **Priority 3**: `a3-highgpu-8g` DWS Flex Start (`flexStart: enabled: true`, 300s queue wait time) — discounted up to 53% off on-demand, up to 7-day duration
+4. **Priority 4**: `a3-megagpu-8g` DWS Flex Start (`flexStart: enabled: true`, 300s queue wait time)
+5. **Priority 5**: `a3-highgpu-8g` On-Demand VM (standard fallback)
 
 > [!TIP]
-> **Why `activeMigration: optimizeRulePriority: true` is Critical**:  
-> When `optimizeRulePriority: true` is enabled, GKE constantly checks for available capacity in higher priorities (e.g., Spot or DWS Flex). As soon as capacity frees up, GKE automatically evicts pods from expensive fallback nodes (like On-Demand) and migrates them back to Spot/Flex, terminating the costlier nodes.
+> **Why `capacityCheckWaitTimeSeconds` is Excluded on Reservations & Spot**:  
+> In GKE Custom Compute Classes, `capacityCheckWaitTimeSeconds` is only valid on queued consumption models (**DWS Flex Start** and **Multi-Host TPUs**). For existing Reservations, Spot VMs, and On-Demand VMs, GKE checks available compute capacity instantaneously—if reservation `myh100cud` does not exist or is fully utilized, GKE immediately falls back to Priority 2 (`Spot`) without waiting in a queue.
 
 ### 1. Enable Node Auto-Provisioning (NAP) with H100 & H100 Mega Limits
 To allow GKE to dynamically auto-provision fallback node pools for either `a3-highgpu-8g` (`nvidia-h100-80gb`) or `a3-megagpu-8g` (`nvidia-h100-mega-80gb`), configure NAP resource limits on both clusters:
@@ -230,20 +231,26 @@ spec:
     consolidationDelayMinutes: 5
   whenUnsatisfiable: DoNotScaleUp
   priorities:
-  # Priority 1: a3-highgpu-8g Spot
+  # Priority 1: a3-highgpu-8g Specific Reservation (myh100cud)
+  - machineType: a3-highgpu-8g
+    reservations:
+      affinity: Specific
+      specific:
+      - name: myh100cud
+  # Priority 2: a3-highgpu-8g Spot
   - machineType: a3-highgpu-8g
     spot: true
-  # Priority 2: a3-highgpu-8g DWS Flex
+  # Priority 3: a3-highgpu-8g DWS Flex Start (queue wait time: 300s)
   - machineType: a3-highgpu-8g
-    capacityCheckWaitTimeSeconds: 600
+    capacityCheckWaitTimeSeconds: 300
     flexStart:
       enabled: true
-  # Priority 3: a3-megagpu-8g DWS Flex
+  # Priority 4: a3-megagpu-8g DWS Flex Start (queue wait time: 300s)
   - machineType: a3-megagpu-8g
-    capacityCheckWaitTimeSeconds: 600
+    capacityCheckWaitTimeSeconds: 300
     flexStart:
       enabled: true
-  # Priority 4: a3-highgpu-8g On-Demand
+  # Priority 5: a3-highgpu-8g On-Demand
   - machineType: a3-highgpu-8g
 ```
 
