@@ -1,0 +1,29 @@
+apiVersion: cloud.google.com/v1
+kind: ComputeClass
+metadata:
+  name: inkling-gpu-class
+  namespace: default
+spec:
+  nodePoolAutoCreation:
+    enabled: true
+  activeMigration:
+    optimizeRulePriority: true
+  autoscalingPolicy:
+    consolidationDelayMinutes: 5
+  whenUnsatisfiable: DoNotScaleUp
+  priorities:
+  # Priority 1: a3-highgpu-8g Spot
+  - machineType: a3-highgpu-8g
+    spot: true
+  # Priority 2: a3-highgpu-8g DWS Flex
+  - machineType: a3-highgpu-8g
+    capacityCheckWaitTimeSeconds: 600
+    flexStart:
+      enabled: true
+  # Priority 3: a3-megagpu-8g DWS Flex
+  - machineType: a3-megagpu-8g
+    capacityCheckWaitTimeSeconds: 600
+    flexStart:
+      enabled: true
+  # Priority 4: a3-highgpu-8g On-Demand
+  - machineType: a3-highgpu-8g

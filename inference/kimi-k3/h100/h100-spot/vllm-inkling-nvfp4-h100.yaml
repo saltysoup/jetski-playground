@@ -119,15 +119,17 @@ spec:
             volumeAttributes:
               bucketName: ikwak-models-gpu-launchpad-playground
               gcsfuseMetadataPrefetchOnMount: "true"
-              mountOptions: "implicit-dirs,file-mode=777,dir-mode=777,file-cache:enable-parallel-downloads:true,file-cache:cache-file-for-range-read:true,file-cache:max-size-mb:-1,write:enable-streaming-writes:true,read_ahead_kb=1024"
       nodeSelector:
-        cloud.google.com/gke-accelerator: nvidia-h100-mega-80gb
-        cloud.google.com/gke-spot: "true"
+        cloud.google.com/compute-class: inkling-gpu-class
       tolerations:
         - key: "nvidia.com/gpu"
           operator: "Exists"
           effect: "NoSchedule"
         - key: "cloud.google.com/gke-spot"
+          operator: "Equal"
+          value: "true"
+          effect: "NoSchedule"
+        - key: "cloud.google.com/gke-queued"
           operator: "Equal"
           value: "true"
           effect: "NoSchedule"
