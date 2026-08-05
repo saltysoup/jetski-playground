@@ -14,10 +14,10 @@ Before provisioning our GPU clusters, we can use Google Cloud Console's **[Capac
 When selecting an A3 Mega Spot footprint (`1 × a3-megagpu-8g` per cluster = 8 GPUs), Capacity Advisor reveals significant regional pricing and stability trade-offs:
 
 #### **`us-west1` Spot Capacity Advisor (High Stability: `0-5%` Preemption Rate — `$53.35 / VM / hr`)**
-![](upload://7UUYXbhhWx5Pqylri5rVz6WKxfJ.jpeg)
+![](https://github.com/saltysoup/jetski-playground/blob/main/inference/llm-inference-gke-fluid-compute/images/capacity-advisor-us-west1.png)
 
 #### **`us-east4` Spot Capacity Advisor (Cost-Optimized: `6-10%` Preemption Rate — `$21.70 / VM / hr`)**
-![](upload://ky0HYkRFSLCkeH9eukjXUzD35Hk.jpeg)
+![](https://github.com/saltysoup/jetski-playground/blob/main/inference/llm-inference-gke-fluid-compute/images/capacity-advisor-us-east4.png)
 
 ### **Summary of Regional Trade-offs**
 
@@ -29,14 +29,14 @@ When selecting an A3 Mega Spot footprint (`1 × a3-megagpu-8g` per cluster = 8 G
 Using this example, we can see that the us-east4 pricing represents a significant cost savings albeit at a higher preemption rate vs us-west1. However, we can get the best of both worlds by architecting our GKE inference platform to use multi-region elastic strategy to automatically failover between regions to achieve optimal cost efficiency whilst minimizing workload disruptions from Spot pre-emptions.
 
 Alternatively, we can also use an chat interface with [Compute Advisor](https://console.cloud.google.com/compute/advisor/) to find real-time obtainability of Spot and DWS-Flex accelerators across regions, verify project quotas are sufficient and get example commands to deploy the accelerators.
-![](upload://pZCWlf0LKz3QarE0nXVJhg6px9d.webp)
+![](https://github.com/saltysoup/jetski-playground/blob/main/inference/llm-inference-gke-fluid-compute/images/compute-advisor.png)
 
 **Note**
 If you require multi node serving for bigger LLMs, it's recommended to use VMs with higher east-west VM bandwidth such as A3 mega vs A3 high (both come with 8 x H100 SXM, but have 1600 Gbps and 800 Gbps respectively) for better throughput and latency
 
 
 ## **2. Solution Architecture**
-![](upload://vdqgslSfE8W8c996BqzwaQDyWli.png)
+![](https://github.com/saltysoup/jetski-playground/blob/main/inference/llm-inference-gke-fluid-compute/images/reference-architecture.png)
 
 ### **Key Architectural Components**
 
