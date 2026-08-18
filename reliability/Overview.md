@@ -34,9 +34,25 @@ Recovery timings here reflect the software response, not physical hardware repla
 | System node pool | `e2-standard-16` |
 | Control plane | GKE 1.35.x |
 | Installed operators | JobSet, Kueue, LeaderWorkerSet (`jobset-system`, `kueue-system`, `lws-system`) |
+| **KubeRay operator** | **Required — not installed by default. See below.** |
+| Reservation | `nvidia-b200-6bsoymep8ylww` (zone `europe-west4-b`), `SPECIFIC_RESERVATION`, count 2 |
 | Workload | NeMo-RL DAPO/GRPO, Gemma 3 27B IT (see `gemma3-27b-it/`) |
 
 Tooling: `gcloud`, `kubectl`, `helm`, `gh`, and cluster admin on the target cluster.
+
+### KubeRay operator
+
+`values.yaml` renders a `RayCluster` custom resource, so the KubeRay operator and its CRDs
+must exist first. A stock GKE cluster does not have them:
+
+```bash
+helm repo add kuberay https://ray-project.github.io/kuberay-helm/
+helm repo update kuberay
+helm install kuberay-operator kuberay/kuberay-operator \
+  --namespace kuberay-system --create-namespace --version 1.4.2
+
+kubectl get crd | grep ray.io    # expect rayclusters, rayjobs, rayservices
+```
 
 ### Cost
 
@@ -71,15 +87,70 @@ Confirm GPU nodes are `Ready` and carry `cloud.google.com/gke-accelerator=nvidia
 
 ## 4. Deploy the training job
 
-Follow `gemma3-27b-it/` and the root `README.md` in this directory. Summary:
+### 4a. Free the GPUs
+
+The job needs all 16 GPUs. Anything already holding them must be scaled down first — back up
+its spec so you can restore it:
+
+```bash
+kubectl get lws <name> -n default -o yaml > backup-lws.yaml
+kubectl scale lws <name> -n default --replicas=0
+```
+
+Note for LeaderWorkerSet: scaling to 0 may leave the leader pod in `Succeeded` and the per-group
+worker StatefulSet alive, because that StatefulSet is owned by the leader **pod**, not the LWS.
+GPUs stay pinned until the leader pod is gone:
+
+```bash
+kubectl delete pod <lws-name>-0 -n default
+```
+
+Confirm 0 GPUs are allocated before continuing.
+
+### 4b. Deploy the Ray cluster
+
+**The release name must be `ray-cluster`.** `values.yaml` hardcodes the ConfigMap name
+`ray-cluster-kuberay-fluentbit-config`, while the template generates
+`{{ include "ray-cluster.fullname" . }}-fluentbit-config`. With `nameOverride: kuberay`, only a
+release named `ray-cluster` produces a matching name. Installing as `kuberay` (as the root
+`README.md` shows) yields `kuberay-fluentbit-config`, and every pod hangs in
+`ContainerCreating` with:
+
+```
+MountVolume.SetUp failed for volume "fluentbit-config-volume" :
+  configmap "ray-cluster-kuberay-fluentbit-config" not found
+```
 
 ```bash
 cd gemma3-27b-it
-./submit_gemma3-27b-it.sh
+helm install ray-cluster . -n default -f values.yaml
 ```
 
-The job runs ~2m04s per step; a 100-step run with AIME evals takes ~3h27m — long enough to
-inject failures mid-run and observe recovery.
+`values.yaml` also references `imagePullSecrets: gar-secret`. That secret does not need to exist
+for the default `nvcr.io/nvidia/nemo-rl:v0.6.0` image — kubelet warns and pulls anonymously. It
+is only needed if you switch to the custom Artifact Registry image.
+
+Verify:
+
+```bash
+kubectl get pods -n default -l ray.io/cluster
+kubectl exec -it $(kubectl get pods -l ray.io/node-type=head -o jsonpath='{.items[0].metadata.name}') \
+  -c ray-head -- ray status
+```
+
+Expect 16 GPUs and 2 worker nodes. First start is slow — the NeMo-RL image is tens of GB.
+
+### 4c. Submit
+
+```bash
+export HF_TOKEN=$(kubectl get secret hf-secret -n default -o jsonpath='{.data.HF_TOKEN}' | base64 -d)
+bash gemma3-27b-it/submit_gemma3-27b-it.sh
+```
+
+Note the recipe heredoc inside `submit_gemma3-27b-it.sh` sets `max_num_steps: 10` and
+`tensor_parallel_size: 2`, which differ from the 100-step / TP=4 figures in the root
+`README.md`. The in-script values win. At ~2m04s per step, 10 steps is roughly 20–25 minutes
+plus model download and the AIME evals — a convenient window for injecting failures mid-run.
 
 ---
 
@@ -220,6 +291,64 @@ ByteRobust reported **97% ETTR** on a 3-month 9,600-GPU job.
 References:
 - https://docs.cloud.google.com/ai-hypercomputer/docs/manage/manage-gke-clusters#report-faulty-hosts-how-to
 - https://docs.cloud.google.com/compute/docs/instances/host-maintenance-overview
+- https://docs.cloud.google.com/ai-hypercomputer/docs/manage/host-events-reservations#emergency-notifications
+
+### Emergent maintenance
+
+Emergent maintenance is set on the **reservation**, not the cluster or the node pool. There is
+no GKE-side flag — `gcloud container clusters/node-pools update` has nothing for it in GA, beta
+or alpha, and the GKE v1beta1 API only exposes `HostMaintenancePolicy.maintenanceInterval` and
+`opportunisticMaintenanceStrategy`.
+
+```bash
+gcloud compute reservations update RESERVATION_NAME \
+  --enable-emergent-maintenance \
+  --zone=ZONE
+```
+
+What it buys you: when Compute detects a host error or a host is reported faulty, the advance
+notice for the resulting **unplanned** maintenance goes from a few hours to **at least 7 days**.
+It does not avoid the maintenance — it buys enough time to drain and checkpoint deliberately
+instead of losing work to an abrupt termination. This is the single highest-leverage proactive
+setting for `t_ch` in the goodput formula.
+
+Verify (the CLI may be blocked by Context Aware Access; the REST API via ADC is not):
+
+```bash
+gcloud compute reservations describe RESERVATION_NAME --zone=ZONE \
+  --format='value(enableEmergentMaintenance)'
+
+# or, if CAA blocks gcloud:
+TOKEN=$(gcloud auth application-default print-access-token)
+curl -s -H "Authorization: Bearer $TOKEN" \
+  "https://compute.googleapis.com/compute/v1/projects/PROJECT/zones/ZONE/reservations/RESERVATION_NAME"
+```
+
+Fields worth reading on the reservation:
+
+| Field | Meaning |
+| --- | --- |
+| `enableEmergentMaintenance` | Whether the extended notice window is on |
+| `schedulingType` | `GROUPED` = whole reservation maintained together; `INDEPENDENT` = per-VM |
+| `resourceStatus.reservationMaintenance.upcomingGroupMaintenance` | `type`, `maintenanceStatus`, `canReschedule`, window times |
+| `resourceStatus.healthInfo` | `healthyBlockCount` / `degradedBlockCount` |
+| `specificReservation.{count,inUseCount,assuredCount}` | Whether any spare capacity exists |
+
+**`GROUPED` changes the recovery story.** Maintenance lands on every VM in the reservation at
+once rather than rolling one node at a time, so a 2-node job has no surviving replica to fail
+over to. Checkpoint-restore is the only recovery path, which makes checkpoint interval — not
+replica count — the variable that determines lost work.
+
+To trigger the pending event early, on purpose, as a real test:
+
+```bash
+gcloud compute reservations perform-maintenance RESERVATION_NAME \
+  --scope=running --zone=ZONE      # scopes: all | running | unused
+```
+
+This performs genuine host maintenance, not a simulation. `--scope=unused` is a no-op when
+`inUseCount == count`. Do not run this without spare capacity unless you accept that the nodes
+go down together and come back only as the reservation returns them.
 
 ### TPUs
 
@@ -243,7 +372,153 @@ Out of scope here. TPU readers should start with:
 
 ---
 
-## 11. Teardown
+## 11. Measured results — run of 18 Aug 2026
+
+Cluster `ikwak-reliability`, 2 x a4-highgpu-8g (16 x B200), NeMo-RL v0.6.0,
+Gemma 3 27B IT, DAPO, 10 steps.
+
+### Baseline
+
+| Metric | Value |
+| --- | --- |
+| Step time, mean (steps 1–9) | **116.39 s** |
+| Step time, p50 / min / max | 118.08 s / 102.39 s / 129.10 s |
+| Step time stdev | 8.02 s (6.9% of mean) |
+| Final step (includes end validation) | 213.94 s |
+| Validation (256 AIME problems) | 30.7–35.4 s |
+| Checkpoint save | **49.14 s** (23.0% of that step) |
+| E2E throughput | 2.39 samples/s, 3,509 tokens/s |
+| AIME 2024 step 0 | 24.61% (63/256) |
+| AIME 2024 step 10 | 23.44% (60/256) |
+
+10 steps is far too short to improve AIME — the step-10 dip is noise, not
+over-specialisation. Do not read a trend into it.
+
+### Recovery-cost constants
+
+These are the numbers that actually drive the goodput formula:
+
+| Constant | Value | Notes |
+| --- | --- | --- |
+| Container image pull (cold) | **450 s** | `nemo-rl:v0.6.0` is 20,106,828,316 B (20.1 GB) |
+| vLLM init | 428.9 s | |
+| Policy init | 93.7 s | |
+| Other setup | 195.9 s | |
+| **Total worker init (`t_rm`)** | **721.5 s (12m 01s)** | Paid on *every* restart |
+| **`t_rm` + cold image pull** | **~1,171 s (19m 31s)** | Paid when the node is new |
+
+`t_rm` of 721.5 s is 6.2x the 116 s step time. Worked example with a 10-step
+checkpoint interval (1,164 s) and a failure landing mid-interval
+(`t_ch` = 582 s), same node so `t_re` ~ 0:
+
+```
+Runtime Goodput = (1164 - 582) / (1164 + 0 + 721.5) = 582 / 1885.5 = 30.9%
+```
+
+Nearly 70% badput from a single failure. Worker init, not lost steps, is the
+dominant term — which is the argument for warm standby workers and for
+checkpoint intervals set against `t_rm`, not against step count.
+
+### Detection results — both default paths failed
+
+**Tier 1: XID 79 injected into `/dev/kmsg`** on a GPU node (tagged `CLAUDE-SIM`).
+Confirmed present in `dmesg`. Over the following 90+ seconds:
+
+| Observed | Result |
+| --- | --- |
+| Node condition change | none |
+| Taint / cordon / `unschedulable` | none |
+| Kubernetes event | none |
+| Reached Cloud Logging | **no** |
+| **MTTD** | **never detected** |
+
+Nothing on a default GKE cluster consumes `/dev/kmsg` for XID errors. Beware
+false confidence when grepping Cloud Logging for `Xid` — it substring-matches
+the unrelated field `containerBoxID`.
+
+**Tier 2: GKE managed DCGM exporter does not export XID or ECC at all.**
+`gke-dcgm-exporter:4.4.1-4.6.0-gke.17` exposes 168 series across 21 families:
+
+```
+DCGM_FI_DEV_SM_CLOCK              DCGM_FI_PROF_GR_ENGINE_ACTIVE
+DCGM_FI_DEV_MEMORY_TEMP           DCGM_FI_PROF_SM_ACTIVE
+DCGM_FI_DEV_GPU_TEMP              DCGM_FI_PROF_PIPE_TENSOR_ACTIVE
+DCGM_FI_DEV_POWER_USAGE           DCGM_FI_PROF_DRAM_ACTIVE
+DCGM_FI_DEV_TOTAL_ENERGY_CONSUMPTION  DCGM_FI_PROF_PIPE_FP64_ACTIVE
+DCGM_FI_DEV_GPU_UTIL              DCGM_FI_PROF_PIPE_FP32_ACTIVE
+DCGM_FI_DEV_MEM_COPY_UTIL         DCGM_FI_PROF_PIPE_FP16_ACTIVE
+DCGM_FI_DEV_FB_TOTAL              DCGM_FI_PROF_PCIE_TX_BYTES
+DCGM_FI_DEV_FB_FREE               DCGM_FI_PROF_PCIE_RX_BYTES
+DCGM_FI_DEV_FB_USED               DCGM_FI_PROF_NVLINK_TX_BYTES
+                                  DCGM_FI_PROF_NVLINK_RX_BYTES
+```
+
+Absent: `DCGM_FI_DEV_XID_ERRORS` (319), all ECC counters (SBE/DBE, volatile and
+aggregate), NVLink *error* counters (only byte counters are present), PCIe replay,
+throttle reasons, retired/remapped pages, and any health field.
+
+So injecting field 319 with `dcgmi test --inject` has nothing downstream to observe
+it. **The utilisation metrics are all there; the failure metrics are all missing.**
+
+**Prescriptive takeaway — this is the headline.** On a default GKE cluster the top
+two failure classes from the source papers, GPU-fell-off-bus and ECC, are
+*undetectable*. Not slow to detect: invisible. Before any of this matters you must
+deploy either:
+- your own DCGM exporter with `DCGM_FI_DEV_XID_ERRORS` and the ECC fields enabled
+  (the managed one cannot be reconfigured), or
+- node-problem-detector with a custom kmsg rule matching `NVRM: Xid`.
+
+Measure your own MTTD before trusting it. A dashboard full of `GPU_UTIL` looks
+reassuring and tells you nothing about whether a GPU is dying.
+
+### Checkpoint integrity — critical defect found
+
+The 10-step run reported a successful checkpoint. It is not usable:
+
+| Location | Contents |
+| --- | --- |
+| Head pod, `step_10/` | 28 KB: `config.yaml`, `training_info.json`, `train_dataloader.pt` |
+| Worker A, `tmp_step_10/` | 152 GB, `policy/weights/model/shard-*.safetensors` |
+| Worker B, `tmp_step_10/` | 152 GB, `policy/optimizer/optim/*.distcp` |
+
+Three compounding problems:
+
+1. **`/opt/nemo-rl/results` is the container overlay filesystem** — not a PV, not
+   even an emptyDir. The only volumes on the worker are `/tmp/ray`, `/dev/shm`,
+   the NVIDIA driver hostPath, and the gIB plugin. A pod restart destroys the
+   checkpoint. Node loss destroys it. There is no copy anywhere else.
+2. **The checkpoint is split across two pods** — weights on one, optimizer state on
+   the other. Neither is complete on its own.
+3. **The `tmp_step_10` -> `step_10` rename never completed on the workers.** The head
+   renamed its metadata and recorded `current_step: 10`, so the run *looks* resumable
+   while the weights sit under a `tmp_` path a resume will not search.
+
+Net effect: **MTTR for any node-loss failure is infinite, not slow.** There is
+nothing to recover from. This invalidates a recovery demo until checkpoints are
+written to shared, durable storage — the cluster already has the GCS FUSE and Lustre
+CSI drivers installed, so mounting one and pointing `checkpointing.checkpoint_dir` at
+it is the fix.
+
+This is precisely the failure mode called out in section 8 step 5. A job that reports
+a clean checkpoint and cannot actually restore from it is worse than one that
+obviously fails, because you only discover it during an incident.
+
+Also observed: `Async mode is only supported for torch >= 2.9.0, disabling async
+mode`, so the 49.14 s checkpoint save is fully blocking — pure badput on every save.
+
+### Repo issues found while reproducing
+
+| Issue | Detail |
+| --- | --- |
+| Wrong helm release name in root `README.md` | Must be `ray-cluster`; see section 4b |
+| KubeRay operator not installed | No `ray.io` CRDs existed; chart cannot apply |
+| `submit_gemma3-27b-it.sh` uses `set -x` | Echoes `HF_TOKEN` in cleartext into the job log, which fluent-bit ships to Cloud Logging. Use `set +x` around the export |
+| LWS scale-to-0 leaves GPUs pinned | Leader pod stays `Succeeded` and owns the worker StatefulSet |
+| Config drift | Script heredoc says 10 steps / TP=2; `README.md` says 100 steps / TP=4 |
+
+---
+
+## 12. Teardown
 
 ```bash
 helm uninstall <release> -n <namespace>
@@ -265,7 +540,7 @@ dominant cost.
 
 ---
 
-## 12. Source papers
+## 13. Source papers
 
 | Paper | arXiv | Org | Contribution |
 | --- | --- | --- | --- |

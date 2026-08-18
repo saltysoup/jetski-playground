@@ -227,7 +227,7 @@ Replace the flat list with a decision table. Every row maps to a goodput term fr
 
 | Failure class | Signal | Primitive | Proactive / Reactive | Reduces | Your action |
 | --- | --- | --- | --- | --- | --- |
-| Impending host fault | maintenance notice | Emergent maintenance | Proactive | t_ch | Drain + checkpoint early |
+| Impending host fault | maintenance notice | Emergent maintenance (**reservation-level**) | Proactive | t_ch | Drain + checkpoint early |
 | Pre-job latent fault | health scan | Cluster Health Scanner | Proactive | MTBF exposure | Gate job admission |
 | GPU fell off bus | XID 79 in kmsg | NPD + GKE CTM label | Reactive | MTTD | Cordon, report faulty host |
 | Confirmed bad host | — | Report faulty hosts API | Reactive | t_re | Replace node |
@@ -237,6 +237,25 @@ Replace the flat list with a decision table. Every row maps to a goodput term fr
 Docs to cite:
 - https://docs.cloud.google.com/ai-hypercomputer/docs/manage/manage-gke-clusters#report-faulty-hosts-how-to
 - https://docs.cloud.google.com/compute/docs/instances/host-maintenance-overview
+- https://docs.cloud.google.com/ai-hypercomputer/docs/manage/host-events-reservations#emergency-notifications
+
+**Point worth making explicitly in the post**, because it is easy to get wrong: emergent
+maintenance is enabled on the **reservation**, not on the cluster or the node pool. There is no
+GKE-side flag for it.
+
+```bash
+gcloud compute reservations update RESERVATION_NAME \
+  --enable-emergent-maintenance --zone=ZONE
+```
+
+It extends advance notice for unplanned maintenance — triggered by a host error or a faulty-host
+report — from a few hours to at least 7 days. That is the difference between an abrupt
+termination that costs you `t_ch` of unsaved work and a planned drain that costs you nothing.
+
+Also worth a callout: a reservation with `schedulingType: GROUPED` is maintained **all at once**,
+not rolling. For a 2-node job that means no surviving replica and no failover — checkpoint
+interval, not replica count, is what determines lost work. Readers should check their own
+reservation's `schedulingType` before assuming a rolling recovery story applies to them.
 
 ### Sidebar: what about TPUs?
 
