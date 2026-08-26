@@ -127,7 +127,7 @@ VISION_UTTERANCES = [
     "what is in front of you"
 ]
 
-ROUTER_MODEL_PATH = "/home/unitree/robot_assets/models/onnx/model_qint8_arm64.onnx"
+ROUTER_MODEL_PATH = "/home/unitree/robot_assets/models/onnx/model.onnx"
 ROUTER_VOCAB_PATH = "/home/unitree/robot_assets/models/vocab.txt"
 
 print(f"🧠 Initializing MiniLM Semantic Router from {ROUTER_MODEL_PATH}...")
