@@ -13,7 +13,6 @@ Unitree R1: Low-Latency Multimodal Vision & Voice Assistant
 
 import os
 import sys
-import cv2
 import time
 import json
 import queue
@@ -225,6 +224,7 @@ def transcribe_audio_bytes(audio_bytes):
 
 def capture_camera_frame():
     """Captures a snapshot from the Unitree head camera."""
+    import cv2
     print("📸 Capturing frame from onboard camera...")
     cap = cv2.VideoCapture(0)
     if not cap.isOpened():
@@ -357,6 +357,9 @@ def main():
         
     # 6. Stream tokens from Gemma-4 & pipelined streaming to Magpie TTS
     query_gemma4_and_stream_tts(transcript, image_b64)
+    
+    # Clean exit
+    os._exit(0)
 
 if __name__ == "__main__":
     main()
