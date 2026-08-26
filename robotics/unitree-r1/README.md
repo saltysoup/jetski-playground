@@ -1,20 +1,39 @@
-# Unitree R1 Humanoid Robot: Fully Offline Edge Deployment Guide
+# Unitree R1 / G1 Humanoid Robot: Fully Offline Edge AI Deployment Guide
 
-End-to-end deployment guide for running **real-time multimodal AI (Nemotron Speech ASR + Magpie TTS v2602 + Gemma-4 2B Multimodal VLM via Native CUDA Engine)** fully on-device on the **Unitree R1 / G1** (NVIDIA Jetson Orin NX).
+End-to-end guide for deploying and running **real-time multimodal AI (Nemotron Speech ASR + Magpie TTS v2602 + Gemma-4 2B Multimodal VLM via Native CUDA Engine)** 100% on-device on the **Unitree R1 / G1** humanoid robot (NVIDIA Jetson Orin NX).
 
 ---
 
-## Hardware & System Specification
+## System & Hardware Architecture
 
-| Specification | Value | Notes |
+```mermaid
+graph TD
+    User([User Voice]) -->|UDP Multicast 239.168.123.161:5555| Mic[Microphone Array + AGC]
+    Mic -->|Raw 16kHz PCM| ASR[Nemotron Streaming ASR - riva_server :50051]
+    ASR -->|Transcript| Router[Offline Semantic Intent Router]
+    
+    Router -->|Visual Query| Cam[Forward Head Camera /dev/video2]
+    Router -->|General Query| SkipCam[Skip Camera - Low Latency]
+    
+    Cam -->|JPEG Frame + Text| VLM[Gemma-4 2B Multimodal VLM - llama-server :8000]
+    SkipCam -->|Text Only| VLM
+    
+    VLM -->|Live Token Stream| Chunk[Sentence Chunk Boundary Detector]
+    Chunk -->|Sentence Chunks| TTS[Magpie TTS v2602 + NanoCodec :50051]
+    TTS -->|16kHz PCM WAV| Audio[Unitree DDS AudioClient - unitree_play_wav]
+    Audio -->|Hardware 100% Vol| Spk([Robot Onboard Speakers])
+```
+
+| Component | Specification | Details / Configuration |
 | :--- | :--- | :--- |
-| **Target Host** | Unitree R1 / G1 Humanoid Robot | Integrated NVIDIA Jetson Orin NX (16GB RAM/VRAM) |
-| **Host OS** | Ubuntu 20.04 LTS (JetPack 5.1.1 / L4T R35.3.1) | Python **3.8.10 (`cp38`)** |
-| **Robot Static IP** | `192.168.123.164` | `eth10` interface |
-| **Robot SSH** | `unitree@192.168.123.164` (password: `123`) | Internal robot subnet |
-| **Microphone** | Unitree UDP Multicast Stream | `239.168.123.161:5555` (16kHz 16-bit Mono PCM) |
+| **Target Host** | Unitree R1 / G1 Humanoid Robot | Integrated NVIDIA Jetson Orin NX (16GB Unified RAM/VRAM) |
+| **Operating System** | Ubuntu 20.04 LTS (JetPack 5.1.1 / L4T R35.3.1) | Python **3.8.10 (`cp38`)**, CUDA 11.4 (`sm_87`) |
+| **Robot Static IP** | `192.168.123.164` | `eth10` interface (Subnet `192.168.123.0/24`) |
+| **Robot SSH** | `unitree@192.168.123.164` (password: `123`) | Direct Gigabit Ethernet connection |
+| **Microphone Stream** | Unitree UDP Multicast Stream | `239.168.123.161:5555` (16kHz 16-bit Mono PCM) |
 | **Speakers** | Unitree DDS AudioClient | `/home/unitree/unitree_sdk2/build/bin/unitree_play_wav` |
-| **Head Camera** | Standard USB V4L2 device | `/dev/video0` (OpenCV) |
+| **Forward Head Camera** | Forward-facing Vision Camera | **`/dev/video2`** (V4L2 640x480) |
+| **Waist / Floor Camera**| Downward Obstacle Avoidance Camera | **`/dev/video0`** (Points at feet/floor) |
 | **Build Power Profile** | **MAXN Mode (`nvpmodel -m 0`) + `jetson_clocks`** | Maximum clock frequencies (~2.0 GHz) to accelerate builds |
 | **Runtime Power Profile**| **15W Balanced Mode (`nvpmodel -m 2`)** | Power-saving mode for robot battery runtime |
 | **Internet Access** | **None on robot** | Fully offline deployment via laptop staging |
@@ -26,18 +45,18 @@ End-to-end deployment guide for running **real-time multimodal AI (Nemotron Spee
 | Stage | Action | Est. Duration |
 | :--- | :--- | :---: |
 | **Section 1** | Laptop asset downloads (models, wheels, debs) & transfer to robot | ~10–15 min |
-| **Section 2** | Robot system libraries (gRPC debs, Python wheels, MiniLM ONNX runtime) installation | ~2 min |
-| **Section 3.1**| Unitree DDS Audio Player compilation (`unitree_play_wav`) | ~30 sec |
+| **Section 2** | Robot system libraries (gRPC debs, Python wheels) installation | ~2 min |
+| **Section 3.1**| Unitree DDS Audio Player compilation (`unitree_play_wav` with Vol 100%) | ~30 sec |
 | **Section 3.2**| `NeMo-Speech.cpp` CUDA compilation (`sm_87` native) in MAXN mode | ~20–25 min |
 | **Section 3.3**| `llama.cpp` Native CUDA Engine compilation (`llama-server` `sm_87`) | ~5–7 min |
 | **Section 3.4**| Transition power mode to 15W battery saver | ~10 sec |
-| **Section 4** | Verification Tests (Audio Loopback + Full Vision-Voice Assistant) | ~2–3 min |
+| **Section 4** | Verification & Interactive Multimodal Voice/Vision Assistant | ~2–3 min |
 
 ---
 
-## Quick Resume Guide
+## Quick Resume Guide (When Powering On Robot)
 
-Follow these quick steps when you power on the robot:
+Follow these quick steps whenever you power on the robot:
 
 ```bash
 # 1. SSH into the robot
@@ -47,16 +66,15 @@ ssh unitree@192.168.123.164
 sudo nvpmodel -m 0
 sudo jetson_clocks
 
-# 3. Resume the riva_server / llama-server compilation (picks up incrementally from cache)
+# 3. Resume / verify the native CUDA binaries
 export PATH=/home/unitree/.local/bin:/usr/local/cuda/bin:$PATH
-cd /home/unitree/NeMo-Speech.cpp
-ninja -C build-cuda riva_server
-ninja -C llama.cpp/build-cuda bin/llama-server
+ninja -C /home/unitree/NeMo-Speech.cpp/build-cuda riva_server
+ninja -C /home/unitree/NeMo-Speech.cpp/llama.cpp/build-cuda bin/llama-server
 
-# 4. Once builds finish linking, switch power mode down to 15W battery saver
+# 4. Switch power mode to 15W battery saver
 sudo nvpmodel -m 2
 
-# 5. Proceed to Section 4 to run the Multimodal Assistant!
+# 5. Launch the 3 services (Section 4) to run the Multimodal Assistant!
 ```
 
 ---
@@ -70,8 +88,7 @@ Because the Unitree robot has **no internet connection**, stage all weights, whe
 ```bash
 mkdir -p ~/robot_assets/wheels \
          ~/robot_assets/debs \
-         ~/robot_assets/models/magpie-tts/extracted \
-         ~/robot_assets/models/onnx
+         ~/robot_assets/models/magpie-tts/extracted
 ```
 
 ### 1.2 Download All Models
@@ -113,20 +130,18 @@ tar -xf ~/robot_assets/models/magpie-tts/magpie_tts_multilingual_357m.nemo \
   -C ~/robot_assets/models/magpie-tts/extracted/
 ```
 
-#### E. Gemma-4 2B Multimodal VLM (Base Language Model + Vision Projector)
+#### E. Gemma-4 2B Multimodal VLM (Base Model + Vision Projector)
 ```bash
-# Language Model GGUF (Q8_0)
-# ~/robot_assets/models/gemma-4-E2B-it-q8_0.gguf
-
-# Vision Projector GGUF (F16)
-# ~/robot_assets/models/mmproj-gemma-4-E2B-f16.gguf
+# Stage Gemma-4 Q8_0 language model and F16 vision projector:
+# ~/robot_assets/models/gemma-4-E2B-it-q8_0.gguf (4.3 GB)
+# ~/robot_assets/models/mmproj-gemma-4-E2B-f16.gguf (942 MB)
 ```
 
 ---
 
 ### 1.3 Download Offline Wheels (Python 3.8 / `cp38` `aarch64`)
 
-The Jetson Orin runs Ubuntu 20.04 with **Python 3.8.10 (`cp38`)**. Download precompiled binary wheels for ARM64:
+Download precompiled binary wheels for ARM64:
 
 ```bash
 pip download \
@@ -147,13 +162,7 @@ pip download \
   "nvidia-riva-client==2.16.0" \
   "cmake==4.4.2" \
   "ninja==1.13.0" \
-  "onnxruntime==1.16.3" \
-  "coloredlogs==15.0.1" \
-  "humanfriendly==10.0" \
-  "flatbuffers==25.12.19" \
-  "packaging==26.2" \
-  "sympy==1.13.3" \
-  "mpmath==1.3.0"
+  "numpy==1.24.4"
 ```
 
 ---
@@ -175,13 +184,13 @@ curl -fLO http://ports.ubuntu.com/ubuntu-ports/pool/main/c/c-ares/libc-ares-dev_
 
 ### 1.5 Transfer Staged Assets & Test Scripts to Robot
 
-Connect your laptop to the robot network (`192.168.123.x`) and SCP everything over:
+Connect your laptop to the robot network (`192.168.123.x`) and transfer:
 
 ```bash
 # Transfer assets (models, wheels, debs)
 scp -r ~/robot_assets unitree@192.168.123.164:~/
 
-# Transfer standalone test scripts
+# Transfer test scripts
 scp robotics/unitree-r1/test_*.py unitree@192.168.123.164:~/
 ```
 
@@ -192,18 +201,14 @@ scp robotics/unitree-r1/test_*.py unitree@192.168.123.164:~/
 
 SSH into the robot (`ssh unitree@192.168.123.164`):
 
-### 2.1 Set Power Mode to MAXN (Maximum Performance for Compilation)
-Set the Jetson to **MAXN mode** and enable max clock frequencies to accelerate compilation:
-
+### 2.1 Set Power Mode to MAXN & Set Python Default
 ```bash
 # 1. Set power profile to MAXN (Mode 0)
 sudo nvpmodel -m 0
-
-# 2. Lock CPU and GPU clocks to maximum frequency for fastest build
 sudo jetson_clocks
 
-# 3. Verify current mode
-sudo nvpmodel -q
+# 2. Set system python default to Python 3.8
+echo 123 | sudo -S ln -sf /usr/bin/python3 /usr/bin/python
 ```
 
 ---
@@ -216,23 +221,91 @@ sudo dpkg -i ~/robot_assets/debs/*.deb
 # 2. Link CUDA stub to real Tegra driver binary
 sudo cp -L /usr/lib/aarch64-linux-gnu/tegra/libcuda.so.1.1 /usr/local/cuda/targets/aarch64-linux/lib/stubs/libcuda.so
 
-# 3. Install Python 3.8 packages, MiniLM ONNX runtime, and modern CMake/Ninja
-pip3 install --no-index --find-links=/home/unitree/robot_assets/wheels \
-  cmake ninja protobuf sounddevice soundfile requests nvidia-riva-client numpy \
-  onnxruntime coloredlogs flatbuffers sympy packaging humanfriendly mpmath
+# 3. Install Python 3.8 packages and upgraded NumPy
+pip3 install --user --no-index --find-links=/home/unitree/robot_assets/wheels \
+  cmake ninja protobuf sounddevice soundfile requests nvidia-riva-client numpy
 
 export PATH=/home/unitree/.local/bin:/usr/local/cuda/bin:$PATH
+
+# 4. Patch riva proto stubs for grpc 1.38 compatibility
+sed -i 's/_registered_method=True//g' /home/unitree/.local/lib/python3.8/site-packages/riva/client/proto/*.py
+sed -i 's/,\s*)/)/g' /home/unitree/.local/lib/python3.8/site-packages/riva/client/proto/*.py
 ```
 
 ---
 
-## 3. Build Audio Player & Speech Engine on Robot
+## 3. Build Audio Player & Speech Engines on Robot
 
-### 3.1 Build Unitree DDS Audio Player
+### 3.1 Build Unitree DDS Audio Player (`unitree_play_wav`)
 *Estimated Time: ~30 seconds*
+
+The player is enhanced with **Hardware Volume 100%** and **Audio Duration Tracking** to prevent abrupt speech cutoff:
+
 ```bash
+cat << 'CXXEOF' > /home/unitree/unitree_sdk2/example/g1/audio/unitree_play_wav.cpp
+#include <iostream>
+#include <fstream>
+#include <vector>
+#include <algorithm>
+#include <cmath>
+#include <unitree/common/time/time_tool.hpp>
+#include <unitree/robot/g1/audio/g1_audio_client.hpp>
+#include "wav.hpp"
+
+#define CHUNK_SIZE 96000  // 3 seconds
+
+int main(int argc, char const *argv[]) {
+  if (argc < 3) {
+    std::cout << "Usage: unitree_play_wav <wav_path> <NetWorkInterface>" << std::endl;
+    return 1;
+  }
+
+  const char* wav_path = argv[1];
+  const char* net_interface = argv[2];
+
+  unitree::robot::ChannelFactory::Instance()->Init(0, net_interface);
+  unitree::robot::g1::AudioClient client;
+  client.Init();
+  client.SetTimeout(5.0f);
+
+  // Set hardware speaker volume to 100% (Maximum allowed by Unitree SDK)
+  client.SetVolume(100);
+
+  int32_t sample_rate = -1;
+  int8_t num_channels = 0;
+  bool filestate = false;
+  std::vector<uint8_t> pcm = ReadWave(wav_path, &sample_rate, &num_channels, &filestate);
+
+  if (!filestate || sample_rate != 16000 || num_channels != 1) {
+    std::cerr << "Error: Only 16kHz mono WAV supported!" << std::endl;
+    return 1;
+  }
+
+  size_t total_size = pcm.size();
+  size_t offset = 0;
+  std::string stream_id = std::to_string(unitree::common::GetCurrentTimeMillisecond());
+  double duration_sec = static_cast<double>(total_size) / (16000.0 * 2.0);
+
+  while (offset < total_size) {
+    size_t remaining = total_size - offset;
+    size_t current_chunk_size = std::min(static_cast<size_t>(CHUNK_SIZE), remaining);
+    std::vector<uint8_t> chunk(pcm.begin() + offset, pcm.begin() + offset + current_chunk_size);
+    client.PlayStream("tts_output", stream_id, chunk);
+    offset += current_chunk_size;
+    unitree::common::Sleep(1);
+  }
+
+  // Allow the hardware audio buffer to completely play out without cutting off
+  if (duration_sec > 1.0) {
+    unitree::common::Sleep(static_cast<int>(std::ceil(duration_sec)));
+  }
+
+  client.PlayStop(stream_id);
+  return 0;
+}
+CXXEOF
+
 cd /home/unitree/unitree_sdk2/build
-cmake ..
 make unitree_play_wav
 ```
 
@@ -240,6 +313,7 @@ make unitree_play_wav
 
 ### 3.2 Build `NeMo-Speech.cpp` with CUDA (Optimized for Jetson Orin `sm_87`)
 *Estimated Time: ~20–25 minutes in MAXN mode*
+
 ```bash
 cd /home/unitree/NeMo-Speech.cpp
 
@@ -265,6 +339,7 @@ ninja -C build-cuda riva_server -j$(nproc)
 
 ### 3.3 Build `llama-server` with CUDA (Native Multimodal VLM Engine)
 *Estimated Time: ~5–7 minutes in MAXN mode*
+
 ```bash
 cd /home/unitree/NeMo-Speech.cpp/llama.cpp
 
@@ -285,33 +360,16 @@ ninja -C build-cuda bin/llama-server
 ### 3.4 Switch Power Mode to 15W Balanced Mode (Post-Build Battery Saver)
 *Estimated Time: ~10 seconds*
 
-Once all compilation steps are finished, switch the Jetson to **15W Balanced Mode** to preserve robot battery during active inference and autonomous operation:
-
 ```bash
 # Set power profile to 15W (Mode 2)
 sudo nvpmodel -m 2
-
-# Verify current mode
-sudo nvpmodel -q
 ```
 
 ---
 
-## 4. Verification & Testing
-*Estimated Time: ~2–3 minutes*
+## 4. Running the Real-Time Multimodal Assistant
 
-### Test 1: Audio Loopback Verification (Mic & Speakers)
-Tests the UDP multicast microphone capture (`239.168.123.161:5555`) and DDS audio playback:
-```bash
-python3 ~/test_audio_loopback.py
-```
-* **Expected behavior**: The robot prompts you to speak, records 5 seconds of audio from the onboard microphone, and plays it back through the onboard speakers.
-
----
-
-### Test 2: Full Multimodal Vision & Voice Assistant (100% Onboard Jetson)
-
-#### Terminal 1: Launch Riva Speech Server (ASR + TTS)
+### Terminal 1: Launch Riva Speech Server (ASR + Magpie TTS)
 ```bash
 export LD_LIBRARY_PATH=/home/unitree/NeMo-Speech.cpp/build-cuda/bin:$LD_LIBRARY_PATH
 /home/unitree/NeMo-Speech.cpp/build-cuda/bin/riva_server \
@@ -322,7 +380,7 @@ export LD_LIBRARY_PATH=/home/unitree/NeMo-Speech.cpp/build-cuda/bin:$LD_LIBRARY_
   --bind 127.0.0.1:50051
 ```
 
-#### Terminal 2: Launch Native CUDA Gemma-4 Multimodal VLM Server on Jetson (OpenAI Compatible)
+### Terminal 2: Launch Native CUDA Gemma-4 Multimodal Server (Port 8000)
 ```bash
 export LD_LIBRARY_PATH=/home/unitree/NeMo-Speech.cpp/llama.cpp/build-cuda/bin:$LD_LIBRARY_PATH
 /home/unitree/NeMo-Speech.cpp/llama.cpp/build-cuda/bin/llama-server \
@@ -335,34 +393,29 @@ export LD_LIBRARY_PATH=/home/unitree/NeMo-Speech.cpp/llama.cpp/build-cuda/bin:$L
   --reasoning off
 ```
 
-#### Terminal 3: Run Interactive Semantic Assistant
+### Terminal 3: Run Interactive Multimodal Assistant
 ```bash
-python3 ~/test_vision_voice_assistant.py
+python ~/test_vision_voice_assistant.py
 ```
-* **Expected behavior**:
-  1. Robot asks: *"Ask me what I am seeing, or ask any general question"* via Magpie TTS.
-  2. You speak a question (e.g. *"What is in front of you?"* or *"Tell me a joke"*).
-  3. Nemotron ASR transcribes your speech.
-  4. **MiniLM Semantic Router** evaluates intent:
-     * If visual: captures `/dev/video0` head camera and attaches image.
-     * If conversational: skips camera to minimize latency.
-  5. Gemma-4 generates a concise 1-sentence multimodal answer locally on the Jetson Orin NX.
-  6. Magpie TTS speaks the response through the robot's onboard speakers.
+
+* **Interactive Workflow**:
+  1. Robot plays greeting: *"Ask me what I am seeing, or ask any general question."*
+  2. Press **`[ENTER]`** and speak naturally (e.g. *"What do you see?"* or *"What is your name?"*).
+  3. Press **`[ENTER]`** when done speaking.
+  4. **Fast Intent Router** detects intent:
+     * **Visual Queries**: Captures live snapshot from the **forward head camera (`/dev/video2`)**.
+     * **General Queries**: Skips camera to maximize speed.
+  5. Gemma-4 streams answer tokens ($\sim$195 tokens/sec).
+  6. **Sentence-Pipelined Magpie TTS** synthesizes and plays through the robot's speakers in **$\approx$ 200–300 ms**!
 
 ---
 
-## TODO / Optimization & Tuning Backlog
+## Hardware Tips & Troubleshooting
 
-### 1. Memory Profiling & Real-Time Monitoring
-Instructions for tracking memory consumption across co-located models on the Jetson Orin NX (16GB Shared Unified Memory):
-* **Real-time Jetson Memory Monitor (`tegrastats`)**:
-  ```bash
-  # Check active RAM, GPU VRAM usage, and power draw (in mW) every 1000ms:
-  sudo tegrastats --interval 1000
-  ```
-* **Footprint Breakdown Baseline**:
-  * `NeMo-Speech.cpp` (`riva_server`): ~1.44 GB VRAM (Nemotron ASR: 649 MB, Magpie TTS: 721 MB, NanoCodec: 67 MB).
-  * `llama-server` (Gemma-4 2B Q8_0 + Vision Projector F16): ~3.2 GB VRAM.
-  * Unitree RL Motion / Locomotion Policy: ~1.0–2.0 GB VRAM.
-  * System Overhead: ~1.2 GB RAM.
-  * Remaining headroom: ~8–9 GB.
+### Camera Device Map on Unitree R1 / G1
+* **`/dev/video2` (Forward Head Camera)**: Faces forward at users, objects, and rooms. Use for VLM reasoning.
+* **`/dev/video0` (Waist / Downward Camera)**: Angles down toward the feet/floor for locomotion path planning.
+
+### Audio Volume & Gain Control
+* **Hardware Max**: `unitree_play_wav` invokes `client.SetVolume(100)`.
+* **Software Dynamic Boost**: `test_vision_voice_assistant.py` applies peak normalisation and dynamic range scaling up to $3.5\times$ on TTS output and AGC on microphone input.
