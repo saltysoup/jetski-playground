@@ -2,7 +2,7 @@
 
 This guide provides the complete, self-contained end-to-end instructions for deploying the multimodal AI stack onto the **NVIDIA Jetson Orin** inside a **Unitree R1** robot.
 
-Because the Unitree R1 operates in an **offline environment (no internet access)**, all models, dependencies (Python 3.8 ARM64 wheels), and source repositories are pre-staged on your host computer (MacBook/PC) and transferred to the robot via a direct Ethernet connection.
+Because the Unitree R1 operates in an **offline environment (no internet access)**, all models, dependencies (Python 3.8 ARM64 wheels), and source repositories are pre-staged in your local `./robot_assets` folder on your host computer (MacBook/PC) and transferred to the robot via a direct Ethernet connection.
 
 ---
 
@@ -39,7 +39,7 @@ Because the Unitree R1 operates in an **offline environment (no internet access)
 
 ## Table of Contents
 1. [Network Setup & Direct Ethernet SSH](#step-1-network-setup--direct-ethernet-ssh)
-2. [Offline Asset Preparation on Host Laptop](#step-2-offline-asset-preparation-on-host-laptop)
+2. [Offline Asset Preparation on Host Laptop (`./robot_assets`)](#step-2-offline-asset-preparation-on-host-laptop)
 3. [Transferring Assets to Unitree R1](#step-3-transferring-assets-to-unitree-r1)
 4. [Test 1: Unitree Audio Loopback Test (Mic & Speakers)](#step-4-test-1-unitree-audio-loopback-test)
 5. [Building & Running NeMo-Speech.cpp (CUDA + Riva gRPC)](#step-5-building--running-nemo-speechcpp-on-jetson)
@@ -79,16 +79,16 @@ ssh unitree@192.168.123.164
 
 ---
 
-## Step 2: Offline Asset Preparation on Host Laptop
+## Step 2: Offline Asset Preparation on Host Laptop (`./robot_assets`)
 
-Run all commands in this section on your **MacBook / Host Computer** (which has internet access).
+Run all commands in this section on your **MacBook / Host Computer** in your project root.
 
 ### 2.1 Create Staging Directories
 ```bash
-mkdir -p ~/robot_assets/models/asr \
-         ~/robot_assets/models/magpie-tts \
-         ~/robot_assets/models/nano-codec \
-         ~/robot_assets/wheels
+mkdir -p ./robot_assets/models/asr \
+         ./robot_assets/models/magpie-tts \
+         ./robot_assets/models/nano-codec \
+         ./robot_assets/wheels
 ```
 
 ### 2.2 Download Speech Models (GGUF & Tokenizer)
@@ -96,41 +96,40 @@ mkdir -p ~/robot_assets/models/asr \
 # 1. Nemotron Streaming ASR (0.6B Q8 GGUF)
 hf download nvidia/nemotron-speech-streaming-en-0.6b \
   nemotron-speech-streaming-en-0.6b.q8_0.gguf \
-  --local-dir ~/robot_assets/models/asr
+  --local-dir ./robot_assets/models/asr
 
 # 2. Magpie TTS Multilingual (357M F16 GGUF + Tokenizer archive)
 hf download nvidia/magpie_tts_multilingual_357m \
   --include magpie_tts_multilingual_357m.v2602.f16.gguf \
   --include magpie_tts_multilingual_357m.nemo \
-  --local-dir ~/robot_assets/models/magpie-tts
+  --local-dir ./robot_assets/models/magpie-tts
 
 # Extract the Magpie tokenizer assets loaded by the runtime
-mkdir -p ~/robot_assets/models/magpie-tts/extracted
-tar -xf ~/robot_assets/models/magpie-tts/magpie_tts_multilingual_357m.nemo \
-  -C ~/robot_assets/models/magpie-tts/extracted
+mkdir -p ./robot_assets/models/magpie-tts/extracted
+tar -xf ./robot_assets/models/magpie-tts/magpie_tts_multilingual_357m.nemo \
+  -C ./robot_assets/models/magpie-tts/extracted
 
 # 3. NanoCodec Neural Audio Decoder (22kHz F16 GGUF)
 hf download nvidia/nemo-nano-codec-22khz-1.89kbps-21.5fps \
   nemo_nano_codec_22khz_1.89kbps_21.5fps.decoder.f16.gguf \
-  --local-dir ~/robot_assets/models/nano-codec
+  --local-dir ./robot_assets/models/nano-codec
 ```
 
 ### 2.3 Download Gemma-4 Vision-Language & Speculative MTP Models
 ```bash
 # Main Model: Gemma-4-E2B-it
 hf download google/gemma-4-E2B-it \
-  --local-dir ~/robot_assets/models/gemma-4-E2B-it
+  --local-dir ./robot_assets/models/gemma-4-E2B-it
 
 # Speculative MTP Assistant / Draft Model
 hf download google/gemma-4-E2B-it-assistant \
-  --local-dir ~/robot_assets/models/gemma-4-E2B-it-assistant
+  --local-dir ./robot_assets/models/gemma-4-E2B-it-assistant
 ```
 
 ### 2.4 Download Python 3.8 ARM64 Binary Wheels
 The Unitree JetPack 5 environment runs **Python 3.8.10 (`cp38`)**. Download the exact pre-compiled binary wheels:
 ```bash
-cd ~/robot_assets/wheels
-rm -rf *.whl
+rm -rf ./robot_assets/wheels/*.whl
 
 pip download \
   --only-binary=:all: \
@@ -138,7 +137,7 @@ pip download \
   --implementation cp \
   --python-version 38 \
   --abi cp38 \
-  --dest ~/robot_assets/wheels \
+  --dest ./robot_assets/wheels \
   sounddevice soundfile requests nvidia-riva-client opencv-python-headless numpy
 ```
 
@@ -146,11 +145,11 @@ pip download \
 
 ## Step 3: Transferring Assets to Unitree R1
 
-From your **Host Laptop**, transfer the assets and source repositories over Ethernet SSH:
+From your **Host Laptop**, transfer the local `./robot_assets` and source repositories over Ethernet SSH:
 
 ```bash
 # 1. Transfer model weights and python wheels (~7 GB total)
-scp -r ~/robot_assets unitree@192.168.123.164:~/robot_assets
+scp -r ./robot_assets unitree@192.168.123.164:~/robot_assets
 
 # 2. Transfer NeMo-Speech.cpp source code
 scp -r /Users/ikwak/Code/NeMo-Speech.cpp unitree@192.168.123.164:~/NeMo-Speech.cpp
