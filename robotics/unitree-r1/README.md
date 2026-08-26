@@ -58,23 +58,28 @@ Because the Jetson has no internet, download all assets on your host laptop firs
 Create a staging directory on your laptop and download the models:
 
 ```bash
-mkdir -p ~/robot_assets/models ~/robot_assets/wheels
+mkdir -p ~/robot_assets/models/magpie-tts ~/robot_assets/wheels
 
-# 1. Nemotron Streaming ASR (0.6B Q8)
+# 1. Nemotron Streaming ASR (0.6B Q8 GGUF)
 hf download nvidia/nemotron-speech-streaming-en-0.6b \
   nemotron-speech-streaming-en-0.6b.q8_0.gguf \
   --local-dir ~/robot_assets/models
 
-# 2. Magpie TTS & NanoCodec
+# 2. Magpie TTS Multilingual (magpie_tts_multilingual_357m.v2602.f16.gguf + Tokenizer Archive)
 hf download nvidia/magpie_tts_multilingual_357m \
-  magpie_tts_multilingual_357m.v2602.f16.gguf \
-  --local-dir ~/robot_assets/models
+  --include magpie_tts_multilingual_357m.v2602.f16.gguf \
+  --include magpie_tts_multilingual_357m.nemo \
+  --local-dir ~/robot_assets/models/magpie-tts
 
-hf download nvidia/nemo_nano_codec_22khz_1.89kbps_21.5fps.decoder.f16.gguf \
-  --local-dir ~/robot_assets/models
+# Extract the Magpie tokenizer assets loaded by the runtime
+mkdir -p ~/robot_assets/models/magpie-tts/extracted
+tar -xf ~/robot_assets/models/magpie-tts/magpie_tts_multilingual_357m.nemo \
+  -C ~/robot_assets/models/magpie-tts/extracted
 
-# 3. Extract tokenizer assets
-# Place extracted magpie-tts tokenizer folder in ~/robot_assets/models/magpie-tts/extracted
+# 3. NanoCodec Neural Audio Decoder (22kHz F16 GGUF)
+hf download nvidia/nemo-nano-codec-22khz-1.89kbps-21.5fps \
+  nemo_nano_codec_22khz_1.89kbps_21.5fps.decoder.f16.gguf \
+  --local-dir ~/robot_assets/models
 ```
 
 ### 2.2 Download Gemma-4 VLM & MTP Draft Models on Host Laptop
@@ -148,7 +153,6 @@ import soundfile as sf
 
 def speak_tts_prompt(text="Tell me something"):
     print(f"🔊 Robot saying: \"{text}\"")
-    # Generate simple clean tone prompt or offline speech alert
     os.system(f'espeak "{text}" 2>/dev/null || aplay /usr/share/sounds/alsa/Front_Center.wav 2>/dev/null')
 
 def record_audio(duration_sec=5, sample_rate=16000):
@@ -220,7 +224,7 @@ cd ~/NeMo-Speech.cpp
 
 ./build-cuda/bin/riva_server \
   --asr.model.path ~/robot_assets/models/nemotron-speech-streaming-en-0.6b.q8_0.gguf \
-  --tts.magpie-model ~/robot_assets/models/magpie_tts_multilingual_357m.v2602.f16.gguf \
+  --tts.magpie-model ~/robot_assets/models/magpie-tts/magpie_tts_multilingual_357m.v2602.f16.gguf \
   --tts.codec-model ~/robot_assets/models/nemo_nano_codec_22khz_1.89kbps_21.5fps.decoder.f16.gguf \
   --tts.tokenizer-model-dir ~/robot_assets/models/magpie-tts/extracted \
   --bind 127.0.0.1:50051 \
