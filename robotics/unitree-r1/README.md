@@ -24,7 +24,7 @@ The Unitree R1 internal network uses static IP subnets over its physical Etherne
 ```
 ┌───────────────────────────┐      Direct Ethernet Cable      ┌───────────────────────────┐
 │     Host Laptop (Mac)     │ ◄─────────────────────────────► │    Unitree R1 (Jetson)    │
-│  IP: 192.168.123.50       │                                 │  IP: 192.168.123.161      │
+│  IP: 192.168.123.50       │                                 │  IP: 192.168.123.164      │
 └───────────────────────────┘                                 └───────────────────────────┘
 ```
 
@@ -40,13 +40,13 @@ Open a terminal on your host machine:
 
 ```bash
 # Test connectivity
-ping -c 3 192.168.123.161
+ping -c 3 192.168.123.164
 
 # SSH into Jetson Orin (Default Unitree credentials: unitree / 123)
-ssh unitree@192.168.123.161
+ssh unitree@192.168.123.164
 ```
 
-*(Note: If your unit is configured with a different IP, replace `192.168.123.161` with your robot's Jetson IP).*
+*(Note: If your unit is configured with a different IP, replace `192.168.123.164` with your robot's Jetson IP).*
 
 ---
 
@@ -113,8 +113,8 @@ pip download \
 ### 2.4 Transfer All Assets to Jetson Orin
 ```bash
 # Transfer models and wheels over Ethernet SSH
-scp -r ~/robot_assets unitree@192.168.123.161:~/robot_assets
-scp -r /Users/ikwak/Code/NeMo-Speech.cpp unitree@192.168.123.161:~/NeMo-Speech.cpp
+scp -r ~/robot_assets unitree@192.168.123.164:~/robot_assets
+scp -r /Users/ikwak/Code/NeMo-Speech.cpp unitree@192.168.123.164:~/NeMo-Speech.cpp
 ```
 
 ---
