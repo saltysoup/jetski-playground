@@ -188,15 +188,16 @@ cmake ..
 make unitree_play_wav
 ```
 
-### 3.2 Build `NeMo-Speech.cpp` with CUDA
+### 3.2 Build `NeMo-Speech.cpp` with CUDA (Optimized for Jetson Orin `sm_87`)
 ```bash
 cd /home/unitree/NeMo-Speech.cpp
 
 # Apply CUDA GGML patches
 bash scripts/apply-ggml-patches.sh
 
-# Configure CMake with CUDA, gRPC, and static SentencePiece
+# Configure CMake targeting ONLY Orin sm_87 (5x faster compilation)
 cmake -B build-cuda -G Ninja \
+  -DCMAKE_CUDA_ARCHITECTURES=87 \
   -DGGML_CUDA=ON \
   -DNEMO_SPEECH_BUILD_GRPC=ON \
   -DNEMO_SPEECH_BUILD_ASR=ON \
