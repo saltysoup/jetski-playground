@@ -97,17 +97,20 @@ hf download sentence-transformers/all-MiniLM-L6-v2 \
   --local-dir ~/robot_assets/models/all-MiniLM-L6-v2
 ```
 
-### 2.3 Download Offline Python Wheels (ARM64) on Host Laptop
-On a machine with internet access (or using `pip download --platform manylinux2014_aarch64`):
+### 2.3 Download Offline Python 3.8 Wheels (ARM64) on Host Laptop
+Unitree JetPack 5 runs **Python 3.8.10**. Download matching `cp38` aarch64 wheels:
 ```bash
+mkdir -p ~/robot_assets/wheels && cd ~/robot_assets/wheels
+rm -rf *.whl
+
 pip download \
   --only-binary=:all: \
   --platform manylinux2014_aarch64 \
   --implementation cp \
-  --python-version 310 \
+  --python-version 38 \
+  --abi cp38 \
   --dest ~/robot_assets/wheels \
-  nvidia-riva-client sounddevice soundfile opencv-python requests \
-  sentence-transformers semantic-router
+  sounddevice soundfile requests nvidia-riva-client opencv-python-headless numpy
 ```
 
 ### 2.4 Transfer All Assets to Jetson Orin
@@ -121,7 +124,7 @@ scp -r /Users/ikwak/Code/NeMo-Speech.cpp unitree@192.168.123.164:~/NeMo-Speech.c
 
 ## Step 3: Test 1: Unitree Audio Loopback Test
 
-This test verifies that the Unitree onboard microphone and onboard speakers are working properly using `unitree_sdk2_python` and local ALSA audio drivers.
+This test verifies that the Unitree onboard microphone and onboard speakers are working properly using `sounddevice` and local ALSA audio drivers.
 
 ### Sequence:
 1. Speaks: *"Tell me something"*
@@ -133,7 +136,9 @@ This test verifies that the Unitree onboard microphone and onboard speakers are 
 SSH into the Jetson and install the transferred wheels:
 ```bash
 cd ~/robot_assets/wheels
-pip3 install --no-index --find-links=. *.whl
+
+pip3 install --no-index --find-links=. \
+  sounddevice soundfile requests nvidia-riva-client opencv-python-headless numpy
 ```
 
 ### 3.2 Create `test_audio_loopback.py`
