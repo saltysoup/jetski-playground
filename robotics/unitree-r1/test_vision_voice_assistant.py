@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 """
 Unitree R1: Real-Time Multimodal Vision & Voice Assistant
-- Microphone: Unitree UDP Multicast (239.168.123.161:5555)
+- Microphone: Unitree UDP Multicast (239.168.123.161:5555) with AGC
 - ASR: Nemotron ASR (Riva gRPC 50051)
 - Semantic Router: 100% Offline Fast Semantic Intent Router
 - Camera: OpenCV (/dev/video0) - Triggered dynamically on Visual Intent
@@ -19,6 +19,7 @@ import base64
 import socket
 import struct
 import warnings
+import select
 import subprocess
 
 warnings.filterwarnings("ignore")
@@ -35,15 +36,17 @@ MODEL_NAME = "gemma"
 
 MCAST_GRP = "239.168.123.161"
 MCAST_PORT = 5555
+NET_INTERFACE_IP = "192.168.123.164"
 NET_INTERFACE_NAME = "eth10"
 PLAYER_BIN = "/home/unitree/unitree_sdk2/build/bin/unitree_play_wav"
 
-# --- 1. Pure-Python Fast Semantic Intent Router ---
+# --- 1. Fast Semantic Intent Router ---
 VISION_KEYWORDS = {
     "see": 1.5, "look": 1.5, "holding": 1.8, "color": 1.5, "view": 1.2,
     "front": 1.3, "desk": 1.2, "table": 1.2, "object": 1.4, "objects": 1.4,
     "image": 1.5, "picture": 1.5, "camera": 1.5, "identify": 1.4, "describe": 1.3,
-    "reading": 1.3, "text": 1.0, "wearing": 1.5, "shirt": 1.5, "room": 1.0
+    "reading": 1.3, "text": 1.0, "wearing": 1.5, "shirt": 1.5, "room": 1.0,
+    "floor": 1.2, "feet": 1.2, "hand": 1.4
 }
 
 VISION_PHRASES = [
@@ -113,40 +116,69 @@ def speak_via_riva(text_to_speak):
     except Exception as e:
         print("\n[ERROR] TTS Error for '%s': %s" % (clean_text, e))
 
-def record_multicast_audio(duration_sec=4, sample_rate=16000):
-    """Captures raw 16kHz 16-bit Mono PCM audio directly from Unitree multicast socket."""
-    print("[MIC] Listening to Unitree microphone (%s:%d) for %ds..." % (MCAST_GRP, MCAST_PORT, duration_sec))
-    
+def record_push_to_talk():
+    """Captures live audio from Unitree multicast socket with push-to-talk and automatic gain boost."""
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP)
     sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-    try:
-        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
-    except AttributeError:
-        pass
-
-    sock.bind(('', MCAST_PORT))
-    mreq = struct.pack("4sl", socket.inet_aton(MCAST_GRP), socket.INADDR_ANY)
+    sock.bind(("", MCAST_PORT))
+    
+    # Bind to eth10 multicast
+    mreq = socket.inet_aton(MCAST_GRP) + socket.inet_aton(NET_INTERFACE_IP)
     sock.setsockopt(socket.IPPROTO_IP, socket.IP_ADD_MEMBERSHIP, mreq)
-    sock.settimeout(1.0)
+    sock.setblocking(False)
     
-    audio_bytes = bytearray()
-    total_bytes_needed = int(duration_sec * sample_rate * 2)
-    start_time = time.time()
+    # Flush stale packets from buffer
+    try:
+        while True:
+            sock.recv(4096)
+    except Exception:
+        pass
+        
+    print("\n[MIC] RECORDING... Speak into the robot microphone now.")
+    print("[TIP] Press [ENTER] when you are done speaking.")
+    sys.stdout.flush()
     
-    while len(audio_bytes) < total_bytes_needed and (time.time() - start_time) < (duration_sec + 1.0):
-        try:
-            data, _ = sock.recvfrom(2048)
-            if data:
-                audio_bytes.extend(data)
-        except socket.timeout:
+    audio_chunks = []
+    
+    # Non-blocking stdin monitoring while capturing UDP packets
+    while True:
+        # Check if ENTER was pressed
+        r_stdin, _, _ = select.select([sys.stdin], [], [], 0.01)
+        if sys.stdin in r_stdin:
+            sys.stdin.readline()
             break
             
+        # Read available UDP multicast packets
+        r_sock, _, _ = select.select([sock], [], [], 0.05)
+        if sock in r_sock:
+            try:
+                data = sock.recv(4096)
+                if data:
+                    audio_chunks.append(data)
+            except Exception:
+                pass
+                
     sock.close()
-    print("[MIC] Recording finished!")
-    return bytes(audio_bytes[:total_bytes_needed])
+    print("[MIC] Recording finished! Processing...")
+    
+    if not audio_chunks:
+        return None
+        
+    raw_bytes = b"".join(audio_chunks)
+    audio_np = np.frombuffer(raw_bytes, dtype=np.int16)
+    
+    # Apply Automatic Gain Control (AGC) on microphone capture
+    peak = np.max(np.abs(audio_np))
+    if peak > 100:
+        boost = min(8.0, 24000.0 / float(peak))
+        audio_np = np.clip(audio_np * boost, -32767, 32767).astype(np.int16)
+        
+    return audio_np.tobytes()
 
 def transcribe_audio_bytes(audio_bytes):
     """Transcribes audio using NeMo Streaming ASR via Riva gRPC."""
+    if not audio_bytes:
+        return ""
     print("[ASR] Transcribing voice with NeMo ASR...")
     config = riva.client.RecognitionConfig(
         encoding=riva.client.AudioEncoding.LINEAR_PCM,
@@ -166,20 +198,23 @@ def transcribe_audio_bytes(audio_bytes):
     return ""
 
 def capture_camera_frame():
-    """Captures a snapshot from the Unitree head camera."""
+    """Captures a fresh live snapshot from the Unitree head camera and flushes V4L2 queue."""
     import cv2
-    print("[CAMERA] Capturing frame from onboard camera...")
-    cap = cv2.VideoCapture(0)
+    print("[CAMERA] Capturing fresh frame from onboard camera...")
+    cap = cv2.VideoCapture(0, cv2.CAP_V4L2)
     if not cap.isOpened():
         print("[ERROR] Could not open camera /dev/video0")
         return None
     
+    # Flush 15 frames to discard any stale cached buffer
     ret, frame = None, None
-    for _ in range(5):
+    for _ in range(15):
         ret, frame = cap.read()
     cap.release()
     
     if ret and frame is not None:
+        # Save raw frame for inspection
+        cv2.imwrite("/home/unitree/last_camera_snap.jpg", frame)
         small = cv2.resize(frame, (384, 384), interpolation=cv2.INTER_AREA)
         _, buffer = cv2.imencode('.jpg', small, [int(cv2.IMWRITE_JPEG_QUALITY), 85])
         return base64.b64encode(buffer).decode('utf-8')
@@ -261,37 +296,42 @@ def main():
     
     ROUTER_THRESHOLD = 0.35
     
-    # 1. Robot says initial prompt
-    speak_via_riva("Ask me what I am seeing, or ask any general question")
+    # 1. Robot greeting
+    speak_via_riva("Ask me what I am seeing, or ask any general question.")
     
-    # 2. Wait 1 second
-    print("[WAIT] Waiting 1 second...")
-    time.sleep(1.0)
-    
-    # 3. Record voice for 4 seconds from Unitree mic
-    audio_bytes = record_multicast_audio(duration_sec=4, sample_rate=16000)
-    
-    # 4. Transcribe voice
-    transcript = transcribe_audio_bytes(audio_bytes)
-    if not transcript:
-        transcript = "What do you see?"
-        print("[WARN] Defaulting prompt to: \"%s\"" % transcript)
+    while True:
+        print("\n" + "-" * 50)
+        print("[PROMPT] Press [ENTER] to start speaking (or type 'q' to quit):")
+        sys.stdout.flush()
         
-    # 5. Semantic Routing: Determine if visual intent is present
-    similarity_score = calculate_vision_similarity(transcript)
-    has_visual_intent = (similarity_score >= ROUTER_THRESHOLD)
-    
-    image_b64 = None
-    if has_visual_intent:
-        print("[ROUTE] Vision Route triggered (Score: %.2f >= %.2f)!" % (similarity_score, ROUTER_THRESHOLD))
-        image_b64 = capture_camera_frame()
-    else:
-        print("[ROUTE] Text-only Route (Score: %.2f < %.2f) - Skipping camera capture." % (similarity_score, ROUTER_THRESHOLD))
+        choice = sys.stdin.readline().strip().lower()
+        if choice == 'q' or choice == 'exit':
+            print("[EXIT] Exiting assistant.")
+            break
+            
+        # 2. Push to talk audio capture with AGC
+        audio_bytes = record_push_to_talk()
+        
+        # 3. Transcribe voice
+        transcript = transcribe_audio_bytes(audio_bytes)
+        if not transcript:
+            print("[WARN] No speech detected, try speaking closer to the mic.")
+            continue
+            
+        # 4. Semantic Routing: Determine if visual intent is present
+        similarity_score = calculate_vision_similarity(transcript)
+        has_visual_intent = (similarity_score >= ROUTER_THRESHOLD)
+        
         image_b64 = None
-        
-    # 6. Stream tokens from Gemma-4 & speak via Magpie TTS
-    query_gemma4_and_stream_tts(transcript, image_b64)
-    print("[DONE] Conversation turn complete.")
+        if has_visual_intent:
+            print("[ROUTE] Vision Route triggered (Score: %.2f >= %.2f)!" % (similarity_score, ROUTER_THRESHOLD))
+            image_b64 = capture_camera_frame()
+        else:
+            print("[ROUTE] Text-only Route (Score: %.2f < %.2f) - Skipping camera capture." % (similarity_score, ROUTER_THRESHOLD))
+            image_b64 = None
+            
+        # 5. Stream tokens from Gemma-4 & speak via Magpie TTS
+        query_gemma4_and_stream_tts(transcript, image_b64)
 
 if __name__ == "__main__":
     main()
