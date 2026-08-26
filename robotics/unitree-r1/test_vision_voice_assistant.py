@@ -212,8 +212,8 @@ def capture_camera_frame():
     return None
 
 def query_gemma4_vlm(user_text, image_b64):
-    """Queries vLLM Gemma-4 with multimodal image or text prompt."""
-    print("🧠 Querying Gemma-4 VLM...")
+    """Queries OpenAI-compatible Gemma-4 server with streaming tokens."""
+    print("🧠 Querying Gemma-4 VLM (Streaming)...")
     content = []
     if image_b64:
         content.append({
@@ -231,21 +231,42 @@ def query_gemma4_vlm(user_text, image_b64):
             },
             {"role": "user", "content": content}
         ],
-        "temperature": 0.0,
-        "max_tokens": 80
+        "max_tokens": 80,
+        "stream": True
     }
     
     try:
-        resp = requests.post(VLLM_URL, json=payload, timeout=15)
-        if resp.status_code == 200:
-            answer = resp.json()["choices"][0]["message"]["content"].strip()
-            print(f"💡 Gemma-4 Answer: \"{answer}\"")
+        resp = requests.post(VLLM_URL, json=payload, stream=True, timeout=15)
+        if resp.status_code != 200:
+            print(f"❌ Server Error: {resp.text}")
+            return "I am ready to assist you."
+            
+        full_response = ""
+        print("🤖 Gemma-4: ", end="", flush=True)
+        for line in resp.iter_lines():
+            if line:
+                line_str = line.decode("utf-8").strip()
+                if line_str.startswith("data: "):
+                    data_str = line_str[6:]
+                    if data_str == "[DONE]":
+                        break
+                    try:
+                        chunk_json = json.loads(data_str)
+                        delta = chunk_json["choices"][0].get("delta", {})
+                        text_chunk = delta.get("content", "")
+                        if text_chunk:
+                            print(text_chunk, end="", flush=True)
+                            full_response += text_chunk
+                    except Exception:
+                        continue
+        print()
+        answer = full_response.strip()
+        if answer:
             return answer
-        else:
-            print(f"❌ vLLM Error: {resp.text}")
     except Exception as e:
-        print(f"❌ vLLM Connection Error: {e}")
+        print(f"❌ Connection Error: {e}")
     return "I am ready to assist you."
+
 
 def main():
     print("=" * 60)
