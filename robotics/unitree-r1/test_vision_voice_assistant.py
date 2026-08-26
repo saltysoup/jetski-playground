@@ -8,7 +8,7 @@ Unitree R1: Real-Time Multimodal Vision & Voice Assistant
 - Camera: OpenCV (/dev/video0) - Triggered dynamically on Visual Intent
 - VLM: Gemma-4 Multimodal (llama-server 8000)
 - TTS: Magpie TTS v2602 (Riva gRPC 50051)
-- Speakers: Unitree AudioClient DDS Player (unitree_play_wav)
+- Speakers: Unitree AudioClient DDS Player (unitree_play_wav) - Hardware & Software Max Volume
 """
 
 import os
@@ -80,8 +80,15 @@ print("[OK] Riva ASR & TTS connected!")
 temp_wav_counter = 0
 
 def play_audio_buffer(audio_np):
-    """Plays audio through Unitree onboard DDS speakers."""
+    """Plays audio through Unitree onboard DDS speakers with hardware + software volume boost."""
     global temp_wav_counter
+    
+    # Software Peak Normalization / Gain Boost to maximize dynamic range
+    max_val = np.max(np.abs(audio_np))
+    if max_val > 0:
+        gain = min(3.5, 30000.0 / float(max_val))
+        audio_np = np.clip(audio_np * gain, -32767, 32767).astype(np.int16)
+        
     temp_wav = "/tmp/tts_chunk_%d.wav" % (temp_wav_counter % 10)
     temp_wav_counter += 1
     sf.write(temp_wav, audio_np, 16000, format='WAV', subtype='PCM_16')
