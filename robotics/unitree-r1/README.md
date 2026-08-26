@@ -15,6 +15,7 @@ End-to-end deployment guide for running **real-time multimodal AI (Nemotron Spee
 | **Microphone** | Unitree UDP Multicast Stream | `239.168.123.161:5555` (16kHz 16-bit Mono PCM) |
 | **Speakers** | Unitree DDS AudioClient | `/home/unitree/unitree_sdk2/build/bin/unitree_play_wav` |
 | **Head Camera** | Standard USB V4L2 device | `/dev/video0` (OpenCV) |
+| **Power Profile** | **15W Balanced Mode (`nvpmodel -m 2`)** | Optimized for onboard battery operation |
 | **Internet Access** | **None on robot** | Fully offline deployment via staging |
 
 ---
@@ -150,6 +151,21 @@ scp robotics/unitree-r1/test_*.py unitree@192.168.123.164:~/
 
 SSH into the robot (`ssh unitree@192.168.123.164`):
 
+### 2.1 Set Power Mode to 15W (Battery Saver)
+By default, the Jetson Orin runs in `MAXN` (uncapped power), which rapidly drains the robot's onboard battery. Switch to **15W Balanced Mode**:
+
+```bash
+# Set power profile to 15W
+sudo nvpmodel -m 2
+
+# Verify current mode
+sudo nvpmodel -q
+```
+*(Note: A system reboot applies all hardware frequency limits cleanly)*
+
+---
+
+### 2.2 Install gRPC & System Packages
 ```bash
 # 1. Install gRPC & C++ system libraries
 sudo dpkg -i ~/robot_assets/debs/*.deb
