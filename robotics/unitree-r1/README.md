@@ -1,6 +1,6 @@
 # Unitree R1 Humanoid Robot: Fully Offline Edge Deployment Guide
 
-End-to-end deployment guide for running **real-time multimodal AI (Nemotron Speech ASR + Magpie TTS v2602 + Gemma-4 2B VLM)** fully on-device on the **Unitree R1 / G1** (NVIDIA Jetson Orin NX).
+End-to-end deployment guide for running **real-time multimodal AI (Nemotron Speech ASR + Magpie TTS v2602 + Gemma-4 2B VLM via vLLM)** fully on-device on the **Unitree R1 / G1** (NVIDIA Jetson Orin NX).
 
 ---
 
@@ -8,8 +8,8 @@ End-to-end deployment guide for running **real-time multimodal AI (Nemotron Spee
 
 | Specification | Value | Notes |
 | :--- | :--- | :--- |
-| **Target Host** | Unitree R1 / G1 Humanoid Robot | Integrated NVIDIA Jetson Orin NX |
-| **Host OS** | Ubuntu 20.04 LTS (JetPack 5.x) | Python **3.8.10 (`cp38`)** |
+| **Target Host** | Unitree R1 / G1 Humanoid Robot | Integrated NVIDIA Jetson Orin NX (16GB RAM/VRAM) |
+| **Host OS** | Ubuntu 20.04 LTS (JetPack 5.1.1 / L4T R35.3.1) | Python **3.8.10 (`cp38`)** |
 | **Robot Static IP** | `192.168.123.164` | `eth10` interface |
 | **Robot SSH** | `unitree@192.168.123.164` (password: `123`) | Internal robot subnet |
 | **Microphone** | Unitree UDP Multicast Stream | `239.168.123.161:5555` (16kHz 16-bit Mono PCM) |
@@ -25,8 +25,8 @@ End-to-end deployment guide for running **real-time multimodal AI (Nemotron Spee
 
 | Stage | Action | Est. Duration |
 | :--- | :--- | :---: |
-| **Section 1** | Laptop asset downloads (models, wheels, debs) & transfer to robot | ~10–15 min |
-| **Section 2** | Robot system libraries (gRPC debs, Python wheels) installation | ~2 min |
+| **Section 1** | Laptop asset downloads (models, wheels, debs, vLLM container) & transfer to robot | ~10–15 min |
+| **Section 2** | Robot system libraries (gRPC debs, Python wheels, vLLM docker image) installation | ~3 min |
 | **Section 3.1**| Unitree DDS Audio Player compilation (`unitree_play_wav`) | ~30 sec |
 | **Section 3.2**| `NeMo-Speech.cpp` CUDA compilation (`sm_87` native) in MAXN mode | ~20–25 min |
 | **Section 3.3**| Transition power mode to 15W battery saver | ~10 sec |
@@ -62,7 +62,7 @@ sudo nvpmodel -m 2
 ## 1. Laptop Staging Preparation (Run on Laptop with Internet)
 *Estimated Time: ~10–15 minutes*
 
-Because the Unitree robot has **no internet connection**, stage all weights, wheels, and deb packages in `~/robot_assets` on your developer laptop.
+Because the Unitree robot has **no internet connection**, stage all weights, wheels, deb packages, and the vLLM Jetson container archive in `~/robot_assets` on your developer laptop.
 
 ### 1.1 Create Staging Directories
 ```bash
@@ -169,12 +169,26 @@ curl -fLO http://ports.ubuntu.com/ubuntu-ports/pool/main/c/c-ares/libc-ares-dev_
 
 ---
 
-### 1.5 Transfer Staged Assets & Test Scripts to Robot
+### 1.5 Download Jetson vLLM Container Archive (For Local Jetson Execution)
+
+Because vLLM requires ~12 CUDA C++ dependencies (`flash-attn`, `xformers`, `triton`, `bitsandbytes`) pre-built for JetPack 5 (L4T R35.3.1), download the official Jetson AI Lab vLLM container on your laptop:
+
+```bash
+# 1. Pull the ARM64 JetPack 5.1 vLLM container
+docker pull --platform linux/arm64 dusty-nv/vllm:r35.3.1
+
+# 2. Save container image to an offline tarball
+docker save dusty-nv/vllm:r35.3.1 -o ~/robot_assets/vllm_r35.3.1.tar
+```
+
+---
+
+### 1.6 Transfer Staged Assets & Test Scripts to Robot
 
 Connect your laptop to the robot network (`192.168.123.x`) and SCP everything over:
 
 ```bash
-# Transfer assets (models, wheels, debs)
+# Transfer assets (models, wheels, debs, vLLM container)
 scp -r ~/robot_assets unitree@192.168.123.164:~/
 
 # Transfer standalone test scripts
@@ -184,7 +198,7 @@ scp robotics/unitree-r1/test_*.py unitree@192.168.123.164:~/
 ---
 
 ## 2. Jetson Orin Environment Setup (Offline on Robot)
-*Estimated Time: ~2 minutes*
+*Estimated Time: ~3 minutes*
 
 SSH into the robot (`ssh unitree@192.168.123.164`):
 
@@ -217,6 +231,19 @@ pip3 install --no-index --find-links=/home/unitree/robot_assets/wheels \
   cmake ninja protobuf sounddevice soundfile requests nvidia-riva-client numpy
 
 export PATH=/home/unitree/.local/bin:/usr/local/cuda/bin:$PATH
+```
+
+---
+
+### 2.3 Load Offline vLLM Container Image
+Load the pre-built Jetson vLLM image into the robot's local Docker daemon:
+
+```bash
+# Load offline container image
+sudo docker load -i /home/unitree/robot_assets/vllm_r35.3.1.tar
+
+# Verify image is loaded
+sudo docker images | grep vllm
 ```
 
 ---
@@ -287,7 +314,7 @@ python3 ~/test_audio_loopback.py
 
 ### Test 2: Full Multimodal Vision & Voice Assistant
 
-#### Terminal 1: Launch Riva Speech Server
+#### Terminal 1: Launch Riva Speech Server (ASR + TTS)
 ```bash
 export LD_LIBRARY_PATH=/home/unitree/NeMo-Speech.cpp/build-cuda/bin:$LD_LIBRARY_PATH
 /home/unitree/NeMo-Speech.cpp/build-cuda/bin/riva_server \
@@ -298,17 +325,21 @@ export LD_LIBRARY_PATH=/home/unitree/NeMo-Speech.cpp/build-cuda/bin:$LD_LIBRARY_
   --bind 127.0.0.1:50051
 ```
 
-#### Terminal 2: Launch vLLM Gemma-4 Server (Speculative MTP Decoding)
+#### Terminal 2: Launch vLLM Gemma-4 Server Directly on Jetson (CUDA Accelerated)
 ```bash
-vllm serve /home/unitree/robot_assets/models/gemma-4-E2B-it \
-  --trust-remote-code \
-  --max-model-len 1024 \
-  --max-num-seqs 1 \
-  --max-num-batched-tokens 512 \
-  --gpu-memory-utilization 0.5 \
-  --speculative-config '{"method":"mtp","model":"/home/unitree/robot_assets/models/gemma-4-E2B-it-assistant","num_speculative_tokens":1}' \
-  --override-generation-config '{"temperature": 1.0, "top_p": 0.95, "top_k": 64}' \
-  --no-async-scheduling
+sudo docker run --runtime nvidia --network host -it --rm \
+  -v /home/unitree/robot_assets/models:/models \
+  dusty-nv/vllm:r35.3.1 \
+  vllm serve /models/gemma-4-E2B-it \
+    --trust-remote-code \
+    --max-model-len 1024 \
+    --max-num-seqs 1 \
+    --max-num-batched-tokens 512 \
+    --gpu-memory-utilization 0.5 \
+    --speculative-config '{"method":"mtp","model":"/models/gemma-4-E2B-it-assistant","num_speculative_tokens":1}' \
+    --override-generation-config '{"temperature": 1.0, "top_p": 0.95, "top_k": 64}' \
+    --no-async-scheduling \
+    --port 8000
 ```
 
 #### Terminal 3: Run Interactive Assistant
@@ -320,7 +351,7 @@ python3 ~/test_vision_voice_assistant.py
   2. You speak a question (e.g., *"What is in front of you?"*).
   3. Nemotron ASR transcribes your speech.
   4. Unitree head camera captures the live scene.
-  5. Gemma-4 generates a concise 1-sentence answer.
+  5. Gemma-4 generates a concise 1-sentence answer locally on the Jetson Orin.
   6. Magpie TTS speaks the response through the robot's onboard speakers.
 
 ---
@@ -343,10 +374,10 @@ Instructions for tracking memory consumption across co-located models on the Jet
 ---
 
 ### 2. GPU Memory Utilization Rate Tuning (`--gpu-memory-utilization`)
-* **Goal**: Determine the maximum stable ceiling for vLLM memory allocation when deployed alongside `riva_server` and the Unitree RL locomotion policy.
+* **Goal**: Determine the maximum stable ceiling for vLLM memory allocation when co-located with `riva_server` and the Unitree RL locomotion policy.
 * **Test Plan**:
   * Benchmark `--gpu-memory-utilization 0.50`, `0.55`, `0.60`, and `0.65`.
-  * Verify that system memory pressure does not trigger OOM killer during simultaneous speech synthesis, camera frame processing, and locomotion commands.
+  * Verify that memory pressure does not trigger the OOM killer during simultaneous speech synthesis, camera frame processing, and locomotion commands.
 
 ---
 
