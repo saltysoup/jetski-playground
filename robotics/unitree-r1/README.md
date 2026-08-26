@@ -1,6 +1,6 @@
 # Unitree R1 Humanoid Robot: Fully Offline Edge Deployment Guide
 
-End-to-end deployment guide for running **real-time multimodal AI (Nemotron Speech ASR + Magpie TTS v2602 + Gemma-4 2B VLM)** fully on-device on the **Unitree R1 / G1** (Jetson Orin NX).
+End-to-end deployment guide for running **real-time multimodal AI (Nemotron Speech ASR + Magpie TTS v2602 + Gemma-4 2B VLM)** fully on-device on the **Unitree R1 / G1** (NVIDIA Jetson Orin NX).
 
 ---
 
@@ -19,16 +19,80 @@ End-to-end deployment guide for running **real-time multimodal AI (Nemotron Spee
 
 ---
 
-## 1. Laptop Staging Preparation (With Internet)
+## 1. Laptop Staging Preparation (Run on Laptop with Internet)
 
-All dependencies and weights are staged on the developer laptop and copied via SCP.
+Because the Unitree robot has **no internet connection**, stage all weights, wheels, and deb packages in `~/robot_assets` on your developer laptop.
 
-### 1.1 Download Compatible Python 3.8 (`cp38`) Wheels & Debs
+### 1.1 Create Staging Directories
+```bash
+mkdir -p ~/robot_assets/wheels \
+         ~/robot_assets/debs \
+         ~/robot_assets/models/asr \
+         ~/robot_assets/models/magpie-tts/extracted \
+         ~/robot_assets/models/nano-codec \
+         ~/robot_assets/models/gemma-4-E2B-it \
+         ~/robot_assets/models/gemma-4-E2B-it-assistant
+```
+
+### 1.2 Download All Models
+
+#### A. Nemotron Streaming ASR (Speech-to-Text)
+```bash
+huggingface-cli download \
+  nvidia/nemotron-speech-streaming-en-0.6b-gguf \
+  nemotron-speech-streaming-en-0.6b.q8_0.gguf \
+  --local-dir ~/robot_assets/models/asr
+```
+
+#### B. Magpie Multilingual TTS v2602 (Text-to-Speech)
+```bash
+huggingface-cli download \
+  nvidia/magpie-tts-357m-multilingual-gguf \
+  magpie_tts_multilingual_357m.v2602.f16.gguf \
+  --local-dir ~/robot_assets/models/magpie-tts
+```
+
+#### C. Nemo NanoCodec 22kHz Decoder
+```bash
+huggingface-cli download \
+  nvidia/nemo-nano-codec-22khz-1.89kbps-21.5fps-gguf \
+  nemo_nano_codec_22khz_1.89kbps_21.5fps.decoder.f16.gguf \
+  --local-dir ~/robot_assets/models/nano-codec
+```
+
+#### D. Magpie TTS Tokenizer Extraction
+```bash
+# Download the .nemo archive to extract tokenizers
+huggingface-cli download \
+  nvidia/magpie_tts_multilingual_357m \
+  magpie_tts_multilingual_357m.nemo \
+  --local-dir ~/robot_assets/models/magpie-tts
+
+# Extract tokenizer files into ~/robot_assets/models/magpie-tts/extracted/
+tar -xf ~/robot_assets/models/magpie-tts/magpie_tts_multilingual_357m.nemo \
+  -C ~/robot_assets/models/magpie-tts/extracted/
+```
+
+#### E. Gemma-4 2B Multimodal VLM & Draft Assistant
+```bash
+# Download base Gemma-4 2B Multimodal model
+huggingface-cli download \
+  google/gemma-4-E2B-it \
+  --local-dir ~/robot_assets/models/gemma-4-E2B-it
+
+# Download MTP draft assistant for accelerated speculative decoding
+huggingface-cli download \
+  google/gemma-4-E2B-it-assistant \
+  --local-dir ~/robot_assets/models/gemma-4-E2B-it-assistant
+```
+
+---
+
+### 1.3 Download Offline Wheels (Python 3.8 / `cp38` `aarch64`)
+
+The Jetson Orin runs Ubuntu 20.04 with **Python 3.8.10 (`cp38`)**. Download precompiled binary wheels for ARM64:
 
 ```bash
-mkdir -p ~/robot_assets/wheels ~/robot_assets/debs ~/robot_assets/models/asr ~/robot_assets/models/magpie-tts ~/robot_assets/models/nano-codec ~/robot_assets/models/gemma-4-E2B-it
-
-# Download Python 3.8 cp38 aarch64 binary wheels
 pip download \
   --only-binary=:all: \
   --platform manylinux2014_aarch64 \
@@ -47,8 +111,15 @@ pip download \
   "nvidia-riva-client==2.16.0" \
   "cmake==4.4.2" \
   "ninja==1.13.0"
+```
 
-# Download Ubuntu 20.04 Focal arm64 gRPC debs
+---
+
+### 1.4 Download Ubuntu 20.04 (Focal) gRPC DEB Packages
+
+These allow compiling the native C++ `riva_server` without an active internet connection on the robot:
+
+```bash
 cd ~/robot_assets/debs
 curl -fLO http://ports.ubuntu.com/ubuntu-ports/pool/universe/g/grpc/protobuf-compiler-grpc_1.16.1-1ubuntu5_arm64.deb
 curl -fLO http://ports.ubuntu.com/ubuntu-ports/pool/universe/g/grpc/libgrpc++-dev_1.16.1-1ubuntu5_arm64.deb
@@ -59,10 +130,17 @@ curl -fLO http://ports.ubuntu.com/ubuntu-ports/pool/main/c/c-ares/libc-ares2_1.1
 curl -fLO http://ports.ubuntu.com/ubuntu-ports/pool/main/c/c-ares/libc-ares-dev_1.15.0-1build1_arm64.deb
 ```
 
-### 1.2 Transfer Assets to the Robot
+---
+
+### 1.5 Transfer Staged Assets & Test Scripts to Robot
+
+Connect your laptop to the robot network (`192.168.123.x`) and SCP everything over:
 
 ```bash
+# Transfer assets (models, wheels, debs)
 scp -r ~/robot_assets unitree@192.168.123.164:~/
+
+# Transfer standalone test scripts
 scp robotics/unitree-r1/test_*.py unitree@192.168.123.164:~/
 ```
 
@@ -73,7 +151,7 @@ scp robotics/unitree-r1/test_*.py unitree@192.168.123.164:~/
 SSH into the robot (`ssh unitree@192.168.123.164`):
 
 ```bash
-# 1. Install gRPC & C++ libraries
+# 1. Install gRPC & C++ system libraries
 sudo dpkg -i ~/robot_assets/debs/*.deb
 
 # 2. Install Python 3.8 packages & modern CMake/Ninja
@@ -98,9 +176,10 @@ make unitree_play_wav
 ```bash
 cd /home/unitree/NeMo-Speech.cpp
 
-# Apply CUDA GGML patches & build SentencePiece
+# Apply CUDA GGML patches
 bash scripts/apply-ggml-patches.sh
 
+# Configure CMake with CUDA, gRPC, and static SentencePiece
 cmake -B build-cuda -G Ninja \
   -DGGML_CUDA=ON \
   -DNEMO_SPEECH_BUILD_GRPC=ON \
@@ -110,6 +189,7 @@ cmake -B build-cuda -G Ninja \
   -DSENTENCEPIECE_INCLUDE_DIR=/home/unitree/NeMo-Speech.cpp/.deps/sentencepiece/include \
   -DCMAKE_BUILD_TYPE=Release
 
+# Build riva_server
 ninja -C build-cuda riva_server -j$(nproc)
 ```
 
@@ -131,9 +211,9 @@ python3 ~/test_audio_loopback.py
 #### Terminal 1: Launch Riva Speech Server
 ```bash
 /home/unitree/NeMo-Speech.cpp/build-cuda/bin/riva_server \
-  --asr.model.path /home/unitree/robot_assets/models/nemotron-speech-streaming-en-0.6b.q8_0.gguf \
-  --tts.magpie-model /home/unitree/robot_assets/models/magpie_tts_multilingual_357m.v2602.f16.gguf \
-  --tts.codec-model /home/unitree/robot_assets/models/nemo_nano_codec_22khz_1.89kbps_21.5fps.decoder.f16.gguf \
+  --asr.model.path /home/unitree/robot_assets/models/asr/nemotron-speech-streaming-en-0.6b.q8_0.gguf \
+  --tts.magpie-model /home/unitree/robot_assets/models/magpie-tts/magpie_tts_multilingual_357m.v2602.f16.gguf \
+  --tts.codec-model /home/unitree/robot_assets/models/nano-codec/nemo_nano_codec_22khz_1.89kbps_21.5fps.decoder.f16.gguf \
   --tts.tokenizer-model-dir /home/unitree/robot_assets/models/magpie-tts/extracted \
   --bind 127.0.0.1:50051
 ```
@@ -142,6 +222,8 @@ python3 ~/test_audio_loopback.py
 ```bash
 python3 -m vllm.entrypoints.openai.api_server \
   --model /home/unitree/robot_assets/models/gemma-4-E2B-it \
+  --speculative-model /home/unitree/robot_assets/models/gemma-4-E2B-it-assistant \
+  --num-speculative-tokens 3 \
   --port 8000 \
   --gpu-memory-utilization 0.60 \
   --max-model-len 2048
