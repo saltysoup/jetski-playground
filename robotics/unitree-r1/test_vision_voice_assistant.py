@@ -6,9 +6,9 @@ Unitree R1: Real-Time Multimodal Vision & Voice Assistant
 - ASR: Nemotron ASR (Riva gRPC 50051)
 - Speculative Perception: Concurrent Background Camera Capture (0ms Perceived Latency)
 - Semantic Router: 100% Offline MiniLM-L6-v2 Dense Intent Classifier
-- Camera: Forward Head Camera (/dev/video2) exclusively
-- VLM: Gemma-4 Multimodal (llama-server 8000)
-- TTS: Magpie TTS v2602 (Riva gRPC 50051) - Sentence-Pipelined Low-Latency Streaming
+- Camera: Forward Head Camera (/dev/video2) exclusively (Fresh Frames & No Stale Cache)
+- VLM: Gemma-4 Multimodal (llama-server 8000 --cache-ram 0)
+- TTS: Magpie TTS v2602 (Riva gRPC 50051) - True Multi-Threaded Pipelined Streaming
 - Speakers: Unitree AudioClient DDS Player (unitree_play_wav) - Hardware 100% Volume
 """
 
@@ -66,7 +66,6 @@ class MiniLMEncoder:
                 self.sep_id = self.vocab.get('[SEP]', 102)
                 print("[ROUTER] MiniLM Dense Embedding Engine initialized.")
             except Exception as e:
-                print("[WARN] MiniLM ONNX init skipped (%s), using Fast Semantic Intent Classifier." % e)
                 self.session = None
 
     def tokenize(self, text):
@@ -172,43 +171,78 @@ riva_asr = riva.client.ASRService(riva_auth)
 riva_tts = riva.client.SpeechSynthesisService(riva_auth)
 print("[OK] Riva ASR & TTS connected!")
 
+# --- 3. Multi-Threaded Pipelined TTS Architecture ---
+synthesis_queue = queue.Queue()
+playback_queue = queue.Queue()
 temp_wav_counter = 0
 
-def play_audio_buffer(audio_np):
-    """Plays audio through Unitree onboard DDS speakers with hardware + software volume boost."""
+def tts_synthesizer_worker():
+    """Background worker that continuously synthesizes queued text chunks into audio buffers."""
+    while True:
+        text_chunk = synthesis_queue.get()
+        if text_chunk is None:
+            playback_queue.put(None)
+            synthesis_queue.task_done()
+            break
+        try:
+            clean_text = text_chunk.strip()
+            if clean_text and len(clean_text) >= 2:
+                resp = riva_tts.synthesize(
+                    text=clean_text,
+                    voice_name="jason",
+                    language_code="en-US",
+                    sample_rate_hz=16000
+                )
+                if resp.audio:
+                    audio_np = np.frombuffer(resp.audio, dtype=np.int16)
+                    # Software Peak Normalization / Gain Boost
+                    max_val = np.max(np.abs(audio_np))
+                    if max_val > 0:
+                        gain = min(3.5, 30000.0 / float(max_val))
+                        audio_np = np.clip(audio_np * gain, -32767, 32767).astype(np.int16)
+                    playback_queue.put(audio_np)
+        except Exception as e:
+            print("\n[ERROR] Synthesis worker error for '%s': %s" % (text_chunk, e))
+        finally:
+            synthesis_queue.task_done()
+
+def audio_playback_worker():
+    """Background worker that continuously plays audio buffers through Unitree DDS speakers."""
     global temp_wav_counter
-    
-    # Software Peak Normalization / Gain Boost to maximize dynamic range
-    max_val = np.max(np.abs(audio_np))
-    if max_val > 0:
-        gain = min(3.5, 30000.0 / float(max_val))
-        audio_np = np.clip(audio_np * gain, -32767, 32767).astype(np.int16)
-        
-    temp_wav = "/tmp/tts_chunk_%d.wav" % (temp_wav_counter % 10)
-    temp_wav_counter += 1
-    sf.write(temp_wav, audio_np, 16000, format='WAV', subtype='PCM_16')
-    if os.path.exists(PLAYER_BIN):
-        subprocess.run([PLAYER_BIN, temp_wav, NET_INTERFACE_NAME], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    while True:
+        audio_np = playback_queue.get()
+        if audio_np is None:
+            playback_queue.task_done()
+            break
+        try:
+            temp_wav = "/tmp/tts_chunk_%d.wav" % (temp_wav_counter % 10)
+            temp_wav_counter += 1
+            sf.write(temp_wav, audio_np, 16000, format='WAV', subtype='PCM_16')
+            if os.path.exists(PLAYER_BIN):
+                subprocess.run([PLAYER_BIN, temp_wav, NET_INTERFACE_NAME], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        except Exception as e:
+            print("\n[ERROR] Playback worker error: %s" % e)
+        finally:
+            playback_queue.task_done()
 
-def speak_via_riva(text_to_speak):
-    """Synthesizes text via Magpie TTS and plays through the robot's speakers."""
-    clean_text = text_to_speak.strip()
-    if not clean_text or len(clean_text) < 2:
-        return
-    try:
-        resp = riva_tts.synthesize(
-            text=clean_text,
-            voice_name="jason",
-            language_code="en-US",
-            sample_rate_hz=16000
-        )
-        if resp.audio:
-            audio_np = np.frombuffer(resp.audio, dtype=np.int16)
-            play_audio_buffer(audio_np)
-    except Exception as e:
-        print("\n[ERROR] TTS Error for '%s': %s" % (clean_text, e))
+threading.Thread(target=tts_synthesizer_worker, daemon=True).start()
+threading.Thread(target=audio_playback_worker, daemon=True).start()
 
-# --- 3. Speculative Zero-Latency Camera Capture System ---
+def queue_text_for_streaming_tts(text_chunk):
+    """Enqueues a text chunk to immediately begin TTS synthesis in background."""
+    synthesis_queue.put(text_chunk)
+
+def wait_for_all_tts_to_finish():
+    """Waits until all queued synthesis and audio playbacks are complete."""
+    synthesis_queue.join()
+    playback_queue.join()
+
+def speak_direct_via_riva(text_to_speak):
+    """Synchronous speech for standalone announcements."""
+    queue_text_for_streaming_tts(text_to_speak)
+    wait_for_all_tts_to_finish()
+
+# --- 4. Speculative Zero-Latency Camera Capture System ---
 speculative_image_b64 = None
 speculative_cam_thread = None
 
@@ -338,7 +372,7 @@ def transcribe_audio_bytes(audio_bytes):
     return ""
 
 def query_gemma4_and_stream_tts(user_text, image_b64=None):
-    """Streams tokens from Gemma-4 and speaks sentence chunks via Magpie TTS."""
+    """Streams tokens from Gemma-4 and dispatches sentence chunks to the parallel TTS pipeline."""
     if image_b64:
         print("[GEMMA] Sending Multimodal Query (Image + Text)...")
     else:
@@ -369,7 +403,7 @@ def query_gemma4_and_stream_tts(user_text, image_b64=None):
         resp = requests.post(VLLM_URL, json=payload, stream=True, timeout=15)
         if resp.status_code != 200:
             print("[ERROR] Server Error: %s" % resp.text)
-            speak_via_riva("I am ready to assist you.")
+            speak_direct_via_riva("I am ready to assist you.")
             return
             
         full_text = ""
@@ -392,34 +426,37 @@ def query_gemma4_and_stream_tts(user_text, image_b64=None):
                             current_sentence += text_chunk
                             full_text += text_chunk
                             
-                            # Synthesize and speak per sentence boundary
-                            if any(p in text_chunk for p in [".", "?", "!"]) and len(current_sentence.strip()) > 8:
-                                speak_via_riva(current_sentence.strip())
+                            # Early chunk trigger: As soon as punctuation is detected, enqueue chunk for synthesis!
+                            if any(p in text_chunk for p in [".", "?", "!", "\n"]) and len(current_sentence.strip()) > 6:
+                                queue_text_for_streaming_tts(current_sentence.strip())
                                 current_sentence = ""
                     except Exception:
                         continue
                         
         print()
-        # Speak any remainder
+        # Enqueue any remaining words
         if current_sentence.strip():
-            speak_via_riva(current_sentence.strip())
+            queue_text_for_streaming_tts(current_sentence.strip())
         elif not full_text.strip():
-            speak_via_riva("I see what is in front of me.")
+            queue_text_for_streaming_tts("I see what is in front of me.")
+            
+        # Wait for pipelined audio playback to complete cleanly
+        wait_for_all_tts_to_finish()
             
     except Exception as e:
         print("[ERROR] Connection Error: %s" % e)
-        speak_via_riva("I encountered an error connecting to my intelligence engine.")
+        speak_direct_via_riva("I encountered an error connecting to my intelligence engine.")
 
 def main():
     print("=" * 60)
-    print("[SYSTEM] Unitree R1 Speculative Multimodal Assistant")
+    print("[SYSTEM] Unitree R1 Pipelined Streaming Multimodal Assistant")
     print("[PERCEPTION] MiniLM Semantic Router + Speculative Forward Camera (/dev/video2)")
     print("=" * 60)
     
     ROUTER_THRESHOLD = 0.35
     
     # 1. Robot greeting
-    speak_via_riva("Ask me what I am seeing, or ask any general question.")
+    speak_direct_via_riva("Ask me what I am seeing, or ask any general question.")
     
     while True:
         print("\n" + "-" * 50)
