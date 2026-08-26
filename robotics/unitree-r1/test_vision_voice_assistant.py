@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Unitree R1: Low-Latency Multimodal Vision & Voice Assistant
+Unitree R1: Real-Time Multimodal Vision & Voice Assistant
 - Microphone: Unitree UDP Multicast (239.168.123.161:5555)
 - ASR: Nemotron ASR (Riva gRPC 50051)
 - Semantic Router: 100% Offline Fast Semantic Intent Router
 - Camera: OpenCV (/dev/video0) - Triggered dynamically on Visual Intent
 - VLM: Gemma-4 Multimodal (llama-server 8000)
-- TTS: Magpie TTS v2602 (Riva gRPC 50051) - Sentence-Pipelined Low-Latency Streaming
+- TTS: Magpie TTS v2602 (Riva gRPC 50051)
 - Speakers: Unitree AudioClient DDS Player (unitree_play_wav)
 """
 
@@ -15,12 +15,10 @@ import os
 import sys
 import time
 import json
-import queue
 import base64
 import socket
 import struct
 import warnings
-import threading
 import subprocess
 
 warnings.filterwarnings("ignore")
@@ -40,33 +38,7 @@ MCAST_PORT = 5555
 NET_INTERFACE_NAME = "eth10"
 PLAYER_BIN = "/home/unitree/unitree_sdk2/build/bin/unitree_play_wav"
 
-# --- Audio Playback Background Worker ---
-tts_audio_queue = queue.Queue()
-temp_wav_counter = 0
-
-def audio_playback_worker():
-    """Background worker that pulls synthesized TTS audio buffers and plays them through robot speakers."""
-    global temp_wav_counter
-    while True:
-        audio_np = tts_audio_queue.get()
-        if audio_np is None:
-            break
-        try:
-            temp_wav = "/tmp/tts_chunk_%d.wav" % (temp_wav_counter % 10)
-            temp_wav_counter += 1
-            sf.write(temp_wav, audio_np, 16000, format='WAV', subtype='PCM_16')
-            if os.path.exists(PLAYER_BIN):
-                subprocess.run([PLAYER_BIN, temp_wav, NET_INTERFACE_NAME], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        except Exception as e:
-            print("[ERROR] Playback error: %s" % e)
-        finally:
-            tts_audio_queue.task_done()
-
-playback_thread = threading.Thread(target=audio_playback_worker)
-playback_thread.daemon = True
-playback_thread.start()
-
-# --- 1. Pure-Python Fast N-Gram Semantic Intent Router ---
+# --- 1. Pure-Python Fast Semantic Intent Router ---
 VISION_KEYWORDS = {
     "see": 1.5, "look": 1.5, "holding": 1.8, "color": 1.5, "view": 1.2,
     "front": 1.3, "desk": 1.2, "table": 1.2, "object": 1.4, "objects": 1.4,
@@ -96,8 +68,7 @@ def calculate_vision_similarity(text):
         if w in VISION_KEYWORDS:
             score += VISION_KEYWORDS[w]
             
-    normalized_score = min(1.0, score / 2.0)
-    return normalized_score
+    return min(1.0, score / 2.0)
 
 # --- 2. Initialize Riva gRPC Client ---
 print("[RIVA] Connecting to Riva Speech Server at %s..." % RIVA_URI)
@@ -106,9 +77,20 @@ riva_asr = riva.client.ASRService(riva_auth)
 riva_tts = riva.client.SpeechSynthesisService(riva_auth)
 print("[OK] Riva ASR & TTS connected!")
 
-def synthesize_and_queue_sentence(sentence_text):
-    """Synthesizes a single sentence chunk via NeMo TTS and queues for immediate playback."""
-    clean_text = sentence_text.strip()
+temp_wav_counter = 0
+
+def play_audio_buffer(audio_np):
+    """Plays audio through Unitree onboard DDS speakers."""
+    global temp_wav_counter
+    temp_wav = "/tmp/tts_chunk_%d.wav" % (temp_wav_counter % 10)
+    temp_wav_counter += 1
+    sf.write(temp_wav, audio_np, 16000, format='WAV', subtype='PCM_16')
+    if os.path.exists(PLAYER_BIN):
+        subprocess.run([PLAYER_BIN, temp_wav, NET_INTERFACE_NAME], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+def speak_via_riva(text_to_speak):
+    """Synthesizes text via Magpie TTS and plays through the robot's speakers."""
+    clean_text = text_to_speak.strip()
     if not clean_text or len(clean_text) < 2:
         return
     try:
@@ -120,14 +102,9 @@ def synthesize_and_queue_sentence(sentence_text):
         )
         if resp.audio:
             audio_np = np.frombuffer(resp.audio, dtype=np.int16)
-            tts_audio_queue.put(audio_np)
+            play_audio_buffer(audio_np)
     except Exception as e:
         print("\n[ERROR] TTS Error for '%s': %s" % (clean_text, e))
-
-def speak_direct_via_riva(text):
-    """Fallback synchronous speech."""
-    synthesize_and_queue_sentence(text)
-    tts_audio_queue.join()
 
 def record_multicast_audio(duration_sec=4, sample_rate=16000):
     """Captures raw 16kHz 16-bit Mono PCM audio directly from Unitree multicast socket."""
@@ -202,8 +179,8 @@ def capture_camera_frame():
     return None
 
 def query_gemma4_and_stream_tts(user_text, image_b64=None):
-    """Streams tokens from Gemma-4, chunks into sentences, and immediately dispatches each sentence to Magpie TTS."""
-    print("[GEMMA] Querying Gemma-4 VLM (Sentence-Pipelined Streaming)...")
+    """Streams tokens from Gemma-4 and speaks sentence chunks via Magpie TTS."""
+    print("[GEMMA] Querying Gemma-4 VLM (Streaming)...")
     content = []
     if image_b64:
         content.append({
@@ -229,9 +206,10 @@ def query_gemma4_and_stream_tts(user_text, image_b64=None):
         resp = requests.post(VLLM_URL, json=payload, stream=True, timeout=15)
         if resp.status_code != 200:
             print("[ERROR] Server Error: %s" % resp.text)
-            speak_direct_via_riva("I am ready to assist you.")
+            speak_via_riva("I am ready to assist you.")
             return
             
+        full_text = ""
         current_sentence = ""
         print("[ROBOT] Gemma-4: ", end="", flush=True)
         
@@ -249,47 +227,35 @@ def query_gemma4_and_stream_tts(user_text, image_b64=None):
                         if text_chunk:
                             print(text_chunk, end="", flush=True)
                             current_sentence += text_chunk
+                            full_text += text_chunk
                             
-                            # As soon as sentence punctuation arrives, start TTS on a background thread!
-                            if any(p in text_chunk for p in [".", "?", "!", "\n"]):
-                                sentence_to_speak = current_sentence.strip()
-                                if len(sentence_to_speak) > 8:
-                                    t = threading.Thread(
-                                        target=synthesize_and_queue_sentence,
-                                        args=(sentence_to_speak,)
-                                    )
-                                    t.daemon = True
-                                    t.start()
-                                    current_sentence = ""
+                            # Synthesize and speak per sentence boundary
+                            if any(p in text_chunk for p in [".", "?", "!"]) and len(current_sentence.strip()) > 8:
+                                speak_via_riva(current_sentence.strip())
+                                current_sentence = ""
                     except Exception:
                         continue
                         
         print()
-        # Flush any remaining text in buffer
+        # Speak any remainder
         if current_sentence.strip():
-            t = threading.Thread(
-                target=synthesize_and_queue_sentence,
-                args=(current_sentence.strip(),)
-            )
-            t.daemon = True
-            t.start()
+            speak_via_riva(current_sentence.strip())
+        elif not full_text.strip():
+            speak_via_riva("I see what is in front of me.")
             
-        # Wait for all sentence audio playback chunks to complete
-        tts_audio_queue.join()
-        
     except Exception as e:
         print("[ERROR] Connection Error: %s" % e)
-        speak_direct_via_riva("I encountered an error connecting to my intelligence engine.")
+        speak_via_riva("I encountered an error connecting to my intelligence engine.")
 
 def main():
     print("=" * 60)
-    print("[SYSTEM] Unitree R1 Streaming Assistant (Semantic + Nemotron + Magpie)")
+    print("[SYSTEM] Unitree R1 Multimodal Assistant (ASR + Gemma-4 + Magpie)")
     print("=" * 60)
     
     ROUTER_THRESHOLD = 0.35
     
     # 1. Robot says initial prompt
-    speak_direct_via_riva("Ask me what I am seeing, or ask any general question")
+    speak_via_riva("Ask me what I am seeing, or ask any general question")
     
     # 2. Wait 1 second
     print("[WAIT] Waiting 1 second...")
@@ -316,11 +282,9 @@ def main():
         print("[ROUTE] Text-only Route (Score: %.2f < %.2f) - Skipping camera capture." % (similarity_score, ROUTER_THRESHOLD))
         image_b64 = None
         
-    # 6. Stream tokens from Gemma-4 & pipelined streaming to Magpie TTS
+    # 6. Stream tokens from Gemma-4 & speak via Magpie TTS
     query_gemma4_and_stream_tts(transcript, image_b64)
-    
-    # Clean exit
-    os._exit(0)
+    print("[DONE] Conversation turn complete.")
 
 if __name__ == "__main__":
     main()
