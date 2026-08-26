@@ -199,17 +199,14 @@ def transcribe_audio_bytes(audio_bytes):
         print("[ERROR] ASR Error: %s" % e)
     return ""
 
-def capture_camera_frame(dev_id=CAMERA_DEVICE_INDEX):
-    """Captures a fresh live snapshot from the forward-facing head camera."""
+def capture_camera_frame():
+    """Captures a fresh live snapshot exclusively from the forward-facing head camera (/dev/video2)."""
     import cv2
-    print("[CAMERA] Capturing forward view from head camera (/dev/video%d)..." % dev_id)
-    cap = cv2.VideoCapture(dev_id, cv2.CAP_V4L2)
+    print("[CAMERA] Capturing forward view from head camera (/dev/video2)...")
+    cap = cv2.VideoCapture(2, cv2.CAP_V4L2)
     if not cap.isOpened():
-        print("[WARN] Could not open /dev/video%d, trying fallback /dev/video0..." % dev_id)
-        cap = cv2.VideoCapture(0, cv2.CAP_V4L2)
-        if not cap.isOpened():
-            print("[ERROR] Could not open any camera device")
-            return None
+        print("[ERROR] Could not open forward head camera /dev/video2")
+        return None
     
     # Flush 15 frames to discard any stale cached buffer
     ret, frame = None, None
@@ -222,6 +219,7 @@ def capture_camera_frame(dev_id=CAMERA_DEVICE_INDEX):
         small = cv2.resize(frame, (384, 384), interpolation=cv2.INTER_AREA)
         _, buffer = cv2.imencode('.jpg', small, [int(cv2.IMWRITE_JPEG_QUALITY), 85])
         return base64.b64encode(buffer).decode('utf-8')
+    print("[ERROR] Failed to read frame from /dev/video2")
     return None
 
 def query_gemma4_and_stream_tts(user_text, image_b64=None):
@@ -329,7 +327,7 @@ def main():
         image_b64 = None
         if has_visual_intent:
             print("[ROUTE] Vision Route triggered (Score: %.2f >= %.2f)!" % (similarity_score, ROUTER_THRESHOLD))
-            image_b64 = capture_camera_frame(CAMERA_DEVICE_INDEX)
+            image_b64 = capture_camera_frame()
         else:
             print("[ROUTE] Text-only Route (Score: %.2f < %.2f) - Skipping camera capture." % (similarity_score, ROUTER_THRESHOLD))
             image_b64 = None
