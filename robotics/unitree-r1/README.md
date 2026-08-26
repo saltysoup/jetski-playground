@@ -62,7 +62,7 @@ sudo nvpmodel -m 2
 ## 1. Laptop Staging Preparation (Run on Laptop with Internet)
 *Estimated Time: ~10–15 minutes*
 
-Because the Unitree robot has **no internet connection**, stage all weights, wheels, deb packages, and the vLLM Jetson container archive in `~/robot_assets` on your developer laptop.
+Because the Unitree robot has **no internet connection**, stage all weights, wheels, deb packages, and the vLLM ARM64 container archive in `~/robot_assets` on your developer laptop.
 
 ### 1.1 Create Staging Directories
 ```bash
@@ -169,16 +169,19 @@ curl -fLO http://ports.ubuntu.com/ubuntu-ports/pool/main/c/c-ares/libc-ares-dev_
 
 ---
 
-### 1.5 Download Jetson vLLM Container Archive (For Local Jetson Execution)
+### 1.5 Download vLLM ARM64 Container Archive (For Local Jetson Execution)
 
-Because vLLM requires ~12 CUDA C++ dependencies (`flash-attn`, `xformers`, `triton`, `bitsandbytes`) pre-built for JetPack 5 (L4T R35.3.1), download the official Jetson AI Lab vLLM container on your laptop:
+On macOS with Colima/Docker, pull the official ARM64 vLLM OpenAI image and export it to an offline tarball:
 
 ```bash
-# 1. Pull the ARM64 JetPack 5.1 vLLM container
-docker pull --platform linux/arm64 dusty-nv/vllm:r35.3.1
+# 1. Switch context to colima (if using Colima on Mac)
+docker context use colima
 
-# 2. Save container image to an offline tarball
-docker save dusty-nv/vllm:r35.3.1 -o ~/robot_assets/vllm_r35.3.1.tar
+# 2. Pull official ARM64 vLLM image
+docker pull --platform linux/arm64 vllm/vllm-openai:latest
+
+# 3. Save container image to an offline tarball
+docker save vllm/vllm-openai:latest -o ~/robot_assets/vllm_arm64.tar
 ```
 
 ---
@@ -236,11 +239,11 @@ export PATH=/home/unitree/.local/bin:/usr/local/cuda/bin:$PATH
 ---
 
 ### 2.3 Load Offline vLLM Container Image
-Load the pre-built Jetson vLLM image into the robot's local Docker daemon:
+Load the vLLM image into the robot's local Docker daemon:
 
 ```bash
 # Load offline container image
-sudo docker load -i /home/unitree/robot_assets/vllm_r35.3.1.tar
+sudo docker load -i /home/unitree/robot_assets/vllm_arm64.tar
 
 # Verify image is loaded
 sudo docker images | grep vllm
@@ -329,7 +332,7 @@ export LD_LIBRARY_PATH=/home/unitree/NeMo-Speech.cpp/build-cuda/bin:$LD_LIBRARY_
 ```bash
 sudo docker run --runtime nvidia --network host -it --rm \
   -v /home/unitree/robot_assets/models:/models \
-  dusty-nv/vllm:r35.3.1 \
+  vllm/vllm-openai:latest \
   vllm serve /models/gemma-4-E2B-it \
     --trust-remote-code \
     --max-model-len 1024 \
