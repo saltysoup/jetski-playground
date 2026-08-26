@@ -1,6 +1,6 @@
 # Unitree R1 Humanoid Robot: Fully Offline Edge Deployment Guide
 
-End-to-end deployment guide for running **real-time multimodal AI (Nemotron Speech ASR + Magpie TTS v2602 + Gemma-4 2B VLM via vLLM)** fully on-device on the **Unitree R1 / G1** (NVIDIA Jetson Orin NX).
+End-to-end deployment guide for running **real-time multimodal AI (Nemotron Speech ASR + Magpie TTS v2602 + Gemma-2 2B VLM via Native CUDA Engine)** fully on-device on the **Unitree R1 / G1** (NVIDIA Jetson Orin NX).
 
 ---
 
@@ -25,16 +25,17 @@ End-to-end deployment guide for running **real-time multimodal AI (Nemotron Spee
 
 | Stage | Action | Est. Duration |
 | :--- | :--- | :---: |
-| **Section 1** | Laptop asset downloads (models, wheels, debs, vLLM container) & transfer to robot | ~10–15 min |
-| **Section 2** | Robot system libraries (gRPC debs, Python wheels, non-root Docker setup) installation | ~3 min |
+| **Section 1** | Laptop asset downloads (models, wheels, debs) & transfer to robot | ~10–15 min |
+| **Section 2** | Robot system libraries (gRPC debs, Python wheels, MiniLM ONNX runtime) installation | ~2 min |
 | **Section 3.1**| Unitree DDS Audio Player compilation (`unitree_play_wav`) | ~30 sec |
 | **Section 3.2**| `NeMo-Speech.cpp` CUDA compilation (`sm_87` native) in MAXN mode | ~20–25 min |
-| **Section 3.3**| Transition power mode to 15W battery saver | ~10 sec |
+| **Section 3.3**| `llama.cpp` Native CUDA Engine compilation (`llama-server` `sm_87`) | ~5–7 min |
+| **Section 3.4**| Transition power mode to 15W battery saver | ~10 sec |
 | **Section 4** | Verification Tests (Audio Loopback + Full Vision-Voice Assistant) | ~2–3 min |
 
 ---
 
-## Quick Resume Guide (To Continue Tomorrow)
+## Quick Resume Guide
 
 Follow these quick steps when you power on the robot:
 
@@ -42,16 +43,17 @@ Follow these quick steps when you power on the robot:
 # 1. SSH into the robot
 ssh unitree@192.168.123.164
 
-# 2. Set Jetson to Maximum Performance (MAXN) for fast builds
+# 2. Set Jetson to Maximum Performance (MAXN) during builds
 sudo nvpmodel -m 0
 sudo jetson_clocks
 
-# 3. Resume the riva_server compilation (picks up incrementally from cache)
+# 3. Resume the riva_server / llama-server compilation (picks up incrementally from cache)
 export PATH=/home/unitree/.local/bin:/usr/local/cuda/bin:$PATH
 cd /home/unitree/NeMo-Speech.cpp
 ninja -C build-cuda riva_server
+ninja -C llama.cpp/build-cuda llama-server
 
-# 4. Once riva_server finishes linking, switch power mode down to 15W battery saver
+# 4. Once builds finish linking, switch power mode down to 15W battery saver
 sudo nvpmodel -m 2
 
 # 5. Proceed to Section 4 to run the Multimodal Assistant!
@@ -62,15 +64,14 @@ sudo nvpmodel -m 2
 ## 1. Laptop Staging Preparation (Run on Laptop with Internet)
 *Estimated Time: ~10–15 minutes*
 
-Because the Unitree robot has **no internet connection**, stage all weights, wheels, deb packages, and the vLLM ARM64 container archive in `~/robot_assets` on your developer laptop.
+Because the Unitree robot has **no internet connection**, stage all weights, wheels, and deb packages in `~/robot_assets` on your developer laptop.
 
 ### 1.1 Create Staging Directories
 ```bash
 mkdir -p ~/robot_assets/wheels \
          ~/robot_assets/debs \
          ~/robot_assets/models/magpie-tts/extracted \
-         ~/robot_assets/models/gemma-4-E2B-it \
-         ~/robot_assets/models/gemma-4-E2B-it-assistant
+         ~/robot_assets/models/onnx
 ```
 
 ### 1.2 Download All Models
@@ -112,17 +113,10 @@ tar -xf ~/robot_assets/models/magpie-tts/magpie_tts_multilingual_357m.nemo \
   -C ~/robot_assets/models/magpie-tts/extracted/
 ```
 
-#### E. Gemma-4 2B Multimodal VLM & Draft Assistant
+#### E. Gemma 2B VLM GGUF (OpenAI-Compatible Local LLM)
 ```bash
-# Download base Gemma-4 2B Multimodal model
-huggingface-cli download \
-  google/gemma-4-E2B-it \
-  --local-dir ~/robot_assets/models/gemma-4-E2B-it
-
-# Download MTP draft assistant for accelerated speculative decoding
-huggingface-cli download \
-  google/gemma-4-E2B-it-assistant \
-  --local-dir ~/robot_assets/models/gemma-4-E2B-it-assistant
+curl -fL "https://huggingface.co/bartowski/gemma-2-2b-it-GGUF/resolve/main/gemma-2-2b-it-Q4_K_M.gguf" \
+  -o ~/robot_assets/models/gemma-2-2b-it-Q4_K_M.gguf
 ```
 
 ---
@@ -176,29 +170,12 @@ curl -fLO http://ports.ubuntu.com/ubuntu-ports/pool/main/c/c-ares/libc-ares-dev_
 
 ---
 
-### 1.5 Download vLLM ARM64 Container Archive (For Local Jetson Execution)
-
-On macOS with Colima/Docker, pull the official ARM64 vLLM OpenAI image and export it to an offline tarball:
-
-```bash
-# 1. Switch context to colima (if using Colima on Mac)
-docker context use colima
-
-# 2. Pull official ARM64 vLLM image
-docker pull --platform linux/arm64 vllm/vllm-openai:latest
-
-# 3. Save container image to an offline tarball
-docker save vllm/vllm-openai:latest -o ~/robot_assets/vllm_arm64.tar
-```
-
----
-
-### 1.6 Transfer Staged Assets & Test Scripts to Robot
+### 1.5 Transfer Staged Assets & Test Scripts to Robot
 
 Connect your laptop to the robot network (`192.168.123.x`) and SCP everything over:
 
 ```bash
-# Transfer assets (models, wheels, debs, vLLM container)
+# Transfer assets (models, wheels, debs)
 scp -r ~/robot_assets unitree@192.168.123.164:~/
 
 # Transfer standalone test scripts
@@ -208,7 +185,7 @@ scp robotics/unitree-r1/test_*.py unitree@192.168.123.164:~/
 ---
 
 ## 2. Jetson Orin Environment Setup (Offline on Robot)
-*Estimated Time: ~3 minutes*
+*Estimated Time: ~2 minutes*
 
 SSH into the robot (`ssh unitree@192.168.123.164`):
 
@@ -228,23 +205,7 @@ sudo nvpmodel -q
 
 ---
 
-### 2.2 Configure Non-Root Docker Access
-Enable running Docker commands directly without requiring `sudo`:
-
-```bash
-# 1. Add unitree user to the docker group
-sudo usermod -aG docker unitree
-
-# 2. Activate group changes in the current shell session (or exit and reconnect SSH)
-newgrp docker
-
-# 3. Verify non-root access
-docker ps
-```
-
----
-
-### 2.3 Install gRPC & Python Packages
+### 2.2 Install gRPC & Python Packages
 ```bash
 # 1. Install gRPC & C++ system libraries
 sudo dpkg -i ~/robot_assets/debs/*.deb
@@ -258,19 +219,6 @@ pip3 install --no-index --find-links=/home/unitree/robot_assets/wheels \
   onnxruntime coloredlogs flatbuffers sympy packaging humanfriendly mpmath
 
 export PATH=/home/unitree/.local/bin:/usr/local/cuda/bin:$PATH
-```
-
----
-
-### 2.4 Load Offline vLLM Container Image
-Load the vLLM image into the robot's local Docker daemon (runs without `sudo`):
-
-```bash
-# Load offline container image
-docker load -i /home/unitree/robot_assets/vllm_arm64.tar
-
-# Verify image is loaded
-docker images | grep vllm
 ```
 
 ---
@@ -312,7 +260,22 @@ ninja -C build-cuda riva_server -j$(nproc)
 
 ---
 
-### 3.3 Switch Power Mode to 15W Balanced Mode (Post-Build Battery Saver)
+### 3.3 Build `llama-server` with CUDA (Native Local LLM Engine)
+*Estimated Time: ~5–7 minutes in MAXN mode*
+```bash
+cd /home/unitree/NeMo-Speech.cpp/llama.cpp
+
+cmake -B build-cuda -G Ninja \
+  -DGGML_CUDA=ON \
+  -DCMAKE_CUDA_ARCHITECTURES=87 \
+  -DCMAKE_BUILD_TYPE=Release
+
+ninja -C build-cuda llama-server -j$(nproc)
+```
+
+---
+
+### 3.4 Switch Power Mode to 15W Balanced Mode (Post-Build Battery Saver)
 *Estimated Time: ~10 seconds*
 
 Once all compilation steps are finished, switch the Jetson to **15W Balanced Mode** to preserve robot battery during active inference and autonomous operation:
@@ -339,7 +302,7 @@ python3 ~/test_audio_loopback.py
 
 ---
 
-### Test 2: Full Multimodal Vision & Voice Assistant (with Semantic Router)
+### Test 2: Full Multimodal Vision & Voice Assistant (100% Onboard Jetson)
 
 #### Terminal 1: Launch Riva Speech Server (ASR + TTS)
 ```bash
@@ -352,21 +315,14 @@ export LD_LIBRARY_PATH=/home/unitree/NeMo-Speech.cpp/build-cuda/bin:$LD_LIBRARY_
   --bind 127.0.0.1:50051
 ```
 
-#### Terminal 2: Launch vLLM Gemma-4 Server Directly on Jetson (CUDA Accelerated, Non-Root)
+#### Terminal 2: Launch Native CUDA LLM Server on Jetson (OpenAI Compatible)
 ```bash
-docker run --runtime nvidia --network host -it --rm \
-  -v /home/unitree/robot_assets/models:/models \
-  vllm/vllm-openai:latest \
-  vllm serve /models/gemma-4-E2B-it \
-    --trust-remote-code \
-    --max-model-len 1024 \
-    --max-num-seqs 1 \
-    --max-num-batched-tokens 512 \
-    --gpu-memory-utilization 0.5 \
-    --speculative-config '{"method":"mtp","model":"/models/gemma-4-E2B-it-assistant","num_speculative_tokens":1}' \
-    --override-generation-config '{"temperature": 1.0, "top_p": 0.95, "top_k": 64}' \
-    --no-async-scheduling \
-    --port 8000
+/home/unitree/NeMo-Speech.cpp/llama.cpp/build-cuda/bin/llama-server \
+  -m /home/unitree/robot_assets/models/gemma-2-2b-it-Q4_K_M.gguf \
+  --host 127.0.0.1 \
+  --port 8000 \
+  -c 1024 \
+  -ngl 99
 ```
 
 #### Terminal 3: Run Interactive Semantic Assistant
@@ -380,7 +336,7 @@ python3 ~/test_vision_voice_assistant.py
   4. **MiniLM Semantic Router** evaluates intent:
      * If visual: captures `/dev/video0` head camera and attaches image.
      * If conversational: skips camera to minimize latency.
-  5. Gemma-4 generates a concise 1-sentence answer locally on the Jetson Orin.
+  5. Gemma generates a concise 1-sentence answer locally on the Jetson Orin NX.
   6. Magpie TTS speaks the response through the robot's onboard speakers.
 
 ---
@@ -396,32 +352,7 @@ Instructions for tracking memory consumption across co-located models on the Jet
   ```
 * **Footprint Breakdown Baseline**:
   * `NeMo-Speech.cpp` (`riva_server`): ~1.44 GB VRAM (Nemotron ASR: 649 MB, Magpie TTS: 721 MB, NanoCodec: 67 MB).
+  * `llama-server` (Gemma 2B Q4_K_M): ~1.65 GB VRAM.
   * Unitree RL Motion / Locomotion Policy: ~1.0–2.0 GB VRAM.
-  * System & Display Overhead: ~1.2 GB RAM.
-  * Remaining headroom for VLM (Gemma-4 KV Cache): ~10–11 GB.
-
----
-
-### 2. GPU Memory Utilization Rate Tuning (`--gpu-memory-utilization`)
-* **Goal**: Determine the maximum stable ceiling for vLLM memory allocation when co-located with `riva_server` and the Unitree RL locomotion policy.
-* **Test Plan**:
-  * Benchmark `--gpu-memory-utilization 0.50`, `0.55`, `0.60`, and `0.65`.
-  * Verify that memory pressure does not trigger the OOM killer during simultaneous speech synthesis, camera frame processing, and locomotion commands.
-
----
-
-### 3. Latency Optimization: Reduce Max Batched Tokens (`--max-num-batched-tokens`)
-* **Goal**: Minimize Time-to-First-Token (TTFT) for low-latency conversational response.
-* **Test Plan**:
-  * Default test value: `512` tokens.
-  * Test reduced batch sizes: `--max-num-batched-tokens 256` and `--max-num-batched-tokens 128`.
-  * Evaluate TTFT and end-to-end voice loop latency (target: <1.2s from speech finish to audio playback).
-
----
-
-### 4. Context Window Expansion (`--max-model-len`)
-* **Goal**: Increase conversation and visual history capacity for multi-turn reasoning.
-* **Test Plan**:
-  * Baseline: `--max-model-len 1024`.
-  * Benchmark expanded context lengths: `--max-model-len 2048` and `--max-model-len 4096`.
-  * Measure the memory overhead of the expanded KV cache and assess any impact on frame token throughput.
+  * System Overhead: ~1.2 GB RAM.
+  * Remaining headroom: ~9–10 GB.
