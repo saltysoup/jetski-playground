@@ -4,7 +4,7 @@
 Unitree R1: Low-Latency Multimodal Vision & Voice Assistant
 - Microphone: Unitree UDP Multicast (239.168.123.161:5555)
 - ASR: Nemotron ASR (Riva gRPC 50051)
-- Semantic Router: 100% Offline Fast N-Gram Semantic Intent Router
+- Semantic Router: 100% Offline Fast Semantic Intent Router
 - Camera: OpenCV (/dev/video0) - Triggered dynamically on Visual Intent
 - VLM: Gemma-4 Multimodal (llama-server 8000)
 - TTS: Magpie TTS v2602 (Riva gRPC 50051) - Sentence-Pipelined Low-Latency Streaming
@@ -13,15 +13,18 @@ Unitree R1: Low-Latency Multimodal Vision & Voice Assistant
 
 import os
 import sys
-import math
 import time
 import json
 import queue
 import base64
 import socket
 import struct
+import warnings
 import threading
 import subprocess
+
+warnings.filterwarnings("ignore")
+
 import requests
 import soundfile as sf
 import numpy as np
