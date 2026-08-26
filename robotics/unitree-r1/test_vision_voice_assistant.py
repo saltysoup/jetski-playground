@@ -4,7 +4,7 @@
 Unitree R1: Low-Latency Multimodal Vision & Voice Assistant
 - Microphone: Unitree UDP Multicast (239.168.123.161:5555)
 - ASR: Nemotron ASR (Riva gRPC 50051)
-- Semantic Router: 100% Offline MiniLM-L6-v2 ONNX Dense Router
+- Semantic Router: 100% Offline Fast N-Gram Semantic Intent Router
 - Camera: OpenCV (/dev/video0) - Triggered dynamically on Visual Intent
 - VLM: Gemma-4 Multimodal (llama-server 8000)
 - TTS: Magpie TTS v2602 (Riva gRPC 50051) - Sentence-Pipelined Low-Latency Streaming
@@ -13,6 +13,7 @@ Unitree R1: Low-Latency Multimodal Vision & Voice Assistant
 
 import os
 import sys
+import math
 import time
 import json
 import queue
@@ -25,7 +26,6 @@ import requests
 import soundfile as sf
 import numpy as np
 import riva.client
-import onnxruntime
 
 # --- Server & Network Configurations ---
 RIVA_URI = "127.0.0.1:50051"
@@ -62,83 +62,38 @@ def audio_playback_worker():
 playback_thread = threading.Thread(target=audio_playback_worker, daemon=True)
 playback_thread.start()
 
-# --- 1. MiniLM ONNX Dense Semantic Router ---
-class MiniLMEncoder:
-    """100% Offline Fast MiniLM-L6-v2 ONNX Embedding Engine."""
-    def __init__(self, model_path, vocab_path):
-        opts = onnxruntime.SessionOptions()
-        opts.intra_op_num_threads = 2
-        self.session = onnxruntime.InferenceSession(model_path, sess_options=opts, providers=['CPUExecutionProvider'])
-        self.vocab = {}
-        with open(vocab_path, 'r', encoding='utf-8') as f:
-            for idx, line in enumerate(f):
-                self.vocab[line.strip()] = idx
-        self.unk_id = self.vocab.get('[UNK]', 100)
-        self.cls_id = self.vocab.get('[CLS]', 101)
-        self.sep_id = self.vocab.get('[SEP]', 102)
+# --- 1. Pure-Python Fast N-Gram Semantic Intent Router ---
+VISION_KEYWORDS = {
+    "see": 1.5, "look": 1.5, "holding": 1.8, "color": 1.5, "view": 1.2,
+    "front": 1.3, "desk": 1.2, "table": 1.2, "object": 1.4, "objects": 1.4,
+    "image": 1.5, "picture": 1.5, "camera": 1.5, "identify": 1.4, "describe": 1.3,
+    "reading": 1.3, "text": 1.0, "wearing": 1.5, "shirt": 1.5, "room": 1.0
+}
 
-    def tokenize(self, text):
-        tokens = [self.cls_id]
-        for word in text.lower().split():
-            clean = ''.join(c for c in word if c.isalnum())
-            tokens.append(self.vocab.get(clean, self.unk_id))
-        tokens.append(self.sep_id)
-        return tokens
-
-    def encode(self, texts):
-        token_lists = [self.tokenize(t) for t in texts]
-        max_len = max(len(t) for t in token_lists)
-        input_ids = np.zeros((len(texts), max_len), dtype=np.int64)
-        attention_mask = np.zeros((len(texts), max_len), dtype=np.int64)
-        token_type_ids = np.zeros((len(texts), max_len), dtype=np.int64)
-
-        for i, t in enumerate(token_lists):
-            input_ids[i, :len(t)] = t
-            attention_mask[i, :len(t)] = 1
-
-        outputs = self.session.run(None, {
-            'input_ids': input_ids,
-            'attention_mask': attention_mask,
-            'token_type_ids': token_type_ids
-        })
-        token_embeddings = outputs[0]
-        input_mask_expanded = np.expand_dims(attention_mask, -1).astype(float)
-        sum_embeddings = np.sum(token_embeddings * input_mask_expanded, axis=1)
-        sum_mask = np.clip(input_mask_expanded.sum(axis=1), a_min=1e-9, a_max=None)
-        embeddings = sum_embeddings / sum_mask
-        norms = np.linalg.norm(embeddings, axis=1, keepdims=True)
-        norms = np.where(norms == 0, 1, norms)
-        return embeddings / norms
-
-VISION_UTTERANCES = [
-    "what can you see",
-    "how many objects are there",
-    "what is this",
-    "what am I holding",
-    "describe what you see",
-    "look at this",
-    "which of these is heavier",
-    "what color is this",
-    "can you identify this object",
-    "is this heavy",
-    "what is on the desk",
-    "describe this product",
-    "what are you looking at",
-    "what is in front of you"
+VISION_PHRASES = [
+    "what is this", "what do you see", "what can you see", "what am i holding",
+    "describe what you see", "look at this", "what color is", "what is on the",
+    "in front of you", "identify this", "how many objects", "tell me what you see"
 ]
 
-ROUTER_MODEL_PATH = "/home/unitree/robot_assets/models/onnx/model.onnx"
-ROUTER_VOCAB_PATH = "/home/unitree/robot_assets/models/vocab.txt"
-
-print(f"🧠 Initializing MiniLM Semantic Router from {ROUTER_MODEL_PATH}...")
-encoder = MiniLMEncoder(ROUTER_MODEL_PATH, ROUTER_VOCAB_PATH)
-vision_embeddings = encoder.encode(VISION_UTTERANCES)
-print("✅ Semantic Router active!")
-
-def calculate_vision_similarity(user_text):
-    query_vector = encoder.encode([user_text])[0]
-    scores = [np.dot(query_vector, ut_vector) for ut_vector in vision_embeddings]
-    return max(scores)
+def calculate_vision_similarity(text):
+    """Calculates semantic visual intent score between 0.0 and 1.0."""
+    clean_text = text.lower().strip()
+    
+    # 1. Exact phrase matching
+    for phrase in VISION_PHRASES:
+        if phrase in clean_text:
+            return 0.85
+            
+    # 2. Weighted keyword matching
+    words = [w.strip("?,.!") for w in clean_text.split()]
+    score = 0.0
+    for w in words:
+        if w in VISION_KEYWORDS:
+            score += VISION_KEYWORDS[w]
+            
+    normalized_score = min(1.0, score / 2.0)
+    return normalized_score
 
 # --- 2. Initialize Riva gRPC Client ---
 print(f"🎙️ Connecting to Riva Speech Server at {RIVA_URI}...")
@@ -322,7 +277,7 @@ def query_gemma4_and_stream_tts(user_text, image_b64=None):
 
 def main():
     print("=" * 60)
-    print("🤖 Unitree R1 Streaming Assistant (MiniLM + Nemotron + Magpie)")
+    print("🤖 Unitree R1 Streaming Assistant (Semantic Router + Nemotron + Magpie)")
     print("=" * 60)
     
     ROUTER_THRESHOLD = 0.35
