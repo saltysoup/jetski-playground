@@ -7,21 +7,34 @@ End-to-end guide for deploying and running **real-time multimodal AI (Nemotron S
 ## System & Hardware Architecture
 
 ```mermaid
-graph TD
-    User([User Voice]) -->|UDP Multicast 239.168.123.161:5555| Mic[Microphone Array + AGC]
-    Mic -->|Raw 16kHz PCM| ASR[Nemotron Streaming ASR - riva_server :50051]
-    ASR -->|Transcript| Router[Offline Semantic Intent Router]
+sequenceDiagram
+    autonumber
+    actor User
+    participant Mic as UDP Multicast Mic (eth10)
+    participant SpecCam as Speculative Head Camera (/dev/video2)
+    participant ASR as Nemotron Streaming ASR (50051)
+    participant Router as MiniLM Dense Semantic Router
+    participant VLM as Gemma-4 2B Multimodal VLM (8000)
+    participant TTS as Magpie TTS v2602 (50051)
+    participant Spk as Unitree DDS AudioClient (Speakers)
+
+    User->>Mic: Speaks question (e.g. "What do you see?")
+    activate SpecCam
+    Note over SpecCam: Captures /dev/video2 frame concurrently in background
+    deactivate SpecCam
+    Mic->>ASR: Streams 16kHz PCM audio with AGC
+    ASR->>Router: Emits final transcript
     
-    Router -->|Visual Query| Cam[Forward Head Camera /dev/video2]
-    Router -->|General Query| SkipCam[Skip Camera - Low Latency]
+    alt Visual Intent (MiniLM Score >= 0.35)
+        Router->>VLM: Attaches pre-captured image (0ms latency) + Prompt
+    else Conversational Intent (MiniLM Score < 0.35)
+        Router->>VLM: Discards camera frame & sends fast Text-only Prompt
+    end
     
-    Cam -->|JPEG Frame + Text| VLM[Gemma-4 2B Multimodal VLM - llama-server :8000]
-    SkipCam -->|Text Only| VLM
-    
-    VLM -->|Live Token Stream| Chunk[Sentence Chunk Boundary Detector]
-    Chunk -->|Sentence Chunks| TTS[Magpie TTS v2602 + NanoCodec :50051]
-    TTS -->|16kHz PCM WAV| Audio[Unitree DDS AudioClient - unitree_play_wav]
-    Audio -->|Hardware 100% Vol| Spk([Robot Onboard Speakers])
+    loop Real-Time Sentence Streaming
+        VLM-->>TTS: Streams tokens & triggers on sentence boundary (., ?, !)
+        TTS-->>Spk: Synthesizes & plays 16kHz PCM at 100% Hardware Volume
+    end
 ```
 
 | Component | Specification | Details / Configuration |
@@ -30,10 +43,10 @@ graph TD
 | **Operating System** | Ubuntu 20.04 LTS (JetPack 5.1.1 / L4T R35.3.1) | Python **3.8.10 (`cp38`)**, CUDA 11.4 (`sm_87`) |
 | **Robot Static IP** | `192.168.123.164` | `eth10` interface (Subnet `192.168.123.0/24`) |
 | **Robot SSH** | `unitree@192.168.123.164` (password: `123`) | Direct Gigabit Ethernet connection |
-| **Microphone Stream** | Unitree UDP Multicast Stream | `239.168.123.161:5555` (16kHz 16-bit Mono PCM) |
-| **Speakers** | Unitree DDS AudioClient | `/home/unitree/unitree_sdk2/build/bin/unitree_play_wav` |
-| **Forward Head Camera** | Forward-facing Vision Camera | **`/dev/video2`** (V4L2 640x480) |
-| **Waist / Floor Camera**| Downward Obstacle Avoidance Camera | **`/dev/video0`** (Points at feet/floor) |
+| **Microphone Stream** | Unitree UDP Multicast Stream | `239.168.123.161:5555` (16kHz 16-bit Mono PCM with AGC) |
+| **Speakers** | Unitree DDS AudioClient | `/home/unitree/unitree_sdk2/build/bin/unitree_play_wav` (Hardware Vol 100%) |
+| **Forward Head Camera** | Forward-facing Perception Camera | **`/dev/video2`** (Speculative Background Capture, 0ms latency) |
+| **Semantic Router** | 100% Offline Dense Classifier | **MiniLM-L6-v2 ONNX** cosine similarity vs visual intent anchors |
 | **Build Power Profile** | **MAXN Mode (`nvpmodel -m 0`) + `jetson_clocks`** | Maximum clock frequencies (~2.0 GHz) to accelerate builds |
 | **Runtime Power Profile**| **15W Balanced Mode (`nvpmodel -m 2`)** | Power-saving mode for robot battery runtime |
 | **Internet Access** | **None on robot** | Fully offline deployment via laptop staging |
@@ -88,7 +101,8 @@ Because the Unitree robot has **no internet connection**, stage all weights, whe
 ```bash
 mkdir -p ~/robot_assets/wheels \
          ~/robot_assets/debs \
-         ~/robot_assets/models/magpie-tts/extracted
+         ~/robot_assets/models/magpie-tts/extracted \
+         ~/robot_assets/models/onnx
 ```
 
 ### 1.2 Download All Models
@@ -162,7 +176,8 @@ pip download \
   "nvidia-riva-client==2.16.0" \
   "cmake==4.4.2" \
   "ninja==1.13.0" \
-  "numpy==1.24.4"
+  "numpy==1.24.4" \
+  "onnxruntime==1.16.3"
 ```
 
 ---
@@ -223,7 +238,7 @@ sudo cp -L /usr/lib/aarch64-linux-gnu/tegra/libcuda.so.1.1 /usr/local/cuda/targe
 
 # 3. Install Python 3.8 packages and upgraded NumPy
 pip3 install --user --no-index --find-links=/home/unitree/robot_assets/wheels \
-  cmake ninja protobuf sounddevice soundfile requests nvidia-riva-client numpy
+  cmake ninja protobuf sounddevice soundfile requests nvidia-riva-client numpy onnxruntime
 
 export PATH=/home/unitree/.local/bin:/usr/local/cuda/bin:$PATH
 
@@ -398,22 +413,22 @@ export LD_LIBRARY_PATH=/home/unitree/NeMo-Speech.cpp/llama.cpp/build-cuda/bin:$L
 python ~/test_vision_voice_assistant.py
 ```
 
-* **Interactive Workflow**:
+* **Interactive Speculative Workflow**:
   1. Robot plays greeting: *"Ask me what I am seeing, or ask any general question."*
-  2. Press **`[ENTER]`** and speak naturally (e.g. *"What do you see?"* or *"What is your name?"*).
+  2. Press **`[ENTER]`** and start speaking. A background thread **concurrently captures a fresh frame from the forward-facing head camera (`/dev/video2`)**.
   3. Press **`[ENTER]`** when done speaking.
-  4. **Fast Intent Router** detects intent:
-     * **Visual Queries**: Captures live snapshot from the **forward head camera (`/dev/video2`)**.
-     * **General Queries**: Skips camera to maximize speed.
-  5. Gemma-4 streams answer tokens ($\sim$195 tokens/sec).
-  6. **Sentence-Pipelined Magpie TTS** synthesizes and plays through the robot's speakers in **$\approx$ 200–300 ms**!
+  4. **MiniLM Dense Intent Router** classifies visual vs. conversational intent:
+     * **Visual Intent (Score $\ge 0.35$)**: Attaches the pre-captured speculative head camera frame in **$0.0\text{ ms}$ perceived latency**.
+     * **Conversational Intent (Score $< 0.35$)**: Discards the image frame and routes text-only to save compute.
+  5. Gemma-4 streams answer tokens ($\sim 195\text{ tokens/sec}$).
+  6. **Sentence-Pipelined Magpie TTS** synthesizes and plays through the robot's speakers at full volume without cutoffs in **$\approx 200–300\text{ ms}$**.
 
 ---
 
 ## Hardware Tips & Troubleshooting
 
 ### Camera Device Map on Unitree R1 / G1
-* **`/dev/video2` (Forward Head Camera)**: Faces forward at users, objects, and rooms. Use for VLM reasoning.
+* **`/dev/video2` (Forward Head Camera)**: Faces forward at users, objects, and rooms. Exclusively used for VLM reasoning.
 * **`/dev/video0` (Waist / Downward Camera)**: Angles down toward the feet/floor for locomotion path planning.
 
 ### Audio Volume & Gain Control
