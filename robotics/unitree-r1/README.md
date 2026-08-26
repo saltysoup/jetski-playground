@@ -26,7 +26,7 @@ End-to-end deployment guide for running **real-time multimodal AI (Nemotron Spee
 | Stage | Action | Est. Duration |
 | :--- | :--- | :---: |
 | **Section 1** | Laptop asset downloads (models, wheels, debs, vLLM container) & transfer to robot | ~10–15 min |
-| **Section 2** | Robot system libraries (gRPC debs, Python wheels, vLLM docker image) installation | ~3 min |
+| **Section 2** | Robot system libraries (gRPC debs, Python wheels, non-root Docker setup) installation | ~3 min |
 | **Section 3.1**| Unitree DDS Audio Player compilation (`unitree_play_wav`) | ~30 sec |
 | **Section 3.2**| `NeMo-Speech.cpp` CUDA compilation (`sm_87` native) in MAXN mode | ~20–25 min |
 | **Section 3.3**| Transition power mode to 15W battery saver | ~10 sec |
@@ -149,7 +149,14 @@ pip download \
   "grpcio_tools==1.38.0" \
   "nvidia-riva-client==2.16.0" \
   "cmake==4.4.2" \
-  "ninja==1.13.0"
+  "ninja==1.13.0" \
+  "onnxruntime==1.16.3" \
+  "coloredlogs==15.0.1" \
+  "humanfriendly==10.0" \
+  "flatbuffers==25.12.19" \
+  "packaging==26.2" \
+  "sympy==1.13.3" \
+  "mpmath==1.3.0"
 ```
 
 ---
@@ -221,7 +228,23 @@ sudo nvpmodel -q
 
 ---
 
-### 2.2 Install gRPC & System Packages
+### 2.2 Configure Non-Root Docker Access
+Enable running Docker commands directly without requiring `sudo`:
+
+```bash
+# 1. Add unitree user to the docker group
+sudo usermod -aG docker unitree
+
+# 2. Apply group changes to current shell session
+newgrp docker
+
+# 3. Verify non-root access
+docker ps
+```
+
+---
+
+### 2.3 Install gRPC & Python Packages
 ```bash
 # 1. Install gRPC & C++ system libraries
 sudo dpkg -i ~/robot_assets/debs/*.deb
@@ -229,24 +252,25 @@ sudo dpkg -i ~/robot_assets/debs/*.deb
 # 2. Link CUDA stub to real Tegra driver binary
 sudo cp -L /usr/lib/aarch64-linux-gnu/tegra/libcuda.so.1.1 /usr/local/cuda/targets/aarch64-linux/lib/stubs/libcuda.so
 
-# 3. Install Python 3.8 packages & modern CMake/Ninja
+# 3. Install Python 3.8 packages, MiniLM ONNX runtime, and modern CMake/Ninja
 pip3 install --no-index --find-links=/home/unitree/robot_assets/wheels \
-  cmake ninja protobuf sounddevice soundfile requests nvidia-riva-client numpy
+  cmake ninja protobuf sounddevice soundfile requests nvidia-riva-client numpy \
+  onnxruntime coloredlogs flatbuffers sympy packaging humanfriendly mpmath
 
 export PATH=/home/unitree/.local/bin:/usr/local/cuda/bin:$PATH
 ```
 
 ---
 
-### 2.3 Load Offline vLLM Container Image
-Load the vLLM image into the robot's local Docker daemon:
+### 2.4 Load Offline vLLM Container Image
+Load the vLLM image into the robot's local Docker daemon (runs without `sudo`):
 
 ```bash
 # Load offline container image
-sudo docker load -i /home/unitree/robot_assets/vllm_arm64.tar
+docker load -i /home/unitree/robot_assets/vllm_arm64.tar
 
 # Verify image is loaded
-sudo docker images | grep vllm
+docker images | grep vllm
 ```
 
 ---
@@ -315,7 +339,7 @@ python3 ~/test_audio_loopback.py
 
 ---
 
-### Test 2: Full Multimodal Vision & Voice Assistant
+### Test 2: Full Multimodal Vision & Voice Assistant (with Semantic Router)
 
 #### Terminal 1: Launch Riva Speech Server (ASR + TTS)
 ```bash
@@ -328,9 +352,9 @@ export LD_LIBRARY_PATH=/home/unitree/NeMo-Speech.cpp/build-cuda/bin:$LD_LIBRARY_
   --bind 127.0.0.1:50051
 ```
 
-#### Terminal 2: Launch vLLM Gemma-4 Server Directly on Jetson (CUDA Accelerated)
+#### Terminal 2: Launch vLLM Gemma-4 Server Directly on Jetson (CUDA Accelerated, Non-Root)
 ```bash
-sudo docker run --runtime nvidia --network host -it --rm \
+docker run --runtime nvidia --network host -it --rm \
   -v /home/unitree/robot_assets/models:/models \
   vllm/vllm-openai:latest \
   vllm serve /models/gemma-4-E2B-it \
@@ -345,15 +369,17 @@ sudo docker run --runtime nvidia --network host -it --rm \
     --port 8000
 ```
 
-#### Terminal 3: Run Interactive Assistant
+#### Terminal 3: Run Interactive Semantic Assistant
 ```bash
 python3 ~/test_vision_voice_assistant.py
 ```
 * **Expected behavior**:
-  1. Robot asks: *"Ask me what I am seeing"* via Magpie TTS.
-  2. You speak a question (e.g., *"What is in front of you?"*).
+  1. Robot asks: *"Ask me what I am seeing, or ask any general question"* via Magpie TTS.
+  2. You speak a question (e.g. *"What is in front of you?"* or *"Tell me a joke"*).
   3. Nemotron ASR transcribes your speech.
-  4. Unitree head camera captures the live scene.
+  4. **MiniLM Semantic Router** evaluates intent:
+     * If visual: captures `/dev/video0` head camera and attaches image.
+     * If conversational: skips camera to minimize latency.
   5. Gemma-4 generates a concise 1-sentence answer locally on the Jetson Orin.
   6. Magpie TTS speaks the response through the robot's onboard speakers.
 
