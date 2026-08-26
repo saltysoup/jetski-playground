@@ -67,27 +67,55 @@ sequenceDiagram
 
 ---
 
-## Quick Resume Guide (When Powering On Robot)
+## Quick Resume & Single-Terminal Launch Guide
 
-Follow these quick steps whenever you power on the robot:
+When you power on the robot, you can start all servers in the background and run the assistant from a **single SSH terminal**:
 
 ```bash
 # 1. SSH into the robot
 ssh unitree@192.168.123.164
 
-# 2. Set Jetson to Maximum Performance (MAXN) during builds
-sudo nvpmodel -m 0
-sudo jetson_clocks
+# 2. Launch Riva Speech Server (ASR + Magpie TTS) in Background
+export LD_LIBRARY_PATH=/home/unitree/NeMo-Speech.cpp/build-cuda/bin:$LD_LIBRARY_PATH
+nohup /home/unitree/NeMo-Speech.cpp/build-cuda/bin/riva_server \
+  --asr.model.path /home/unitree/robot_assets/models/nemotron-speech-streaming-en-0.6b.q8_0.gguf \
+  --tts.magpie-model /home/unitree/robot_assets/models/magpie_tts_multilingual_357m.v2602.f16.gguf \
+  --tts.codec-model /home/unitree/robot_assets/models/nemo_nano_codec_22khz_1.89kbps_21.5fps.decoder.f16.gguf \
+  --tts.tokenizer-model-dir /home/unitree/robot_assets/models/magpie-tts/extracted \
+  --bind 127.0.0.1:50051 > /home/unitree/riva_server.log 2>&1 &
 
-# 3. Resume / verify the native CUDA binaries
-export PATH=/home/unitree/.local/bin:/usr/local/cuda/bin:$PATH
-ninja -C /home/unitree/NeMo-Speech.cpp/build-cuda riva_server
-ninja -C /home/unitree/NeMo-Speech.cpp/llama.cpp/build-cuda bin/llama-server
+# 3. Launch Native CUDA Gemma-4 Multimodal VLM in Background
+export LD_LIBRARY_PATH=/home/unitree/NeMo-Speech.cpp/llama.cpp/build-cuda/bin:$LD_LIBRARY_PATH
+nohup /home/unitree/NeMo-Speech.cpp/llama.cpp/build-cuda/bin/llama-server \
+  -m /home/unitree/robot_assets/models/gemma-4-E2B-it-q8_0.gguf \
+  --mmproj /home/unitree/robot_assets/models/mmproj-gemma-4-E2B-f16.gguf \
+  --host 127.0.0.1 \
+  --port 8000 \
+  -c 2048 \
+  -ngl 99 \
+  --reasoning off > /home/unitree/llama_server.log 2>&1 &
 
-# 4. Switch power mode to 15W battery saver
-sudo nvpmodel -m 2
+# 4. Wait a few seconds for models to warm up in GPU memory, then run the assistant:
+sleep 8
+python ~/test_vision_voice_assistant.py
+```
 
-# 5. Launch the 3 services (Section 4) to run the Multimodal Assistant!
+---
+
+## Useful Background Management Commands
+
+```bash
+# Check running server processes
+ps aux | grep -E '(riva_server|llama-server)'
+
+# View live Riva ASR / TTS logs
+tail -f /home/unitree/riva_server.log
+
+# View live Gemma-4 VLM logs
+tail -f /home/unitree/llama_server.log
+
+# Stop both background servers
+killall -9 riva_server llama-server 2>/dev/null
 ```
 
 ---
@@ -254,8 +282,6 @@ sed -i 's/,\s*)/)/g' /home/unitree/.local/lib/python3.8/site-packages/riva/clien
 ### 3.1 Build Unitree DDS Audio Player (`unitree_play_wav`)
 *Estimated Time: ~30 seconds*
 
-The player is enhanced with **Hardware Volume 100%** and **Audio Duration Tracking** to prevent abrupt speech cutoff:
-
 ```bash
 cat << 'CXXEOF' > /home/unitree/unitree_sdk2/example/g1/audio/unitree_play_wav.cpp
 #include <iostream>
@@ -384,32 +410,31 @@ sudo nvpmodel -m 2
 
 ## 4. Running the Real-Time Multimodal Assistant
 
-### Terminal 1: Launch Riva Speech Server (ASR + Magpie TTS)
+### Single-Terminal Launch (All-In-One):
+
 ```bash
+# 1. Start Riva Speech Server in Background
 export LD_LIBRARY_PATH=/home/unitree/NeMo-Speech.cpp/build-cuda/bin:$LD_LIBRARY_PATH
-/home/unitree/NeMo-Speech.cpp/build-cuda/bin/riva_server \
+nohup /home/unitree/NeMo-Speech.cpp/build-cuda/bin/riva_server \
   --asr.model.path /home/unitree/robot_assets/models/nemotron-speech-streaming-en-0.6b.q8_0.gguf \
   --tts.magpie-model /home/unitree/robot_assets/models/magpie_tts_multilingual_357m.v2602.f16.gguf \
   --tts.codec-model /home/unitree/robot_assets/models/nemo_nano_codec_22khz_1.89kbps_21.5fps.decoder.f16.gguf \
   --tts.tokenizer-model-dir /home/unitree/robot_assets/models/magpie-tts/extracted \
-  --bind 127.0.0.1:50051
-```
+  --bind 127.0.0.1:50051 > /home/unitree/riva_server.log 2>&1 &
 
-### Terminal 2: Launch Native CUDA Gemma-4 Multimodal Server (Port 8000)
-```bash
+# 2. Start Gemma-4 Multimodal VLM Server in Background
 export LD_LIBRARY_PATH=/home/unitree/NeMo-Speech.cpp/llama.cpp/build-cuda/bin:$LD_LIBRARY_PATH
-/home/unitree/NeMo-Speech.cpp/llama.cpp/build-cuda/bin/llama-server \
+nohup /home/unitree/NeMo-Speech.cpp/llama.cpp/build-cuda/bin/llama-server \
   -m /home/unitree/robot_assets/models/gemma-4-E2B-it-q8_0.gguf \
   --mmproj /home/unitree/robot_assets/models/mmproj-gemma-4-E2B-f16.gguf \
   --host 127.0.0.1 \
   --port 8000 \
   -c 2048 \
   -ngl 99 \
-  --reasoning off
-```
+  --reasoning off > /home/unitree/llama_server.log 2>&1 &
 
-### Terminal 3: Run Interactive Multimodal Assistant
-```bash
+# 3. Launch the Interactive Assistant
+sleep 8
 python ~/test_vision_voice_assistant.py
 ```
 
