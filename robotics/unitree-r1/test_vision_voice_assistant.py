@@ -5,7 +5,7 @@ Unitree R1: Real-Time Multimodal Vision & Voice Assistant
 - Microphone: Unitree UDP Multicast (239.168.123.161:5555) with AGC
 - ASR: Nemotron ASR (Riva gRPC 50051)
 - Semantic Router: 100% Offline Fast Semantic Intent Router
-- Camera: OpenCV (/dev/video0) - Triggered dynamically on Visual Intent
+- Camera: Forward Head Camera (/dev/video2) - Triggered dynamically on Visual Intent
 - VLM: Gemma-4 Multimodal (llama-server 8000)
 - TTS: Magpie TTS v2602 (Riva gRPC 50051)
 - Speakers: Unitree AudioClient DDS Player (unitree_play_wav) - Hardware & Software Max Volume
@@ -39,6 +39,7 @@ MCAST_PORT = 5555
 NET_INTERFACE_IP = "192.168.123.164"
 NET_INTERFACE_NAME = "eth10"
 PLAYER_BIN = "/home/unitree/unitree_sdk2/build/bin/unitree_play_wav"
+CAMERA_DEVICE_INDEX = int(os.getenv("CAMERA_DEV", "2"))  # 2: Forward Head Camera, 0: Waist/Floor Camera
 
 # --- 1. Fast Semantic Intent Router ---
 VISION_KEYWORDS = {
@@ -46,13 +47,14 @@ VISION_KEYWORDS = {
     "front": 1.3, "desk": 1.2, "table": 1.2, "object": 1.4, "objects": 1.4,
     "image": 1.5, "picture": 1.5, "camera": 1.5, "identify": 1.4, "describe": 1.3,
     "reading": 1.3, "text": 1.0, "wearing": 1.5, "shirt": 1.5, "room": 1.0,
-    "floor": 1.2, "feet": 1.2, "hand": 1.4
+    "floor": 1.2, "feet": 1.2, "hand": 1.4, "person": 1.5, "who": 1.2
 }
 
 VISION_PHRASES = [
     "what is this", "what do you see", "what can you see", "what am i holding",
     "describe what you see", "look at this", "what color is", "what is on the",
-    "in front of you", "identify this", "how many objects", "tell me what you see"
+    "in front of you", "identify this", "how many objects", "tell me what you see",
+    "who am i", "what am i wearing"
 ]
 
 def calculate_vision_similarity(text):
@@ -197,14 +199,17 @@ def transcribe_audio_bytes(audio_bytes):
         print("[ERROR] ASR Error: %s" % e)
     return ""
 
-def capture_camera_frame():
-    """Captures a fresh live snapshot from the Unitree head camera and flushes V4L2 queue."""
+def capture_camera_frame(dev_id=CAMERA_DEVICE_INDEX):
+    """Captures a fresh live snapshot from the forward-facing head camera."""
     import cv2
-    print("[CAMERA] Capturing fresh frame from onboard camera...")
-    cap = cv2.VideoCapture(0, cv2.CAP_V4L2)
+    print("[CAMERA] Capturing forward view from head camera (/dev/video%d)..." % dev_id)
+    cap = cv2.VideoCapture(dev_id, cv2.CAP_V4L2)
     if not cap.isOpened():
-        print("[ERROR] Could not open camera /dev/video0")
-        return None
+        print("[WARN] Could not open /dev/video%d, trying fallback /dev/video0..." % dev_id)
+        cap = cv2.VideoCapture(0, cv2.CAP_V4L2)
+        if not cap.isOpened():
+            print("[ERROR] Could not open any camera device")
+            return None
     
     # Flush 15 frames to discard any stale cached buffer
     ret, frame = None, None
@@ -213,7 +218,6 @@ def capture_camera_frame():
     cap.release()
     
     if ret and frame is not None:
-        # Save raw frame for inspection
         cv2.imwrite("/home/unitree/last_camera_snap.jpg", frame)
         small = cv2.resize(frame, (384, 384), interpolation=cv2.INTER_AREA)
         _, buffer = cv2.imencode('.jpg', small, [int(cv2.IMWRITE_JPEG_QUALITY), 85])
@@ -325,7 +329,7 @@ def main():
         image_b64 = None
         if has_visual_intent:
             print("[ROUTE] Vision Route triggered (Score: %.2f >= %.2f)!" % (similarity_score, ROUTER_THRESHOLD))
-            image_b64 = capture_camera_frame()
+            image_b64 = capture_camera_frame(CAMERA_DEVICE_INDEX)
         else:
             print("[ROUTE] Text-only Route (Score: %.2f < %.2f) - Skipping camera capture." % (similarity_score, ROUTER_THRESHOLD))
             image_b64 = None
