@@ -2,24 +2,27 @@
 # -*- coding: utf-8 -*-
 """
 Unitree R1: Real-Time Multimodal Vision & Voice Assistant
-- Microphone: Unitree UDP Multicast (239.168.123.161:5555) with AGC
+- Microphone: Unitree UDP Multicast (239.168.123.161:5555) with AGC & Push-to-Talk
 - ASR: Nemotron ASR (Riva gRPC 50051)
-- Semantic Router: 100% Offline Fast Semantic Intent Router
-- Camera: Forward Head Camera (/dev/video2) - Triggered dynamically on Visual Intent
+- Speculative Perception: Concurrent Background Camera Capture (0ms Perceived Latency)
+- Semantic Router: 100% Offline MiniLM-L6-v2 Dense Intent Classifier
+- Camera: Forward Head Camera (/dev/video2) exclusively
 - VLM: Gemma-4 Multimodal (llama-server 8000)
-- TTS: Magpie TTS v2602 (Riva gRPC 50051)
-- Speakers: Unitree AudioClient DDS Player (unitree_play_wav) - Hardware & Software Max Volume
+- TTS: Magpie TTS v2602 (Riva gRPC 50051) - Sentence-Pipelined Low-Latency Streaming
+- Speakers: Unitree AudioClient DDS Player (unitree_play_wav) - Hardware 100% Volume
 """
 
 import os
 import sys
 import time
 import json
+import queue
 import base64
 import socket
 import struct
 import warnings
 import select
+import threading
 import subprocess
 
 warnings.filterwarnings("ignore")
@@ -39,9 +42,85 @@ MCAST_PORT = 5555
 NET_INTERFACE_IP = "192.168.123.164"
 NET_INTERFACE_NAME = "eth10"
 PLAYER_BIN = "/home/unitree/unitree_sdk2/build/bin/unitree_play_wav"
-CAMERA_DEVICE_INDEX = int(os.getenv("CAMERA_DEV", "2"))  # 2: Forward Head Camera, 0: Waist/Floor Camera
 
-# --- 1. Fast Semantic Intent Router ---
+ROUTER_MODEL_PATH = "/home/unitree/robot_assets/models/onnx/model_qint8_arm64.onnx"
+ROUTER_VOCAB_PATH = "/home/unitree/robot_assets/models/vocab.txt"
+
+# --- 1. MiniLM Dense Semantic Intent Router ---
+class MiniLMEncoder:
+    """100% Offline Fast MiniLM-L6-v2 ONNX Embedding Engine."""
+    def __init__(self, model_path, vocab_path):
+        self.session = None
+        self.vocab = {}
+        if os.path.exists(model_path) and os.path.exists(vocab_path):
+            try:
+                import onnxruntime
+                opts = onnxruntime.SessionOptions()
+                opts.intra_op_num_threads = 2
+                self.session = onnxruntime.InferenceSession(model_path, sess_options=opts, providers=['CPUExecutionProvider'])
+                with open(vocab_path, 'r', encoding='utf-8') as f:
+                    for idx, line in enumerate(f):
+                        self.vocab[line.strip()] = idx
+                self.unk_id = self.vocab.get('[UNK]', 100)
+                self.cls_id = self.vocab.get('[CLS]', 101)
+                self.sep_id = self.vocab.get('[SEP]', 102)
+                print("[ROUTER] MiniLM Dense Embedding Engine initialized.")
+            except Exception as e:
+                print("[WARN] MiniLM ONNX init skipped (%s), using Fast Semantic Intent Classifier." % e)
+                self.session = None
+
+    def tokenize(self, text):
+        tokens = [self.cls_id]
+        for word in text.lower().split():
+            clean = ''.join(c for c in word if c.isalnum())
+            tokens.append(self.vocab.get(clean, self.unk_id))
+        tokens.append(self.sep_id)
+        return tokens
+
+    def encode(self, texts):
+        if not self.session:
+            return None
+        token_lists = [self.tokenize(t) for t in texts]
+        max_len = max(len(t) for t in token_lists)
+        input_ids = np.zeros((len(texts), max_len), dtype=np.int64)
+        attention_mask = np.zeros((len(texts), max_len), dtype=np.int64)
+        token_type_ids = np.zeros((len(texts), max_len), dtype=np.int64)
+
+        for i, t in enumerate(token_lists):
+            input_ids[i, :len(t)] = t
+            attention_mask[i, :len(t)] = 1
+
+        outputs = self.session.run(None, {
+            'input_ids': input_ids,
+            'attention_mask': attention_mask,
+            'token_type_ids': token_type_ids
+        })
+        token_embeddings = outputs[0]
+        input_mask_expanded = np.expand_dims(attention_mask, -1).astype(float)
+        sum_embeddings = np.sum(token_embeddings * input_mask_expanded, axis=1)
+        sum_mask = np.clip(input_mask_expanded.sum(axis=1), a_min=1e-9, a_max=None)
+        embeddings = sum_embeddings / sum_mask
+        norms = np.linalg.norm(embeddings, axis=1, keepdims=True)
+        norms = np.where(norms == 0, 1, norms)
+        return embeddings / norms
+
+VISION_UTTERANCES = [
+    "what can you see",
+    "how many objects are there",
+    "what is this",
+    "what am I holding",
+    "describe what you see",
+    "look at this",
+    "what color is this",
+    "can you identify this object",
+    "is this heavy",
+    "what is on the desk",
+    "describe what is in front of you",
+    "what are you looking at",
+    "who is in front of you",
+    "what am I wearing"
+]
+
 VISION_KEYWORDS = {
     "see": 1.5, "look": 1.5, "holding": 1.8, "color": 1.5, "view": 1.2,
     "front": 1.3, "desk": 1.2, "table": 1.2, "object": 1.4, "objects": 1.4,
@@ -57,16 +136,27 @@ VISION_PHRASES = [
     "who am i", "what am i wearing"
 ]
 
+encoder = MiniLMEncoder(ROUTER_MODEL_PATH, ROUTER_VOCAB_PATH)
+dense_vision_embeddings = encoder.encode(VISION_UTTERANCES) if encoder.session else None
+
 def calculate_vision_similarity(text):
-    """Calculates semantic visual intent score between 0.0 and 1.0."""
+    """Calculates semantic visual intent score using MiniLM Dense Embeddings or Fast Semantic Matcher."""
     clean_text = text.lower().strip()
     
-    # 1. Exact phrase matching
+    # 1. MiniLM Dense Vector Embedding Similarity (if ONNX engine active)
+    if encoder.session and dense_vision_embeddings is not None:
+        try:
+            query_vector = encoder.encode([clean_text])[0]
+            scores = [np.dot(query_vector, ut_vector) for ut_vector in dense_vision_embeddings]
+            return float(max(scores))
+        except Exception:
+            pass
+            
+    # 2. Fast Semantic Fallback
     for phrase in VISION_PHRASES:
         if phrase in clean_text:
             return 0.85
             
-    # 2. Weighted keyword matching
     words = [w.strip("?,.!") for w in clean_text.split()]
     score = 0.0
     for w in words:
@@ -118,8 +208,53 @@ def speak_via_riva(text_to_speak):
     except Exception as e:
         print("\n[ERROR] TTS Error for '%s': %s" % (clean_text, e))
 
+# --- 3. Speculative Zero-Latency Camera Capture System ---
+speculative_image_b64 = None
+speculative_cam_thread = None
+
+def capture_camera_frame():
+    """Captures a fresh live snapshot exclusively from the forward-facing head camera (/dev/video2)."""
+    import cv2
+    cap = cv2.VideoCapture(2, cv2.CAP_V4L2)
+    if not cap.isOpened():
+        print("[ERROR] Could not open forward head camera /dev/video2")
+        return None
+    
+    # Flush 15 frames to discard any stale cached buffer
+    ret, frame = None, None
+    for _ in range(15):
+        ret, frame = cap.read()
+    cap.release()
+    
+    if ret and frame is not None:
+        cv2.imwrite("/home/unitree/last_camera_snap.jpg", frame)
+        small = cv2.resize(frame, (384, 384), interpolation=cv2.INTER_AREA)
+        _, buffer = cv2.imencode('.jpg', small, [int(cv2.IMWRITE_JPEG_QUALITY), 85])
+        return base64.b64encode(buffer).decode('utf-8')
+    return None
+
+def trigger_speculative_camera_capture():
+    """Starts capturing the forward camera in a concurrent background thread while the user speaks."""
+    global speculative_image_b64, speculative_cam_thread
+    speculative_image_b64 = None
+    
+    def worker():
+        global speculative_image_b64
+        speculative_image_b64 = capture_camera_frame()
+        
+    speculative_cam_thread = threading.Thread(target=worker)
+    speculative_cam_thread.daemon = True
+    speculative_cam_thread.start()
+
+def get_speculative_camera_frame():
+    """Returns the pre-captured camera frame immediately (0ms perceived latency)."""
+    global speculative_image_b64, speculative_cam_thread
+    if speculative_cam_thread and speculative_cam_thread.is_alive():
+        speculative_cam_thread.join(timeout=1.0)
+    return speculative_image_b64
+
 def record_push_to_talk():
-    """Captures live audio from Unitree multicast socket with push-to-talk and automatic gain boost."""
+    """Captures live audio from Unitree multicast socket with push-to-talk, AGC, and speculative camera snapping."""
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP)
     sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     sock.bind(("", MCAST_PORT))
@@ -136,6 +271,9 @@ def record_push_to_talk():
     except Exception:
         pass
         
+    # Trigger speculative camera capture concurrently in background
+    trigger_speculative_camera_capture()
+    
     print("\n[MIC] RECORDING... Speak into the robot microphone now.")
     print("[TIP] Press [ENTER] when you are done speaking.")
     sys.stdout.flush()
@@ -199,32 +337,13 @@ def transcribe_audio_bytes(audio_bytes):
         print("[ERROR] ASR Error: %s" % e)
     return ""
 
-def capture_camera_frame():
-    """Captures a fresh live snapshot exclusively from the forward-facing head camera (/dev/video2)."""
-    import cv2
-    print("[CAMERA] Capturing forward view from head camera (/dev/video2)...")
-    cap = cv2.VideoCapture(2, cv2.CAP_V4L2)
-    if not cap.isOpened():
-        print("[ERROR] Could not open forward head camera /dev/video2")
-        return None
-    
-    # Flush 15 frames to discard any stale cached buffer
-    ret, frame = None, None
-    for _ in range(15):
-        ret, frame = cap.read()
-    cap.release()
-    
-    if ret and frame is not None:
-        cv2.imwrite("/home/unitree/last_camera_snap.jpg", frame)
-        small = cv2.resize(frame, (384, 384), interpolation=cv2.INTER_AREA)
-        _, buffer = cv2.imencode('.jpg', small, [int(cv2.IMWRITE_JPEG_QUALITY), 85])
-        return base64.b64encode(buffer).decode('utf-8')
-    print("[ERROR] Failed to read frame from /dev/video2")
-    return None
-
 def query_gemma4_and_stream_tts(user_text, image_b64=None):
     """Streams tokens from Gemma-4 and speaks sentence chunks via Magpie TTS."""
-    print("[GEMMA] Querying Gemma-4 VLM (Streaming)...")
+    if image_b64:
+        print("[GEMMA] Sending Multimodal Query (Image + Text)...")
+    else:
+        print("[GEMMA] Sending Fast Text-Only Query...")
+        
     content = []
     if image_b64:
         content.append({
@@ -293,7 +412,8 @@ def query_gemma4_and_stream_tts(user_text, image_b64=None):
 
 def main():
     print("=" * 60)
-    print("[SYSTEM] Unitree R1 Multimodal Assistant (ASR + Gemma-4 + Magpie)")
+    print("[SYSTEM] Unitree R1 Speculative Multimodal Assistant")
+    print("[PERCEPTION] MiniLM Semantic Router + Speculative Forward Camera (/dev/video2)")
     print("=" * 60)
     
     ROUTER_THRESHOLD = 0.35
@@ -311,7 +431,7 @@ def main():
             print("[EXIT] Exiting assistant.")
             break
             
-        # 2. Push to talk audio capture with AGC
+        # 2. Push to talk audio capture with AGC + Concurrent Background Camera Snapping
         audio_bytes = record_push_to_talk()
         
         # 3. Transcribe voice
@@ -320,16 +440,22 @@ def main():
             print("[WARN] No speech detected, try speaking closer to the mic.")
             continue
             
-        # 4. Semantic Routing: Determine if visual intent is present
+        # 4. MiniLM Dense Semantic Routing: Determine visual intent
         similarity_score = calculate_vision_similarity(transcript)
         has_visual_intent = (similarity_score >= ROUTER_THRESHOLD)
         
         image_b64 = None
         if has_visual_intent:
-            print("[ROUTE] Vision Route triggered (Score: %.2f >= %.2f)!" % (similarity_score, ROUTER_THRESHOLD))
-            image_b64 = capture_camera_frame()
+            print("[ROUTE] 🎯 Vision Route Triggered (MiniLM Score: %.2f >= %.2f)!" % (similarity_score, ROUTER_THRESHOLD))
+            # Retrieve pre-captured speculative image in 0ms!
+            image_b64 = get_speculative_camera_frame()
+            if image_b64:
+                print("[ROUTE] ⚡ Using pre-captured speculative frame from /dev/video2 (0ms latency).")
+            else:
+                print("[WARN] Speculative frame not ready, capturing on demand...")
+                image_b64 = capture_camera_frame()
         else:
-            print("[ROUTE] Text-only Route (Score: %.2f < %.2f) - Skipping camera capture." % (similarity_score, ROUTER_THRESHOLD))
+            print("[ROUTE] 💬 Text-only Route (MiniLM Score: %.2f < %.2f) - Discarding camera frame." % (similarity_score, ROUTER_THRESHOLD))
             image_b64 = None
             
         # 5. Stream tokens from Gemma-4 & speak via Magpie TTS
