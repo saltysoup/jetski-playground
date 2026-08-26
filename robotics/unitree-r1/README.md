@@ -51,7 +51,7 @@ sudo jetson_clocks
 export PATH=/home/unitree/.local/bin:/usr/local/cuda/bin:$PATH
 cd /home/unitree/NeMo-Speech.cpp
 ninja -C build-cuda riva_server
-ninja -C llama.cpp/build-cuda llama-server
+ninja -C llama.cpp/build-cuda bin/llama-server
 
 # 4. Once builds finish linking, switch power mode down to 15W battery saver
 sudo nvpmodel -m 2
@@ -271,9 +271,13 @@ cd /home/unitree/NeMo-Speech.cpp/llama.cpp
 cmake -B build-cuda -G Ninja \
   -DGGML_CUDA=ON \
   -DCMAKE_CUDA_ARCHITECTURES=87 \
-  -DCMAKE_BUILD_TYPE=Release
+  -DCMAKE_BUILD_TYPE=Release \
+  -DLLAMA_BUILD_UI=OFF \
+  -DLLAMA_BUILD_WEBUI=OFF
 
-ninja -C build-cuda llama-server -j$(nproc)
+ninja -C build-cuda server-context llama-ui
+ar rcs build-cuda/tools/server/libserver-context.a build-cuda/tools/server/CMakeFiles/server-context.dir/*.cpp.o
+ninja -C build-cuda bin/llama-server
 ```
 
 ---
@@ -320,13 +324,15 @@ export LD_LIBRARY_PATH=/home/unitree/NeMo-Speech.cpp/build-cuda/bin:$LD_LIBRARY_
 
 #### Terminal 2: Launch Native CUDA Gemma-4 Multimodal VLM Server on Jetson (OpenAI Compatible)
 ```bash
+export LD_LIBRARY_PATH=/home/unitree/NeMo-Speech.cpp/llama.cpp/build-cuda/bin:$LD_LIBRARY_PATH
 /home/unitree/NeMo-Speech.cpp/llama.cpp/build-cuda/bin/llama-server \
   -m /home/unitree/robot_assets/models/gemma-4-E2B-it-q8_0.gguf \
   --mmproj /home/unitree/robot_assets/models/mmproj-gemma-4-E2B-f16.gguf \
   --host 127.0.0.1 \
   --port 8000 \
   -c 2048 \
-  -ngl 99
+  -ngl 99 \
+  --reasoning off
 ```
 
 #### Terminal 3: Run Interactive Semantic Assistant
