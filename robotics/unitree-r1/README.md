@@ -1,6 +1,6 @@
 # Unitree R1 Humanoid Robot: Fully Offline Edge Deployment Guide
 
-End-to-end deployment guide for running **real-time multimodal AI (Nemotron Speech ASR + Magpie TTS v2602 + Gemma-2 2B VLM via Native CUDA Engine)** fully on-device on the **Unitree R1 / G1** (NVIDIA Jetson Orin NX).
+End-to-end deployment guide for running **real-time multimodal AI (Nemotron Speech ASR + Magpie TTS v2602 + Gemma-4 2B Multimodal VLM via Native CUDA Engine)** fully on-device on the **Unitree R1 / G1** (NVIDIA Jetson Orin NX).
 
 ---
 
@@ -113,10 +113,13 @@ tar -xf ~/robot_assets/models/magpie-tts/magpie_tts_multilingual_357m.nemo \
   -C ~/robot_assets/models/magpie-tts/extracted/
 ```
 
-#### E. Gemma 2B VLM GGUF (OpenAI-Compatible Local LLM)
+#### E. Gemma-4 2B Multimodal VLM (Base Language Model + Vision Projector)
 ```bash
-curl -fL "https://huggingface.co/bartowski/gemma-2-2b-it-GGUF/resolve/main/gemma-2-2b-it-Q4_K_M.gguf" \
-  -o ~/robot_assets/models/gemma-2-2b-it-Q4_K_M.gguf
+# Language Model GGUF (Q8_0)
+# ~/robot_assets/models/gemma-4-E2B-it-q8_0.gguf
+
+# Vision Projector GGUF (F16)
+# ~/robot_assets/models/mmproj-gemma-4-E2B-f16.gguf
 ```
 
 ---
@@ -260,7 +263,7 @@ ninja -C build-cuda riva_server -j$(nproc)
 
 ---
 
-### 3.3 Build `llama-server` with CUDA (Native Local LLM Engine)
+### 3.3 Build `llama-server` with CUDA (Native Multimodal VLM Engine)
 *Estimated Time: ~5–7 minutes in MAXN mode*
 ```bash
 cd /home/unitree/NeMo-Speech.cpp/llama.cpp
@@ -315,13 +318,14 @@ export LD_LIBRARY_PATH=/home/unitree/NeMo-Speech.cpp/build-cuda/bin:$LD_LIBRARY_
   --bind 127.0.0.1:50051
 ```
 
-#### Terminal 2: Launch Native CUDA LLM Server on Jetson (OpenAI Compatible)
+#### Terminal 2: Launch Native CUDA Gemma-4 Multimodal VLM Server on Jetson (OpenAI Compatible)
 ```bash
 /home/unitree/NeMo-Speech.cpp/llama.cpp/build-cuda/bin/llama-server \
-  -m /home/unitree/robot_assets/models/gemma-2-2b-it-Q4_K_M.gguf \
+  -m /home/unitree/robot_assets/models/gemma-4-E2B-it-q8_0.gguf \
+  --mmproj /home/unitree/robot_assets/models/mmproj-gemma-4-E2B-f16.gguf \
   --host 127.0.0.1 \
   --port 8000 \
-  -c 1024 \
+  -c 2048 \
   -ngl 99
 ```
 
@@ -336,7 +340,7 @@ python3 ~/test_vision_voice_assistant.py
   4. **MiniLM Semantic Router** evaluates intent:
      * If visual: captures `/dev/video0` head camera and attaches image.
      * If conversational: skips camera to minimize latency.
-  5. Gemma generates a concise 1-sentence answer locally on the Jetson Orin NX.
+  5. Gemma-4 generates a concise 1-sentence multimodal answer locally on the Jetson Orin NX.
   6. Magpie TTS speaks the response through the robot's onboard speakers.
 
 ---
@@ -352,7 +356,7 @@ Instructions for tracking memory consumption across co-located models on the Jet
   ```
 * **Footprint Breakdown Baseline**:
   * `NeMo-Speech.cpp` (`riva_server`): ~1.44 GB VRAM (Nemotron ASR: 649 MB, Magpie TTS: 721 MB, NanoCodec: 67 MB).
-  * `llama-server` (Gemma 2B Q4_K_M): ~1.65 GB VRAM.
+  * `llama-server` (Gemma-4 2B Q8_0 + Vision Projector F16): ~3.2 GB VRAM.
   * Unitree RL Motion / Locomotion Policy: ~1.0–2.0 GB VRAM.
   * System Overhead: ~1.2 GB RAM.
-  * Remaining headroom: ~9–10 GB.
+  * Remaining headroom: ~8–9 GB.
