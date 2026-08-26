@@ -322,3 +322,46 @@ python3 ~/test_vision_voice_assistant.py
   4. Unitree head camera captures the live scene.
   5. Gemma-4 generates a concise 1-sentence answer.
   6. Magpie TTS speaks the response through the robot's onboard speakers.
+
+---
+
+## TODO / Optimization & Tuning Backlog
+
+### 1. Memory Profiling & Real-Time Monitoring
+Instructions for tracking memory consumption across co-located models on the Jetson Orin NX (16GB Shared Unified Memory):
+* **Real-time Jetson Memory Monitor (`tegrastats`)**:
+  ```bash
+  # Check active RAM, GPU VRAM usage, and power draw (in mW) every 1000ms:
+  sudo tegrastats --interval 1000
+  ```
+* **Footprint Breakdown Baseline**:
+  * `NeMo-Speech.cpp` (`riva_server`): ~1.44 GB VRAM (Nemotron ASR: 649 MB, Magpie TTS: 721 MB, NanoCodec: 67 MB).
+  * Unitree RL Motion / Locomotion Policy: ~1.0–2.0 GB VRAM.
+  * System & Display Overhead: ~1.2 GB RAM.
+  * Remaining headroom for VLM (Gemma-4 KV Cache): ~10–11 GB.
+
+---
+
+### 2. GPU Memory Utilization Rate Tuning (`--gpu-memory-utilization`)
+* **Goal**: Determine the maximum stable ceiling for vLLM memory allocation when deployed alongside `riva_server` and the Unitree RL locomotion policy.
+* **Test Plan**:
+  * Benchmark `--gpu-memory-utilization 0.50`, `0.55`, `0.60`, and `0.65`.
+  * Verify that system memory pressure does not trigger OOM killer during simultaneous speech synthesis, camera frame processing, and locomotion commands.
+
+---
+
+### 3. Latency Optimization: Reduce Max Batched Tokens (`--max-num-batched-tokens`)
+* **Goal**: Minimize Time-to-First-Token (TTFT) for low-latency conversational response.
+* **Test Plan**:
+  * Default test value: `512` tokens.
+  * Test reduced batch sizes: `--max-num-batched-tokens 256` and `--max-num-batched-tokens 128`.
+  * Evaluate TTFT and end-to-end voice loop latency (target: <1.2s from speech finish to audio playback).
+
+---
+
+### 4. Context Window Expansion (`--max-model-len`)
+* **Goal**: Increase conversation and visual history capacity for multi-turn reasoning.
+* **Test Plan**:
+  * Baseline: `--max-model-len 1024`.
+  * Benchmark expanded context lengths: `--max-model-len 2048` and `--max-model-len 4096`.
+  * Measure the memory overhead of the expanded KV cache and assess any impact on frame token throughput.
