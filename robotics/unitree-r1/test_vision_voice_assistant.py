@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 """
-Unitree R1 Test 2: Full Multimodal Vision & Voice Assistant with Semantic Routing
+Unitree R1: Low-Latency Multimodal Vision & Voice Assistant
 - Microphone: Unitree UDP Multicast (239.168.123.161:5555)
-- ASR: Nemotron Streaming ASR (Riva gRPC 50051)
+- ASR: Nemotron ASR (Riva gRPC 50051)
 - Semantic Router: 100% Offline MiniLM-L6-v2 ONNX Dense Router
-- Camera: OpenCV (/dev/video0) - Triggered only on Visual Intent
-- VLM: Gemma-4 Multimodal (vLLM 8000)
-- TTS: Magpie TTS (Riva gRPC 50051)
+- Camera: OpenCV (/dev/video0) - Triggered dynamically on Visual Intent
+- VLM: Gemma-4 Multimodal (llama-server 8000)
+- TTS: Magpie TTS v2602 (Riva gRPC 50051) - Sentence-Pipelined Low-Latency Streaming
 - Speakers: Unitree AudioClient DDS Player (unitree_play_wav)
 """
 
@@ -15,9 +16,11 @@ import sys
 import cv2
 import time
 import json
+import queue
 import base64
 import socket
 import struct
+import threading
 import subprocess
 import requests
 import soundfile as sf
@@ -27,19 +30,42 @@ import onnxruntime
 
 # --- Server & Network Configurations ---
 RIVA_URI = "127.0.0.1:50051"
-VLLM_URL = os.getenv("VLLM_URL", "http://localhost:8000/v1/chat/completions")
-MODEL_NAME = "google/gemma-4-E2B-it"
+VLLM_URL = os.getenv("VLLM_URL", "http://127.0.0.1:8000/v1/chat/completions")
+MODEL_NAME = "gemma"
 
 MCAST_GRP = "239.168.123.161"
 MCAST_PORT = 5555
-NET_INTERFACE_IP = "192.168.123.164"
 NET_INTERFACE_NAME = "eth10"
 PLAYER_BIN = "/home/unitree/unitree_sdk2/build/bin/unitree_play_wav"
-TEMP_TTS_WAV = "/tmp/robot_tts.wav"
+
+# --- Audio Playback Background Worker ---
+tts_audio_queue = queue.Queue()
+temp_wav_counter = 0
+
+def audio_playback_worker():
+    """Background worker that pulls synthesized TTS audio buffers and plays them through robot speakers."""
+    global temp_wav_counter
+    while True:
+        audio_np = tts_audio_queue.get()
+        if audio_np is None:
+            break
+        try:
+            temp_wav = f"/tmp/tts_chunk_{temp_wav_counter % 10}.wav"
+            temp_wav_counter += 1
+            sf.write(temp_wav, audio_np, 16000, format='WAV', subtype='PCM_16')
+            if os.path.exists(PLAYER_BIN):
+                subprocess.run([PLAYER_BIN, temp_wav, NET_INTERFACE_NAME], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        except Exception as e:
+            print(f"❌ Playback error: {e}")
+        finally:
+            tts_audio_queue.task_done()
+
+playback_thread = threading.Thread(target=audio_playback_worker, daemon=True)
+playback_thread.start()
 
 # --- 1. MiniLM ONNX Dense Semantic Router ---
 class MiniLMEncoder:
-    """100% Offline Fast Sentence-Transformers MiniLM-L6-v2 ONNX Embedding Engine."""
+    """100% Offline Fast MiniLM-L6-v2 ONNX Embedding Engine."""
     def __init__(self, model_path, vocab_path):
         opts = onnxruntime.SessionOptions()
         opts.intra_op_num_threads = 2
@@ -122,25 +148,30 @@ riva_asr = riva.client.ASRService(riva_auth)
 riva_tts = riva.client.SpeechSynthesisService(riva_auth)
 print("✅ Riva ASR & TTS connected!")
 
-def speak_via_riva(text):
-    """Synthesizes text via NeMo TTS and plays through Unitree robot speakers."""
-    print(f"🤖 Speaking: \"{text}\"")
+def synthesize_and_queue_sentence(sentence_text):
+    """Synthesizes a single sentence chunk via NeMo TTS and queues for immediate playback."""
+    clean_text = sentence_text.strip()
+    if not clean_text or len(clean_text) < 2:
+        return
     try:
         resp = riva_tts.synthesize(
-            text=text,
+            text=clean_text,
             voice_name="jason",
             language_code="en-US",
             sample_rate_hz=16000
         )
         if resp.audio:
             audio_np = np.frombuffer(resp.audio, dtype=np.int16)
-            sf.write(TEMP_TTS_WAV, audio_np, 16000, format='WAV', subtype='PCM_16')
-            if os.path.exists(PLAYER_BIN):
-                subprocess.run([PLAYER_BIN, TEMP_TTS_WAV, NET_INTERFACE_NAME], check=True)
+            tts_audio_queue.put(audio_np)
     except Exception as e:
-        print(f"❌ TTS / Playback Error: {e}")
+        print(f"\n❌ TTS Error for '{clean_text}': {e}")
 
-def record_multicast_audio(duration_sec=5, sample_rate=16000):
+def speak_direct_via_riva(text):
+    """Fallback synchronous speech."""
+    synthesize_and_queue_sentence(text)
+    tts_audio_queue.join()
+
+def record_multicast_audio(duration_sec=4, sample_rate=16000):
     """Captures raw 16kHz 16-bit Mono PCM audio directly from Unitree multicast socket."""
     print(f"🎙️ Listening to Unitree microphone ({MCAST_GRP}:{MCAST_PORT}) for {duration_sec}s...")
     
@@ -211,9 +242,9 @@ def capture_camera_frame():
         return base64.b64encode(buffer).decode('utf-8')
     return None
 
-def query_gemma4_vlm(user_text, image_b64):
-    """Queries OpenAI-compatible Gemma-4 server with streaming tokens."""
-    print("🧠 Querying Gemma-4 VLM (Streaming)...")
+def query_gemma4_and_stream_tts(user_text, image_b64=None):
+    """Streams tokens from Gemma-4, chunks into sentences, and immediately dispatches each sentence to Magpie TTS."""
+    print("🧠 Querying Gemma-4 VLM (Sentence-Pipelined Streaming)...")
     content = []
     if image_b64:
         content.append({
@@ -239,10 +270,12 @@ def query_gemma4_vlm(user_text, image_b64):
         resp = requests.post(VLLM_URL, json=payload, stream=True, timeout=15)
         if resp.status_code != 200:
             print(f"❌ Server Error: {resp.text}")
-            return "I am ready to assist you."
+            speak_direct_via_riva("I am ready to assist you.")
+            return
             
-        full_response = ""
+        current_sentence = ""
         print("🤖 Gemma-4: ", end="", flush=True)
+        
         for line in resp.iter_lines():
             if line:
                 line_str = line.decode("utf-8").strip()
@@ -256,34 +289,53 @@ def query_gemma4_vlm(user_text, image_b64):
                         text_chunk = delta.get("content", "")
                         if text_chunk:
                             print(text_chunk, end="", flush=True)
-                            full_response += text_chunk
+                            current_sentence += text_chunk
+                            
+                            # As soon as sentence punctuation arrives, start TTS on a background thread!
+                            if any(p in text_chunk for p in [".", "?", "!", "\n"]):
+                                sentence_to_speak = current_sentence.strip()
+                                if len(sentence_to_speak) > 8:
+                                    threading.Thread(
+                                        target=synthesize_and_queue_sentence,
+                                        args=(sentence_to_speak,),
+                                        daemon=True
+                                    ).start()
+                                    current_sentence = ""
                     except Exception:
                         continue
+                        
         print()
-        answer = full_response.strip()
-        if answer:
-            return answer
+        # Flush any remaining text in buffer
+        if current_sentence.strip():
+            threading.Thread(
+                target=synthesize_and_queue_sentence,
+                args=(current_sentence.strip(),),
+                daemon=True
+            ).start()
+            
+        # Wait for all sentence audio playback chunks to complete
+        tts_audio_queue.join()
+        
     except Exception as e:
         print(f"❌ Connection Error: {e}")
-    return "I am ready to assist you."
-
+        speak_direct_via_riva("I encountered an error connecting to my intelligence engine.")
 
 def main():
     print("=" * 60)
-    print("🤖 Unitree R1 Semantic Assistant (MiniLM Router + Nemotron + Magpie)")
+    print("🤖 Unitree R1 Streaming Assistant (MiniLM + Nemotron + Magpie)")
     print("=" * 60)
     
     ROUTER_THRESHOLD = 0.35
     
     # 1. Robot says initial prompt
-    speak_via_riva("Ask me what I am seeing, or ask any general question")
+    speak_direct_via_riva("Ask me what I am seeing, or ask any general question")
     
     # 2. Wait 1 second
     print("⏳ Waiting 1 second...")
     time.sleep(1.0)
     
-    # 3. Record voice for 5 seconds from Unitree mic
-    audio_bytes = record_multicast_audio(duration_sec=5, sample_rate=16000)
+    # 3. Record voice for 4 seconds from Unitree mic
+    audio_bytes = record_multicast_audio(duration_sec=4, sample_rate=16000)
     
     # 4. Transcribe voice
     transcript = transcribe_audio_bytes(audio_bytes)
@@ -303,11 +355,8 @@ def main():
         print(f"💬 Text-only Route (Score: {similarity_score:.2f} < {ROUTER_THRESHOLD}) - Skipping camera capture.")
         image_b64 = None
         
-    # 6. Pass prompt and optional image to Gemma-4
-    response_text = query_gemma4_vlm(transcript, image_b64)
-    
-    # 7. Speak answer through robot speakers
-    speak_via_riva(response_text)
+    # 6. Stream tokens from Gemma-4 & pipelined streaming to Magpie TTS
+    query_gemma4_and_stream_tts(transcript, image_b64)
 
 if __name__ == "__main__":
     main()
