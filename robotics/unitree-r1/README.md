@@ -15,8 +15,8 @@ End-to-end deployment guide for running **real-time multimodal AI (Nemotron Spee
 | **Microphone** | Unitree UDP Multicast Stream | `239.168.123.161:5555` (16kHz 16-bit Mono PCM) |
 | **Speakers** | Unitree DDS AudioClient | `/home/unitree/unitree_sdk2/build/bin/unitree_play_wav` |
 | **Head Camera** | Standard USB V4L2 device | `/dev/video0` (OpenCV) |
-| **Build Power Profile** | **MAXN Mode (`nvpmodel -m 0`)** | Uncapped clock frequencies for fast compilation |
-| **Runtime Power Profile**| **15W Balanced Mode (`nvpmodel -m 2`)** | Power-saving mode for battery operation |
+| **Build Power Profile** | **MAXN Mode (`nvpmodel -m 0`) + `jetson_clocks`** | Maximum clock frequencies (~2.0 GHz) to accelerate builds |
+| **Runtime Power Profile**| **15W Balanced Mode (`nvpmodel -m 2`)** | Power-saving mode for robot battery runtime |
 | **Internet Access** | **None on robot** | Fully offline deployment via laptop staging |
 
 ---
@@ -29,27 +29,32 @@ End-to-end deployment guide for running **real-time multimodal AI (Nemotron Spee
 | **Section 2** | Robot system libraries (gRPC debs, Python wheels) installation | ~2 min |
 | **Section 3.1**| Unitree DDS Audio Player compilation (`unitree_play_wav`) | ~30 sec |
 | **Section 3.2**| `NeMo-Speech.cpp` CUDA compilation (`sm_87` native) in MAXN mode | ~20–25 min |
+| **Section 3.3**| Transition power mode to 15W battery saver | ~10 sec |
 | **Section 4** | Verification Tests (Audio Loopback + Full Vision-Voice Assistant) | ~2–3 min |
 
 ---
 
 ## Quick Resume Guide (To Continue Tomorrow)
 
-If you paused the build and shut down the robot, follow these quick steps when you power back on with a fresh battery:
+If you paused the build and shut down the robot, follow these quick steps when you power back on:
 
 ```bash
 # 1. SSH into the robot
 ssh unitree@192.168.123.164
 
-# 2. Resume the riva_server compilation (picks up incrementally from cache)
+# 2. Set Jetson to Maximum Performance (MAXN) for accelerated build speed
+sudo nvpmodel -m 0
+sudo jetson_clocks
+
+# 3. Resume the riva_server compilation (picks up incrementally from cache)
 export PATH=/home/unitree/.local/bin:/usr/local/cuda/bin:$PATH
 cd /home/unitree/NeMo-Speech.cpp
 ninja -C build-cuda riva_server
 
-# 3. Once riva_server finishes linking, switch to 15W battery saving mode
+# 4. Once riva_server finishes linking, switch power mode down to 15W battery saver
 sudo nvpmodel -m 2
 
-# 4. Proceed to Section 4 to run the Multimodal Assistant!
+# 5. Proceed to Section 4 to run the Multimodal Assistant!
 ```
 
 ---
@@ -185,14 +190,17 @@ scp robotics/unitree-r1/test_*.py unitree@192.168.123.164:~/
 
 SSH into the robot (`ssh unitree@192.168.123.164`):
 
-### 2.1 Set Power Mode to MAXN (Fast Compilation Mode)
-Ensure the Jetson is in **MAXN mode** during setup and build so all CPU/GPU cores run at maximum frequency (~2.0 GHz) for the fastest compilation:
+### 2.1 Set Power Mode to MAXN (Maximum Performance for Compilation)
+Set the Jetson to **MAXN mode** and enable max clock frequencies to accelerate compilation:
 
 ```bash
-# Set power profile to MAXN (Mode 0)
+# 1. Set power profile to MAXN (Mode 0)
 sudo nvpmodel -m 0
 
-# Verify current mode
+# 2. Lock CPU and GPU clocks to maximum frequency for fastest build
+sudo jetson_clocks
+
+# 3. Verify current mode
 sudo nvpmodel -q
 ```
 
@@ -255,10 +263,10 @@ ninja -C build-cuda riva_server -j$(nproc)
 ### 3.3 Switch Power Mode to 15W Balanced Mode (Post-Build Battery Saver)
 *Estimated Time: ~10 seconds*
 
-Once all compilation steps are finished, switch the Jetson to **15W Balanced Mode** to preserve robot battery during active inference:
+Once all compilation steps are finished, switch the Jetson to **15W Balanced Mode** to preserve robot battery during active inference and autonomous operation:
 
 ```bash
-# Set power profile to 15W
+# Set power profile to 15W (Mode 2)
 sudo nvpmodel -m 2
 
 # Verify current mode
