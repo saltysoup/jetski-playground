@@ -235,7 +235,7 @@ Enable running Docker commands directly without requiring `sudo`:
 # 1. Add unitree user to the docker group
 sudo usermod -aG docker unitree
 
-# 2. Apply group changes to current shell session
+# 2. Activate group changes in the current shell session (or exit and reconnect SSH)
 newgrp docker
 
 # 3. Verify non-root access
