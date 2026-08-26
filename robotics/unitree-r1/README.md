@@ -36,13 +36,13 @@ End-to-end deployment guide for running **real-time multimodal AI (Nemotron Spee
 
 ## Quick Resume Guide (To Continue Tomorrow)
 
-If you paused the build and shut down the robot, follow these quick steps when you power back on:
+Follow these quick steps when you power on the robot:
 
 ```bash
 # 1. SSH into the robot
 ssh unitree@192.168.123.164
 
-# 2. Set Jetson to Maximum Performance (MAXN) for accelerated build speed
+# 2. Set Jetson to Maximum Performance (MAXN) for fast builds
 sudo nvpmodel -m 0
 sudo jetson_clocks
 
@@ -68,9 +68,7 @@ Because the Unitree robot has **no internet connection**, stage all weights, whe
 ```bash
 mkdir -p ~/robot_assets/wheels \
          ~/robot_assets/debs \
-         ~/robot_assets/models/asr \
          ~/robot_assets/models/magpie-tts/extracted \
-         ~/robot_assets/models/nano-codec \
          ~/robot_assets/models/gemma-4-E2B-it \
          ~/robot_assets/models/gemma-4-E2B-it-assistant
 ```
@@ -82,7 +80,7 @@ mkdir -p ~/robot_assets/wheels \
 huggingface-cli download \
   nvidia/nemotron-speech-streaming-en-0.6b-gguf \
   nemotron-speech-streaming-en-0.6b.q8_0.gguf \
-  --local-dir ~/robot_assets/models/asr
+  --local-dir ~/robot_assets/models
 ```
 
 #### B. Magpie Multilingual TTS v2602 (Text-to-Speech)
@@ -90,7 +88,7 @@ huggingface-cli download \
 huggingface-cli download \
   nvidia/magpie-tts-357m-multilingual-gguf \
   magpie_tts_multilingual_357m.v2602.f16.gguf \
-  --local-dir ~/robot_assets/models/magpie-tts
+  --local-dir ~/robot_assets/models
 ```
 
 #### C. Nemo NanoCodec 22kHz Decoder
@@ -98,7 +96,7 @@ huggingface-cli download \
 huggingface-cli download \
   nvidia/nemo-nano-codec-22khz-1.89kbps-21.5fps-gguf \
   nemo_nano_codec_22khz_1.89kbps_21.5fps.decoder.f16.gguf \
-  --local-dir ~/robot_assets/models/nano-codec
+  --local-dir ~/robot_assets/models
 ```
 
 #### D. Magpie TTS Tokenizer Extraction
@@ -211,7 +209,7 @@ sudo nvpmodel -q
 # 1. Install gRPC & C++ system libraries
 sudo dpkg -i ~/robot_assets/debs/*.deb
 
-# 2. Fix CUDA stub to point to real Tegra driver binary
+# 2. Link CUDA stub to real Tegra driver binary
 sudo cp -L /usr/lib/aarch64-linux-gnu/tegra/libcuda.so.1.1 /usr/local/cuda/targets/aarch64-linux/lib/stubs/libcuda.so
 
 # 3. Install Python 3.8 packages & modern CMake/Ninja
@@ -293,9 +291,9 @@ python3 ~/test_audio_loopback.py
 ```bash
 export LD_LIBRARY_PATH=/home/unitree/NeMo-Speech.cpp/build-cuda/bin:$LD_LIBRARY_PATH
 /home/unitree/NeMo-Speech.cpp/build-cuda/bin/riva_server \
-  --asr.model.path /home/unitree/robot_assets/models/asr/nemotron-speech-streaming-en-0.6b.q8_0.gguf \
-  --tts.magpie-model /home/unitree/robot_assets/models/magpie-tts/magpie_tts_multilingual_357m.v2602.f16.gguf \
-  --tts.codec-model /home/unitree/robot_assets/models/nano-codec/nemo_nano_codec_22khz_1.89kbps_21.5fps.decoder.f16.gguf \
+  --asr.model.path /home/unitree/robot_assets/models/nemotron-speech-streaming-en-0.6b.q8_0.gguf \
+  --tts.magpie-model /home/unitree/robot_assets/models/magpie_tts_multilingual_357m.v2602.f16.gguf \
+  --tts.codec-model /home/unitree/robot_assets/models/nemo_nano_codec_22khz_1.89kbps_21.5fps.decoder.f16.gguf \
   --tts.tokenizer-model-dir /home/unitree/robot_assets/models/magpie-tts/extracted \
   --bind 127.0.0.1:50051
 ```
