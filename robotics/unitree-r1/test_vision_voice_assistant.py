@@ -7,9 +7,9 @@ Unitree R1: Real-Time Multimodal Vision & Voice Assistant
 - Speculative Perception: Concurrent Background Camera Capture (0ms Perceived Latency)
 - Semantic Router: 100% Offline MiniLM-L6-v2 Dense Intent Classifier
 - Camera: Forward Head Camera (/dev/video2) exclusively
-- VLM: Gemma-4 Multimodal (llama-server 8000 --flash-attn on -t 6 -ub 128 --cache-ram 0)
+- VLM: Gemma-4 Multimodal (llama-server 8000 -ub 512 -b 512 -t 6 --cache-ram 0)
 - TTS: Magpie TTS v2602 (Riva gRPC 50051) - Ultra Low Latency Streaming
-- Audio Daemon: Persistent UNIX Socket (/tmp/unitree_audio.sock) - Gapless Playback
+- Audio Daemon: Persistent Non-Blocking UNIX Socket (/tmp/unitree_audio.sock) - Seamless Gapless Playback
 """
 
 import os
@@ -207,7 +207,7 @@ def tts_synthesizer_worker():
             synthesis_queue.task_done()
 
 def audio_playback_worker():
-    """Streams audio buffers through persistent UNIX domain socket directly to the audio daemon in <1ms."""
+    """Streams audio buffers through non-blocking UNIX domain socket directly to the audio daemon in <1ms."""
     while True:
         audio_np = playback_queue.get()
         if audio_np is None:
@@ -392,7 +392,7 @@ def query_gemma4_and_stream_tts(user_text, image_b64=None):
         })
     content.append({"type": "text", "text": user_text})
     
-    system_prompt = "Your name is Jason. Don't use acronyms. For time or numbers spell them out in letters. Response needs to be under 42 words."
+    system_prompt = "Your name is Jason. Don't use acronyms. You are a robot. For time or numbers spell them out in letters. Response needs to be under 42 words."
     
     payload = {
         "model": MODEL_NAME,
@@ -405,7 +405,7 @@ def query_gemma4_and_stream_tts(user_text, image_b64=None):
     }
     
     try:
-        resp = requests.post(VLLM_URL, json=payload, stream=True, timeout=15)
+        resp = requests.post(VLLM_URL, json=payload, stream=True, timeout=20)
         if resp.status_code != 200:
             print("[ERROR] Server Error: %s" % resp.text)
             speak_direct_via_riva("I am ready to assist you.")
@@ -433,8 +433,8 @@ def query_gemma4_and_stream_tts(user_text, image_b64=None):
                             full_text += text_chunk
                             
                             words = current_sentence.strip().split()
-                            # 1. First-Chunk Trigger: 5+ words or natural punctuation gives ~1.5s speech buffer for seamless playback!
-                            if not first_chunk_sent and (len(words) >= 5 or any(p in text_chunk for p in [",", ";", ".", "!", "?"])):
+                            # 1. First-Chunk Trigger: 4+ words or natural punctuation gives instant speech start with smooth chaining!
+                            if not first_chunk_sent and (len(words) >= 4 or any(p in text_chunk for p in [",", ";", ".", "!", "?"])):
                                 queue_text_for_streaming_tts(current_sentence.strip())
                                 current_sentence = ""
                                 first_chunk_sent = True
@@ -462,7 +462,7 @@ def query_gemma4_and_stream_tts(user_text, image_b64=None):
 def main():
     print("=" * 60)
     print("[SYSTEM] Unitree R1 Multimodal Assistant")
-    print("[AUDIO] Persistent Zero-Delay Audio Daemon (/tmp/unitree_audio.sock)")
+    print("[AUDIO] Non-Blocking Gapless Audio Daemon (/tmp/unitree_audio.sock)")
     print("=" * 60)
     
     ROUTER_THRESHOLD = 0.35
