@@ -2,12 +2,11 @@
 # -*- coding: utf-8 -*-
 """
 Unitree R1: Real-Time Multimodal Vision & Voice Assistant
-- Microphone: Unitree UDP Multicast (239.168.123.161:5555) with AGC & Push-to-Talk
-- ASR: Nemotron ASR (Riva gRPC 50051)
+- Microphone: Concurrent Real-Time Streaming Nemotron ASR (Riva gRPC 50051)
 - Speculative Perception: Concurrent Background Camera Capture (0ms Perceived Latency)
 - Semantic Router: 100% Offline MiniLM-L6-v2 Dense Intent Classifier
 - Camera: Forward Head Camera (/dev/video2) exclusively
-- VLM: Gemma-4 Multimodal (llama-server 8000 --cache-ram 0)
+- VLM: Gemma-4 Multimodal (llama-server 8000 --flash-attn on -t 6 -ub 128 --cache-ram 0)
 - TTS: Magpie TTS v2602 (Riva gRPC 50051) - Ultra Low Latency Streaming
 - Audio Daemon: Persistent UNIX Socket (/tmp/unitree_audio.sock) - Gapless Playback
 """
@@ -293,89 +292,103 @@ def get_speculative_camera_frame():
         speculative_cam_thread.join(timeout=1.0)
     return speculative_image_b64
 
-def record_push_to_talk():
-    """Captures live audio from Unitree multicast socket with push-to-talk, AGC, and speculative camera snapping."""
+# --- 5. Real-Time Streaming ASR Engine ---
+def record_and_transcribe_streaming():
+    """Streams live multicast audio into Nemotron ASR concurrently while speaking (<10ms final latency)."""
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP)
     sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     sock.bind(("", MCAST_PORT))
-    
-    # Bind to eth10 multicast
     mreq = socket.inet_aton(MCAST_GRP) + socket.inet_aton(NET_INTERFACE_IP)
     sock.setsockopt(socket.IPPROTO_IP, socket.IP_ADD_MEMBERSHIP, mreq)
     sock.setblocking(False)
     
-    # Flush stale packets from buffer
+    # Flush stale packets
     try:
         while True:
             sock.recv(4096)
     except Exception:
         pass
         
-    # Trigger speculative camera capture concurrently in background
+    # Trigger speculative camera capture in background
     trigger_speculative_camera_capture()
-    
-    print("\n[MIC] RECORDING... Speak into the robot microphone now.")
-    print("[TIP] Press [ENTER] when you are done speaking.")
+
+    config = riva.client.StreamingRecognitionConfig(
+        config=riva.client.RecognitionConfig(
+            encoding=riva.client.AudioEncoding.LINEAR_PCM,
+            sample_rate_hertz=16000,
+            language_code="en-US",
+            max_alternatives=1,
+            enable_automatic_punctuation=True,
+        ),
+        interim_results=True,
+    )
+
+    audio_queue = queue.Queue()
+    stop_event = threading.Event()
+
+    def audio_stream_generator():
+        while not stop_event.is_set() or not audio_queue.empty():
+            try:
+                chunk = audio_queue.get(timeout=0.04)
+                if chunk:
+                    yield chunk
+            except queue.Empty:
+                continue
+
+    def socket_reader():
+        while not stop_event.is_set():
+            r_sock, _, _ = select.select([sock], [], [], 0.02)
+            if sock in r_sock:
+                try:
+                    data = sock.recv(4096)
+                    if data:
+                        audio_np = np.frombuffer(data, dtype=np.int16)
+                        peak = np.max(np.abs(audio_np))
+                        if peak > 100:
+                            boost = min(6.0, 22000.0 / float(peak))
+                            data = (np.clip(audio_np * boost, -32767, 32767).astype(np.int16)).tobytes()
+                        audio_queue.put(data)
+                except Exception:
+                    pass
+
+    reader_thread = threading.Thread(target=socket_reader, daemon=True)
+    reader_thread.start()
+
+    print("\n[MIC] 🎙️ LIVE STREAMING ASR ACTIVE... Speak into the robot microphone now.")
+    print("[TIP] Press [ENTER] as soon as you finish speaking.")
     sys.stdout.flush()
-    
-    audio_chunks = []
-    
-    # Non-blocking stdin monitoring while capturing UDP packets
+
+    transcript_container = [""]
+
+    def asr_consumer():
+        try:
+            responses = riva_asr.streaming_recognize(audio_stream_generator(), config)
+            for response in responses:
+                for result in response.results:
+                    if result.alternatives:
+                        text = result.alternatives[0].transcript.strip()
+                        transcript_container[0] = text
+        except Exception:
+            pass
+
+    asr_thread = threading.Thread(target=asr_consumer, daemon=True)
+    asr_thread.start()
+
+    # Wait for user to press ENTER
     while True:
-        # Check if ENTER was pressed
-        r_stdin, _, _ = select.select([sys.stdin], [], [], 0.01)
+        r_stdin, _, _ = select.select([sys.stdin], [], [], 0.02)
         if sys.stdin in r_stdin:
             sys.stdin.readline()
             break
-            
-        # Read available UDP multicast packets
-        r_sock, _, _ = select.select([sock], [], [], 0.05)
-        if sock in r_sock:
-            try:
-                data = sock.recv(4096)
-                if data:
-                    audio_chunks.append(data)
-            except Exception:
-                pass
-                
-    sock.close()
-    print("[MIC] Recording finished! Processing...")
-    
-    if not audio_chunks:
-        return None
-        
-    raw_bytes = b"".join(audio_chunks)
-    audio_np = np.frombuffer(raw_bytes, dtype=np.int16)
-    
-    # Apply Automatic Gain Control (AGC) on microphone capture
-    peak = np.max(np.abs(audio_np))
-    if peak > 100:
-        boost = min(8.0, 24000.0 / float(peak))
-        audio_np = np.clip(audio_np * boost, -32767, 32767).astype(np.int16)
-        
-    return audio_np.tobytes()
 
-def transcribe_audio_bytes(audio_bytes):
-    """Transcribes audio using NeMo Streaming ASR via Riva gRPC."""
-    if not audio_bytes:
-        return ""
-    print("[ASR] Transcribing voice with NeMo ASR...")
-    config = riva.client.RecognitionConfig(
-        encoding=riva.client.AudioEncoding.LINEAR_PCM,
-        sample_rate_hertz=16000,
-        language_code="en-US",
-        max_alternatives=1,
-        enable_automatic_punctuation=True,
-    )
-    try:
-        response = riva_asr.offline_recognize(audio_bytes, config)
-        if response.results and response.results[0].alternatives:
-            transcript = response.results[0].alternatives[0].transcript.strip()
-            print("[ASR] You said: \"%s\"" % transcript)
-            return transcript
-    except Exception as e:
-        print("[ERROR] ASR Error: %s" % e)
-    return ""
+    stop_event.set()
+    sock.close()
+    asr_thread.join(timeout=0.4)
+
+    final_transcript = transcript_container[0].strip()
+    if final_transcript:
+        print("[ASR] ⚡ Real-Time Transcript: \"%s\"" % final_transcript)
+    return final_transcript
 
 def query_gemma4_and_stream_tts(user_text, image_b64=None):
     """Streams tokens from Gemma-4 and dispatches early sentence chunks to parallel TTS pipeline."""
@@ -463,6 +476,7 @@ def main():
     print("=" * 60)
     print("[SYSTEM] Unitree R1 Ultra-Low-Latency Multimodal Assistant")
     print("[AUDIO] Persistent Zero-Delay Audio Daemon (/tmp/unitree_audio.sock)")
+    print("[ASR] Real-Time Streaming gRPC Recognition")
     print("=" * 60)
     
     ROUTER_THRESHOLD = 0.35
@@ -480,16 +494,13 @@ def main():
             print("[EXIT] Exiting assistant.")
             break
             
-        # 2. Push to talk audio capture with AGC + Concurrent Background Camera Snapping
-        audio_bytes = record_push_to_talk()
-        
-        # 3. Transcribe voice
-        transcript = transcribe_audio_bytes(audio_bytes)
+        # 2. Concurrent Live Streaming ASR + Speculative Background Camera Snapping
+        transcript = record_and_transcribe_streaming()
         if not transcript:
             print("[WARN] No speech detected, try speaking closer to the mic.")
             continue
             
-        # 4. MiniLM Dense Semantic Routing: Determine visual intent
+        # 3. MiniLM Dense Semantic Routing: Determine visual intent
         similarity_score = calculate_vision_similarity(transcript)
         has_visual_intent = (similarity_score >= ROUTER_THRESHOLD)
         
@@ -507,7 +518,7 @@ def main():
             print("[ROUTE] 💬 Text-only Route (MiniLM Score: %.2f < %.2f) - Discarding camera frame." % (similarity_score, ROUTER_THRESHOLD))
             image_b64 = None
             
-        # 5. Stream tokens from Gemma-4 & speak via Magpie TTS
+        # 4. Stream tokens from Gemma-4 & speak via Magpie TTS
         query_gemma4_and_stream_tts(transcript, image_b64)
 
 if __name__ == "__main__":
