@@ -440,7 +440,7 @@ def main():
     ROUTER_THRESHOLD = 0.35
     
     # 1. Robot greeting
-    startup_greeting = "My name is Jason. Domo arigato mr roboto."
+    startup_greeting = "My name is Jason. Domo arigato mr roberto."
     speak_direct_via_riva(startup_greeting)
     
     while True:
