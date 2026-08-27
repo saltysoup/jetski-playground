@@ -12,7 +12,7 @@ echo "============================================================"
 
 # 1. Stop any stale background servers
 echo "[CLEANUP] Stopping existing background processes..."
-killall -9 riva_server llama-server unitree_audio_daemon 2>/dev/null || true
+killall -9 riva_server llama-server unitree_audio_daemon unitree_head_camera_daemon 2>/dev/null || true
 sleep 1
 
 # 2. Launch Riva Speech Server (ASR + Magpie TTS) in Background
@@ -36,25 +36,38 @@ nohup /home/unitree/NeMo-Speech.cpp/llama.cpp/build-cuda/bin/llama-server \
   -c 2048 \
   -ngl 99 \
   -t 6 \
-  -ub 512 \
-  -b 512 \
+  -ub 1024 \
+  -b 1024 \
   --flash-attn on \
-  --cache-ram 0 \
+  --cache-ram 2048 \
   --reasoning off > /home/unitree/llama_server.log 2>&1 &
 
-# 4. Launch Persistent Gapless Audio Daemon
-echo "[3/3] Launching Persistent Unitree Audio Daemon..."
+# 4. Launch Persistent Gapless Audio Daemon & Head Camera Daemon
+echo "[3/4] Launching Persistent Unitree Audio Daemon..."
 nohup /home/unitree/unitree_sdk2/build/bin/unitree_audio_daemon eth10 > /home/unitree/audio_daemon.log 2>&1 &
 
-# 5. Wait for GPU memory initialization
-echo "[WAIT] Warming up neural engines (5 seconds)..."
-sleep 5
+echo "[4/4] Launching Persistent Unitree Head Eye Camera Daemon (DDS eth10)..."
+killall -9 unitree_head_camera_daemon 2>/dev/null || true
+nohup /home/unitree/unitree_sdk2/build/bin/unitree_head_camera_daemon eth10 > /home/unitree/head_camera_daemon.log 2>&1 &
+
+# 5. Wait for GPU memory initialization & server readiness
+echo "[WAIT] Waiting for Riva (50051) & Gemma-4 (8000) to finish CUDA warmup..."
+WAITED=0
+while [ $WAITED -lt 30 ]; do
+    if nc -z 127.0.0.1 50051 2>/dev/null && nc -z 127.0.0.1 8000 2>/dev/null; then
+        echo "[OK] All neural services are fully online and ready!"
+        break
+    fi
+    sleep 1
+    WAITED=$((WAITED + 1))
+done
 
 echo "============================================================"
 echo "[STATUS] Active Background Services:"
-ps aux | grep -E '(riva_server|llama-server|unitree_audio_daemon)' | grep -v grep
+ps aux | grep -E '(riva_server|llama-server|unitree_audio_daemon|unitree_head_camera_daemon)' | grep -v grep
 echo "============================================================"
 
 # 6. Launch Interactive Voice & Vision Assistant
 echo "[READY] Launching Jason Interactive Assistant..."
-python /home/unitree/test_vision_voice_assistant.py
+export CAMERA_SOURCE="${CAMERA_SOURCE:-head}"
+python3 /home/unitree/test_vision_voice_assistant.py
