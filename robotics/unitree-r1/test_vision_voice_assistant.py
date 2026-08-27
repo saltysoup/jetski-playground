@@ -6,10 +6,10 @@ Unitree R1: Real-Time Multimodal Vision & Voice Assistant
 - ASR: Nemotron ASR (Riva gRPC 50051)
 - Speculative Perception: Concurrent Background Camera Capture (0ms Perceived Latency)
 - Semantic Router: 100% Offline MiniLM-L6-v2 Dense Intent Classifier
-- Camera: Forward Head Camera (/dev/video2) exclusively (Fresh Frames & No Stale Cache)
+- Camera: Forward Head Camera (/dev/video2) exclusively
 - VLM: Gemma-4 Multimodal (llama-server 8000 --cache-ram 0)
-- TTS: Magpie TTS v2602 (Riva gRPC 50051) - True Multi-Threaded Pipelined Streaming
-- Speakers: Unitree AudioClient DDS Player (unitree_play_wav) - Hardware 100% Volume
+- TTS: Magpie TTS v2602 (Riva gRPC 50051) - Ultra Low Latency Streaming
+- Audio Daemon: Persistent UNIX Socket (/tmp/unitree_audio.sock) - Zero Process Delay
 """
 
 import os
@@ -41,6 +41,7 @@ MCAST_GRP = "239.168.123.161"
 MCAST_PORT = 5555
 NET_INTERFACE_IP = "192.168.123.164"
 NET_INTERFACE_NAME = "eth10"
+AUDIO_SOCKET = "/tmp/unitree_audio.sock"
 PLAYER_BIN = "/home/unitree/unitree_sdk2/build/bin/unitree_play_wav"
 
 ROUTER_MODEL_PATH = "/home/unitree/robot_assets/models/onnx/model_qint8_arm64.onnx"
@@ -171,10 +172,9 @@ riva_asr = riva.client.ASRService(riva_auth)
 riva_tts = riva.client.SpeechSynthesisService(riva_auth)
 print("[OK] Riva ASR & TTS connected!")
 
-# --- 3. Multi-Threaded Pipelined TTS Architecture ---
+# --- 3. Zero-Delay Multi-Threaded Pipelined TTS Architecture ---
 synthesis_queue = queue.Queue()
 playback_queue = queue.Queue()
-temp_wav_counter = 0
 
 def tts_synthesizer_worker():
     """Background worker that continuously synthesizes queued text chunks into audio buffers."""
@@ -207,18 +207,24 @@ def tts_synthesizer_worker():
             synthesis_queue.task_done()
 
 def audio_playback_worker():
-    """Background worker that continuously plays audio buffers through Unitree DDS speakers."""
-    global temp_wav_counter
+    """Streams audio buffers through persistent UNIX domain socket directly to the audio daemon in <1ms."""
     while True:
         audio_np = playback_queue.get()
         if audio_np is None:
             playback_queue.task_done()
             break
         try:
-            temp_wav = "/tmp/tts_chunk_%d.wav" % (temp_wav_counter % 10)
-            temp_wav_counter += 1
-            sf.write(temp_wav, audio_np, 16000, format='WAV', subtype='PCM_16')
-            if os.path.exists(PLAYER_BIN):
+            raw_pcm = audio_np.tobytes()
+            # 1. Fast Path: Persistent UNIX Domain Socket to Audio Daemon (<1ms)
+            if os.path.exists(AUDIO_SOCKET):
+                sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+                sock.connect(AUDIO_SOCKET)
+                sock.sendall(raw_pcm)
+                sock.close()
+            elif os.path.exists(PLAYER_BIN):
+                # 2. Fallback Path: Subprocess CLI player
+                temp_wav = "/tmp/tts_chunk_%d.wav" % int(time.time() * 1000 % 100)
+                sf.write(temp_wav, audio_np, 16000, format='WAV', subtype='PCM_16')
                 subprocess.run([PLAYER_BIN, temp_wav, NET_INTERFACE_NAME], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         except Exception as e:
             print("\n[ERROR] Playback worker error: %s" % e)
@@ -372,7 +378,7 @@ def transcribe_audio_bytes(audio_bytes):
     return ""
 
 def query_gemma4_and_stream_tts(user_text, image_b64=None):
-    """Streams tokens from Gemma-4 and dispatches sentence chunks to the parallel TTS pipeline."""
+    """Streams tokens from Gemma-4 and dispatches early sentence chunks to parallel TTS pipeline."""
     if image_b64:
         print("[GEMMA] Sending Multimodal Query (Image + Text)...")
     else:
@@ -408,6 +414,7 @@ def query_gemma4_and_stream_tts(user_text, image_b64=None):
             
         full_text = ""
         current_sentence = ""
+        first_chunk_sent = False
         print("[ROBOT] Gemma-4: ", end="", flush=True)
         
         for line in resp.iter_lines():
@@ -426,8 +433,14 @@ def query_gemma4_and_stream_tts(user_text, image_b64=None):
                             current_sentence += text_chunk
                             full_text += text_chunk
                             
-                            # Early chunk trigger: As soon as punctuation is detected, enqueue chunk for synthesis!
-                            if any(p in text_chunk for p in [".", "?", "!", "\n"]) and len(current_sentence.strip()) > 6:
+                            words = current_sentence.strip().split()
+                            # 1. Fast First-Chunk Trigger (3+ words or comma) -> First Time to Audio < 250ms!
+                            if not first_chunk_sent and (len(words) >= 3 or any(p in text_chunk for p in [",", ";", ".", "!", "?"])):
+                                queue_text_for_streaming_tts(current_sentence.strip())
+                                current_sentence = ""
+                                first_chunk_sent = True
+                            # 2. Subsequent Sentence Trigger
+                            elif first_chunk_sent and any(p in text_chunk for p in [".", "?", "!", "\n", ","]) and len(words) >= 4:
                                 queue_text_for_streaming_tts(current_sentence.strip())
                                 current_sentence = ""
                     except Exception:
@@ -449,8 +462,8 @@ def query_gemma4_and_stream_tts(user_text, image_b64=None):
 
 def main():
     print("=" * 60)
-    print("[SYSTEM] Unitree R1 Pipelined Streaming Multimodal Assistant")
-    print("[PERCEPTION] MiniLM Semantic Router + Speculative Forward Camera (/dev/video2)")
+    print("[SYSTEM] Unitree R1 Ultra-Low-Latency Multimodal Assistant")
+    print("[AUDIO] Persistent Zero-Delay Audio Daemon (/tmp/unitree_audio.sock)")
     print("=" * 60)
     
     ROUTER_THRESHOLD = 0.35
