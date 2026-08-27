@@ -572,16 +572,21 @@ def main():
         has_visual_intent = (similarity_score >= ROUTER_THRESHOLD)
         
         image_b64 = None
+        import random
         if has_visual_intent:
             print("[ROUTE] 🎯 Vision Route Triggered (MiniLM Score: %.2f >= %.2f)!" % (similarity_score, ROUTER_THRESHOLD))
-            # Speculative conversational filler (<30ms instant spoken response)
-            queue_text_for_streaming_tts("Let's see.")
+            # Speculative visual conversational filler (<30ms instant spoken response)
+            vision_fillers = ["Let's see.", "Let me take a look.", "Looking at that."]
+            queue_text_for_streaming_tts(random.choice(vision_fillers))
             
             # Capture live fresh camera frame right after query completion
             print("[CAMERA] Capturing fresh frame from %s..." % CAMERA_SOURCE)
             image_b64 = capture_camera_frame()
         else:
             print("[ROUTE] 💬 Text-only Route (MiniLM Score: %.2f < %.2f) - Discarding camera frame." % (similarity_score, ROUTER_THRESHOLD))
+            # Speculative conversational filler for text-only queries (<30ms instant spoken response)
+            text_fillers = ["Let me think.", "Hmm, let's see.", "Sure,", "Got it.", "Well,"]
+            queue_text_for_streaming_tts(random.choice(text_fillers))
             image_b64 = None
             
         # 5. Stream tokens from Gemma-4 & speak via Magpie TTS
