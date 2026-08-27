@@ -4,9 +4,8 @@
 Unitree R1: Real-Time Multimodal Vision & Voice Assistant
 - Microphone: Unitree UDP Multicast (239.168.123.161:5555) with AGC & Push-to-Talk
 - ASR: Nemotron ASR (Riva gRPC 50051) - Ultra-Fast CUDA Offline Recognize (~45ms)
-- Speculative Perception: Concurrent Background Camera Capture (0ms Perceived Latency)
 - Semantic Router: 100% Offline MiniLM-L6-v2 Dense Intent Classifier
-- Camera: Forward Head Camera (/dev/video2) exclusively
+- Camera: Forward Head Camera (/dev/video2) captured on-demand upon query completion
 - VLM: Gemma-4 Multimodal (llama-server 8000 -ub 512 -b 512 -t 6 --cache-ram 0)
 - TTS: Magpie TTS v2602 (Riva gRPC 50051) - Continuous Flow Pipelined Streaming
 - Audio Daemon: Persistent Non-Blocking UNIX Socket (/tmp/unitree_audio.sock) - Seamless Gapless Playback
@@ -248,19 +247,16 @@ def speak_direct_via_riva(text_to_speak):
     queue_text_for_streaming_tts(text_to_speak)
     wait_for_all_tts_to_finish()
 
-# --- 4. Speculative Zero-Latency Camera Capture System ---
-speculative_image_b64 = None
-speculative_cam_thread = None
-
+# --- 4. Live Forward Camera Capture ---
 def capture_camera_frame():
-    """Captures a fresh live snapshot exclusively from the forward-facing head camera (/dev/video2)."""
+    """Captures a fresh live snapshot from the forward-facing head camera (/dev/video2)."""
     import cv2
     cap = cv2.VideoCapture(2, cv2.CAP_V4L2)
     if not cap.isOpened():
         print("[ERROR] Could not open forward head camera /dev/video2")
         return None
     
-    # Flush 15 frames to discard any stale cached buffer
+    # Flush 15 frames to discard any cached buffer and get the immediate live view
     ret, frame = None, None
     for _ in range(15):
         ret, frame = cap.read()
@@ -273,29 +269,9 @@ def capture_camera_frame():
         return base64.b64encode(buffer).decode('utf-8')
     return None
 
-def trigger_speculative_camera_capture():
-    """Starts capturing the forward camera in a concurrent background thread while the user speaks."""
-    global speculative_image_b64, speculative_cam_thread
-    speculative_image_b64 = None
-    
-    def worker():
-        global speculative_image_b64
-        speculative_image_b64 = capture_camera_frame()
-        
-    speculative_cam_thread = threading.Thread(target=worker)
-    speculative_cam_thread.daemon = True
-    speculative_cam_thread.start()
-
-def get_speculative_camera_frame():
-    """Returns the pre-captured camera frame immediately (0ms perceived latency)."""
-    global speculative_image_b64, speculative_cam_thread
-    if speculative_cam_thread and speculative_cam_thread.is_alive():
-        speculative_cam_thread.join(timeout=1.0)
-    return speculative_image_b64
-
 # --- 5. Robust Audio Capture & Instant ASR ---
 def record_push_to_talk():
-    """Captures live audio from Unitree multicast socket with push-to-talk, AGC, and speculative camera snapping."""
+    """Captures live audio from Unitree multicast socket with push-to-talk and AGC."""
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP)
     sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     sock.bind(("", MCAST_PORT))
@@ -312,9 +288,6 @@ def record_push_to_talk():
     except Exception:
         pass
         
-    # Trigger speculative camera capture concurrently in background
-    trigger_speculative_camera_capture()
-    
     print("\n[MIC] 🎙️ RECORDING... Speak into the robot microphone now.")
     print("[TIP] Press [ENTER] when you are done speaking.")
     sys.stdout.flush()
@@ -432,7 +405,7 @@ def query_gemma4_and_stream_tts(user_text, image_b64=None):
                             full_text += text_chunk
                             
                             words = current_sentence.strip().split()
-                            # Dynamic Continuous Flow: Emit chunk as soon as 5 words accumulate OR punctuation arrives
+                            # Continuous Flow: Emit chunk as soon as 5 words accumulate OR punctuation arrives
                             # Generation time (300ms) < Playback duration (1000ms) -> ZERO audio buffer starvation!
                             has_punct = any(p in text_chunk for p in [",", ";", ".", "!", "?", "\n"])
                             if (len(words) >= 5) or (len(words) >= 3 and has_punct):
@@ -477,7 +450,7 @@ def main():
             print("[EXIT] Exiting assistant.")
             break
             
-        # 2. Push to talk audio capture with AGC + Concurrent Background Camera Snapping
+        # 2. Push to talk audio capture with AGC
         audio_bytes = record_push_to_talk()
         
         # 3. Transcribe voice (~45ms CUDA ASR)
@@ -493,13 +466,9 @@ def main():
         image_b64 = None
         if has_visual_intent:
             print("[ROUTE] 🎯 Vision Route Triggered (MiniLM Score: %.2f >= %.2f)!" % (similarity_score, ROUTER_THRESHOLD))
-            # Retrieve pre-captured speculative image in 0ms!
-            image_b64 = get_speculative_camera_frame()
-            if image_b64:
-                print("[ROUTE] ⚡ Using pre-captured speculative frame from /dev/video2 (0ms latency).")
-            else:
-                print("[WARN] Speculative frame not ready, capturing on demand...")
-                image_b64 = capture_camera_frame()
+            # Capture live fresh camera frame right after query completion
+            print("[CAMERA] Capturing fresh frame from /dev/video2...")
+            image_b64 = capture_camera_frame()
         else:
             print("[ROUTE] 💬 Text-only Route (MiniLM Score: %.2f < %.2f) - Discarding camera frame." % (similarity_score, ROUTER_THRESHOLD))
             image_b64 = None
