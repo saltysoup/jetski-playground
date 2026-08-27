@@ -8,7 +8,7 @@ Unitree R1: Real-Time Multimodal Vision & Voice Assistant
 - Semantic Router: 100% Offline MiniLM-L6-v2 Dense Intent Classifier
 - Camera: Forward Head Camera (/dev/video2) exclusively
 - VLM: Gemma-4 Multimodal (llama-server 8000 -ub 512 -b 512 -t 6 --cache-ram 0)
-- TTS: Magpie TTS v2602 (Riva gRPC 50051) - Ultra Low Latency Streaming
+- TTS: Magpie TTS v2602 (Riva gRPC 50051) - Continuous Flow Pipelined Streaming
 - Audio Daemon: Persistent Non-Blocking UNIX Socket (/tmp/unitree_audio.sock) - Seamless Gapless Playback
 """
 
@@ -378,7 +378,7 @@ def transcribe_audio_bytes(audio_bytes):
     return ""
 
 def query_gemma4_and_stream_tts(user_text, image_b64=None):
-    """Streams tokens from Gemma-4 and dispatches early sentence chunks to parallel TTS pipeline."""
+    """Streams tokens from Gemma-4 and dispatches early sentence chunks continuously to parallel TTS pipeline."""
     if image_b64:
         print("[GEMMA] Sending Multimodal Query (Image + Text)...")
     else:
@@ -413,7 +413,6 @@ def query_gemma4_and_stream_tts(user_text, image_b64=None):
             
         full_text = ""
         current_sentence = ""
-        first_chunk_sent = False
         print("[ROBOT] Jason: ", end="", flush=True)
         
         for line in resp.iter_lines():
@@ -433,13 +432,10 @@ def query_gemma4_and_stream_tts(user_text, image_b64=None):
                             full_text += text_chunk
                             
                             words = current_sentence.strip().split()
-                            # 1. First-Chunk Trigger: 4+ words or natural punctuation gives instant speech start with smooth chaining!
-                            if not first_chunk_sent and (len(words) >= 4 or any(p in text_chunk for p in [",", ";", ".", "!", "?"])):
-                                queue_text_for_streaming_tts(current_sentence.strip())
-                                current_sentence = ""
-                                first_chunk_sent = True
-                            # 2. Subsequent Sentence Trigger
-                            elif first_chunk_sent and any(p in text_chunk for p in [".", "?", "!", "\n", ","]) and len(words) >= 4:
+                            # Dynamic Continuous Flow: Emit chunk as soon as 5 words accumulate OR punctuation arrives
+                            # Generation time (300ms) < Playback duration (1000ms) -> ZERO audio buffer starvation!
+                            has_punct = any(p in text_chunk for p in [",", ";", ".", "!", "?", "\n"])
+                            if (len(words) >= 5) or (len(words) >= 3 and has_punct):
                                 queue_text_for_streaming_tts(current_sentence.strip())
                                 current_sentence = ""
                     except Exception:
@@ -461,7 +457,7 @@ def query_gemma4_and_stream_tts(user_text, image_b64=None):
 
 def main():
     print("=" * 60)
-    print("[SYSTEM] Unitree R1 Multimodal Assistant")
+    print("[SYSTEM] Unitree R1 Multimodal Assistant (Continuous Flow Streaming)")
     print("[AUDIO] Non-Blocking Gapless Audio Daemon (/tmp/unitree_audio.sock)")
     print("=" * 60)
     
