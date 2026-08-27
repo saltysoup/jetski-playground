@@ -5,8 +5,8 @@ Unitree R1: Real-Time Multimodal Vision & Voice Assistant
 - Microphone: Unitree UDP Multicast (239.168.123.161:5555) with AGC & Push-to-Talk
 - ASR: Nemotron ASR (Riva gRPC 50051) - Ultra-Fast CUDA Offline Recognize (~45ms)
 - Semantic Router: 100% Offline MiniLM-L6-v2 Dense Intent Classifier
-- Camera: Forward Head Camera (/dev/video2) captured on-demand upon query completion
-- VLM: Gemma-4 Multimodal (llama-server 8000 -ub 512 -b 512 -t 6 --cache-ram 0)
+- Camera: Forward Head Camera (/dev/video2) with Live Brightness Telemetry
+- VLM: Gemma-4 Multimodal (llama-server 8000 -ub 512 -b 512 -t 6 --flash-attn on --cache-ram 0)
 - TTS: Magpie TTS v2602 (Riva gRPC 50051) - Continuous Flow Pipelined Streaming
 - Audio Daemon: Persistent Non-Blocking UNIX Socket (/tmp/unitree_audio.sock) - Seamless Gapless Playback
 """
@@ -247,7 +247,7 @@ def speak_direct_via_riva(text_to_speak):
     queue_text_for_streaming_tts(text_to_speak)
     wait_for_all_tts_to_finish()
 
-# --- 4. Live Forward Camera Capture ---
+# --- 4. Live Forward Head Camera Capture ---
 def capture_camera_frame():
     """Captures a fresh live snapshot from the forward-facing head camera (/dev/video2)."""
     import cv2
@@ -256,7 +256,7 @@ def capture_camera_frame():
         print("[ERROR] Could not open forward head camera /dev/video2")
         return None
     
-    # Flush 15 frames to discard any cached buffer and get the immediate live view
+    # Flush 15 frames to discard cached V4L2 queue and read immediate live view
     ret, frame = None, None
     for _ in range(15):
         ret, frame = cap.read()
@@ -264,9 +264,12 @@ def capture_camera_frame():
     
     if ret and frame is not None:
         cv2.imwrite("/home/unitree/last_camera_snap.jpg", frame)
+        mean_brightness = float(np.mean(frame))
+        print("[CAMERA] ✅ Captured /dev/video2 frame (Size: %dx%d, Brightness: %.1f)" % (frame.shape[1], frame.shape[0], mean_brightness))
         small = cv2.resize(frame, (384, 384), interpolation=cv2.INTER_AREA)
         _, buffer = cv2.imencode('.jpg', small, [int(cv2.IMWRITE_JPEG_QUALITY), 85])
         return base64.b64encode(buffer).decode('utf-8')
+    print("[ERROR] Failed to read frame from /dev/video2")
     return None
 
 # --- 5. Robust Audio Capture & Instant ASR ---
@@ -437,7 +440,7 @@ def main():
     ROUTER_THRESHOLD = 0.35
     
     # 1. Robot greeting
-    startup_greeting = "My name is Jason. I like long walks on the beach and listening to domo arigato mr roboto."
+    startup_greeting = "My name is Jason. Domo arigato mr roboto."
     speak_direct_via_riva(startup_greeting)
     
     while True:
