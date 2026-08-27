@@ -9,7 +9,7 @@ Unitree R1: Real-Time Multimodal Vision & Voice Assistant
 - Camera: Forward Head Camera (/dev/video2) exclusively
 - VLM: Gemma-4 Multimodal (llama-server 8000 --cache-ram 0)
 - TTS: Magpie TTS v2602 (Riva gRPC 50051) - Ultra Low Latency Streaming
-- Audio Daemon: Persistent UNIX Socket (/tmp/unitree_audio.sock) - Zero Process Delay
+- Audio Daemon: Persistent UNIX Socket (/tmp/unitree_audio.sock) - Gapless Playback
 """
 
 import os
@@ -392,13 +392,12 @@ def query_gemma4_and_stream_tts(user_text, image_b64=None):
         })
     content.append({"type": "text", "text": user_text})
     
+    system_prompt = "Your name is Jason. Don't use acronyms. For time or numbers spell them out in letters. Response needs to be under 42 words."
+    
     payload = {
         "model": MODEL_NAME,
         "messages": [
-            {
-                "role": "system",
-                "content": "You are the Unitree R1 humanoid robot assistant. Answer directly in one concise spoken sentence under 25 words."
-            },
+            {"role": "system", "content": system_prompt},
             {"role": "user", "content": content}
         ],
         "max_tokens": 80,
@@ -415,7 +414,7 @@ def query_gemma4_and_stream_tts(user_text, image_b64=None):
         full_text = ""
         current_sentence = ""
         first_chunk_sent = False
-        print("[ROBOT] Gemma-4: ", end="", flush=True)
+        print("[ROBOT] Jason: ", end="", flush=True)
         
         for line in resp.iter_lines():
             if line:
@@ -434,8 +433,8 @@ def query_gemma4_and_stream_tts(user_text, image_b64=None):
                             full_text += text_chunk
                             
                             words = current_sentence.strip().split()
-                            # 1. Fast First-Chunk Trigger (3+ words or comma) -> First Time to Audio < 250ms!
-                            if not first_chunk_sent and (len(words) >= 3 or any(p in text_chunk for p in [",", ";", ".", "!", "?"])):
+                            # 1. First-Chunk Trigger: 5+ words or natural punctuation gives ~1.5s speech buffer for seamless playback!
+                            if not first_chunk_sent and (len(words) >= 5 or any(p in text_chunk for p in [",", ";", ".", "!", "?"])):
                                 queue_text_for_streaming_tts(current_sentence.strip())
                                 current_sentence = ""
                                 first_chunk_sent = True
