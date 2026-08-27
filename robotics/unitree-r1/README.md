@@ -76,9 +76,7 @@ pip install -U huggingface_hub
 
 ### 2.2 Create Asset Staging Directories
 ```bash
-mkdir -p ~/robot_assets/models/magpie-tts/extracted \
-         ~/robot_assets/models/onnx \
-         ~/robot_assets/wheels
+mkdir -p ~/robot_assets/models/magpie-tts/extracted          ~/robot_assets/models/onnx          ~/robot_assets/wheels
 ```
 
 ### 2.3 Download All Neural Models
@@ -86,46 +84,30 @@ Run the following commands on your laptop:
 
 ```bash
 # 1. Nemotron Streaming ASR (0.6B Q8 GGUF)
-hf download nvidia/nemotron-speech-streaming-en-0.6b \
-  nemotron-speech-streaming-en-0.6b.q8_0.gguf \
-  --local-dir ~/robot_assets/models
+hf download nvidia/nemotron-speech-streaming-en-0.6b   nemotron-speech-streaming-en-0.6b.q8_0.gguf   --local-dir ~/robot_assets/models
 
 # 2. Magpie Multilingual TTS (357M F16 GGUF + Tokenizer)
-hf download nvidia/magpie_tts_multilingual_357m \
-  magpie_tts_multilingual_357m.v2602.f16.gguf \
-  --local-dir ~/robot_assets/models
+hf download nvidia/magpie_tts_multilingual_357m   magpie_tts_multilingual_357m.v2602.f16.gguf   --local-dir ~/robot_assets/models
 
-hf download nvidia/magpie_tts_multilingual_357m \
-  magpie_tts_multilingual_357m.nemo \
-  --local-dir ~/robot_assets/models/magpie-tts
+hf download nvidia/magpie_tts_multilingual_357m   magpie_tts_multilingual_357m.nemo   --local-dir ~/robot_assets/models/magpie-tts
 
-tar -xf ~/robot_assets/models/magpie-tts/magpie_tts_multilingual_357m.nemo \
-  -C ~/robot_assets/models/magpie-tts/extracted
+tar -xf ~/robot_assets/models/magpie-tts/magpie_tts_multilingual_357m.nemo   -C ~/robot_assets/models/magpie-tts/extracted
 
 # 3. NanoCodec Neural Audio Decoder (22kHz F16 GGUF)
-hf download nvidia/nemo-nano-codec-22khz-1.89kbps-21.5fps \
-  nemo_nano_codec_22khz_1.89kbps_21.5fps.decoder.f16.gguf \
-  --local-dir ~/robot_assets/models
+hf download nvidia/nemo-nano-codec-22khz-1.89kbps-21.5fps   nemo_nano_codec_22khz_1.89kbps_21.5fps.decoder.f16.gguf   --local-dir ~/robot_assets/models
 
 # 4. Gemma-4 Multimodal VLM (Gemma-4 E2B Q8_0 GGUF + mmproj F16)
-hf download ggml-org/gemma-4-E2B-it-GGUF \
-  gemma-4-E2B-it-q8_0.gguf \
-  mmproj-gemma-4-E2B-f16.gguf \
-  --local-dir ~/robot_assets/models
+hf download ggml-org/gemma-4-E2B-it-GGUF   gemma-4-E2B-it-q8_0.gguf   mmproj-gemma-4-E2B-f16.gguf   --local-dir ~/robot_assets/models
+
+# 5. MiniLM-L6-v2 Semantic Router (INT8 ONNX Quantized + Vocab)
+hf download sentence-transformers/all-MiniLM-L6-v2   --include "onnx/model_qint8_arm64.onnx"   --include "vocab.txt"   --local-dir ~/robot_assets/models
 ```
 
 ### 2.4 Download Pre-compiled Python 3.8 ARM64 Binary Wheels
 The Jetson Orin runs JetPack 5 with **Python 3.8.10 (`cp38`)**. Download the exact Linux ARM64 binary wheels:
 
 ```bash
-pip download \
-  --only-binary=:all: \
-  --platform manylinux2014_aarch64 \
-  --implementation cp \
-  --python-version 38 \
-  --abi cp38 \
-  --dest ~/robot_assets/wheels \
-  sounddevice soundfile requests nvidia-riva-client opencv-python-headless numpy onnxruntime
+pip download   --only-binary=:all:   --platform manylinux2014_aarch64   --implementation cp   --python-version 38   --abi cp38   --dest ~/robot_assets/wheels   sounddevice soundfile requests nvidia-riva-client opencv-python-headless numpy onnxruntime
 ```
 
 ---
@@ -166,8 +148,7 @@ ssh unitree@192.168.123.164
 ### 4.1 Install Offline Python Wheels
 ```bash
 cd /home/unitree/robot_assets/wheels
-pip3 install --no-index --find-links=. \
-  sounddevice soundfile requests nvidia-riva-client opencv-python-headless numpy onnxruntime
+pip3 install --no-index --find-links=.   sounddevice soundfile requests nvidia-riva-client opencv-python-headless numpy onnxruntime
 ```
 
 ### 4.2 Build Riva Speech Server (CUDA ASR + Magpie TTS)
