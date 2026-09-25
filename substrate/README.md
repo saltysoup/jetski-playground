@@ -83,26 +83,28 @@ substrate/
 
 ## 3. Interactive Stage Dashboard Gallery
 
-The stage dashboard (`dashboard/index.html`) is a single-screen split UI with an **interactive View Split Slider** (draggable center divider + quick-preset buttons for `Agents 70/30`, `50 / 50`, and `llm-d 30/70`) so the presenter can dynamically widen the **Agent Substrate** side during the `0 → 1,000` burst and widen the **`llm-d`** side when walking through KV-cache efficiency, 80/20 steering, and priority flow control.
+The stage dashboard (`dashboard/index.html`) is a single-screen split UI (`AGENTS · Agent Substrate on GKE` on the left, `LLM-D · Gemma 4 12B on llm-d + vllm + TPUs` on the right) with a **draggable center divider** (`25%–75%` width split) so the presenter can dynamically widen the **Agent Substrate** side during the `0 → 1,000` wake burst and widen the **`llm-d`** side when walking through KV-cache efficiency, 80/20 steering, and Paid vs Free priority flow control.
 
-### 3.1 Balanced `50/50` View — All 1,000 Agents Running
+### 3.1 Step 1: `Wake Agents` — 1,000 gVisor Sandboxes Awake Across 25 GKE Node Tiles (`40 / node · 10 / vCPU`)
+![All 1,000 Agents Awake — Ready for Simulate Traffic](./docs/images/02b_all_awake_ready_for_traffic.png)
+*Clicking **`Wake Agents`** wakes all 1,000 gVisor sandboxes (`0 → 1,000` running) without immediately sending LLM traffic. The `50×20` sandbox grid is visually organized into **`5×5 = 25` GKE Node Tiles** (`10×4 = 40` gVisor sandboxes per `c3-standard-4` 4-vCPU node = **`10 sandboxes / vCPU · 0 CPU at rest`**), while the **`Simulate Traffic`** button illuminates in green ready for the presenter.*
+
+### 3.2 Step 2: `Simulate Traffic` + Click-to-Magnify & Freeze Joke Spotlight
+![Click-to-Magnify Joke Spotlight](./docs/images/03c_joke_magnified.png)
+*Clicking **`Simulate Traffic`** starts the 1,000-agent request wave and steady traffic (`100 req/s`). Clicking any scrolling joke in the **Replies** ticker opens the **Magnified & Frozen Spotlight** (`27px` pinned display with **`🎲 Next Joke`** and **`✕ Close`**) so the presenter can comfortably read a joke aloud on stage while live traffic continues in the background.*
+
+### 3.3 Balanced `50/50` View — All 1,000 Agents Running & KV Cache Highlights
 ![All 1,000 Agents Running — Balanced 50/50 Split](./docs/images/03_all_running_balanced.png)
-*Default `50/50` split with all 1,000 gVisor sandboxes active (`50×20` grid), `1,000 ms` step ramp chart, live PyTorch joke ticker on the left, and `llm-d` serving metrics on the right featuring prominent `32px` **KV Cache Usage %** (`48.0%` / `41.2%`) and **KV Cache Hit (Prompt %)** (`90.8%` / `90.6%`) callout boxes per pod.*
+*Default `50/50` split with prominent `32px` **KV Cache Usage %** and **KV Cache Hit (Prompt %)** (`~90.2%` across the shared 286-token system prompt) callout boxes inside each TPU vLLM pod card.*
 
-### 3.2 Agent Substrate Focus (`70/30` View Split)
-![Expanded Agent Substrate View — 70/30 Split](./docs/images/03b_agents_focus_70_30.png)
-*Shifting the View Split slider to **`Agents 70/30`** expands the `50×20` sandbox grid, `1,000 ms` step ramp histogram, and live agent response ticker for the first half of the talk.*
+### 3.4 `Steer 80/20` & Draggable Center Split (`70/30` Agents Focus & `30/70` `llm-d` Focus)
+| `Steer 80/20` (`50/50` Split) | `llm-d` Focus (`30/70` Split + `Steer 80/20`) |
+|---|---|
+| ![Steer 80/20 — 50/50 Split](./docs/images/04_steer_8020.png) | ![Expanded llm-d View — 30/70 Split](./docs/images/04b_llmd_focus_30_70.png) |
 
-### 3.3 `llm-d` Inference Focus (`30/70` View Split + `Steer 80/20`)
-![Expanded llm-d Inference View — 30/70 Split with 80/20 Steering](./docs/images/04b_llmd_focus_30_70.png)
-*Shifting the View Split slider to **`llm-d 30/70`** expands the inference telemetry panel. Clicking **`Steer 80/20`** attaches `x-target-pod` (`80% pod-1 / 20% pod-2`), shifting live traffic (`80%` vs `20%`) and driving **`pod-1` KV Cache Usage to `63.5%`** vs **`26.8%` on `pod-2`** while maintaining a **`91.4%` prompt cache hit rate**.*
-
-### 3.4 Side-by-Side `Steer 80/20` (`50/50` View Split)
-![Steer 80/20 — 50/50 Split](./docs/images/04_steer_8020.png)
-
-### 3.5 Priority Flow Control (`InferenceObjective` Bands at `300 req/s`)
-![Priority Flow Control — Premium, Standard, and Best-Effort Queues](./docs/images/05_priority.png)
-*Clicking **`Priority`** automatically drives `300 req/s` with `x-llm-d-inference-objective` headers across three tiers (`premium` `+100`, `standard` `0`, `best-effort` `-10`), saturating the pool (`89%`) and visually separating queue depth and wait time (`premium: 68 ms`, `standard: 387 ms`, `best-effort: 1,019 ms`).*
+### 3.5 Viral App Scenario: Priority Flow Control (`💎 Paid Members` vs `🆓 Free Users` at `300 req/s`)
+![Priority Flow Control — Paid Members vs Free Users](./docs/images/05_priority.png)
+*Clicking **`Priority`** under **`llm-d: Flow Control Strategy`** simulates a viral traffic spike (`300 req/s`) using `InferenceObjective` priority bands (`💎 Paid Members (Pro)` `p100`, `🔹 Paid Standard` `p0`, and `🆓 Free Users (Viral)` `p−10`). When pool saturation reaches `89%`, `llm-d`'s Endpoint Picker queues best-effort free-tier bursts (`1,019 ms` wait) while fast-laning paid members (`67 ms` wait — **15× faster**) and tagging replies in the ticker (`💎 PAID PRO`, `🔹 PAID STD`, `🆓 FREE TIER`).*
 
 ### 3.6 Lifecycle States: Idle (`0 / 1,000`), Mid-Burst, Suspending & Scale-to-Zero
 | Idle (`0 / 1,000` at rest) | Mid-Burst (`0 → 1,000` waking) |

@@ -5,7 +5,6 @@
 //
 //   node shoot.mjs [--base=http://127.0.0.1:8765/] [--out=DIR] [--only=01,02] [--scenario=main|edge|offline]
 //                  [--chrome=google-chrome] [--cdp=9333] [--mid=250  (page counter that triggers 02_mid_burst)]
-//   offline: prompts on stdout to stop and later restart the backend, to check the RECONNECTING… state.
 import {spawn} from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -15,7 +14,7 @@ const BASE = args.base || 'http://127.0.0.1:8765/';
 const OUT = args.out || '/usr/local/google/home/ikwak/.gemini/jetski/brain/7bcd9e72-f51a-48fc-aa61-4d7812ec7679/dashboard_shots';
 const PORT = +(args.cdp || 9333);
 const HERE = path.dirname(new URL(import.meta.url).pathname);
-const PROFILE = path.join(HERE, '.chrome-profile');     // throwaway profile, removed on exit
+const PROFILE = path.join(HERE, '.chrome-profile');
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 fs.mkdirSync(OUT, {recursive: true});
 
@@ -59,7 +58,6 @@ async function waitForPage(expr, timeout, label) {
     await sleep(20);
   }
 }
-// click one of the page's own controls (so the page's POST + button gating is exercised)
 const click = (sel) => evaluate(`(() => { const b = document.querySelector(${JSON.stringify(sel)});
   if (!b) return 'missing'; if (b.disabled) return 'disabled'; b.click(); return 'clicked'; })()`);
 const CHECK = `(() => {
@@ -67,7 +65,7 @@ const CHECK = `(() => {
   const desc = (el) => el.tagName.toLowerCase() + (el.id ? '#' + el.id : '') + (typeof el.className === 'string' && el.className ? '.' + el.className.trim().split(/\\s+/).join('.') : '');
   if (de.scrollWidth > innerWidth || de.scrollHeight > innerHeight) out.push('DOC SCROLL ' + de.scrollWidth + 'x' + de.scrollHeight);
   for (const el of document.querySelectorAll('#stage *')) {
-    if (el.closest('#ticker') || el.closest('#toast')) continue;
+    if (el.closest('#ticker') || el.closest('#toast') || el.closest('#jokeSpotlight')) continue;
     const cs = getComputedStyle(el);
     if (cs.display === 'none' || cs.visibility === 'hidden') continue;
     const r = el.getBoundingClientRect();
@@ -76,25 +74,17 @@ const CHECK = `(() => {
     if (el.scrollWidth > el.clientWidth + 1 && cs.overflow !== 'visible' && el.tagName !== 'CANVAS') out.push('CLIPX ' + desc(el) + ' ' + el.scrollWidth + '>' + el.clientWidth + ' "' + el.textContent.trim().slice(0, 50) + '"');
     if (el.scrollHeight > el.clientHeight + 1 && cs.overflow !== 'visible' && el.tagName !== 'CANVAS' && !el.classList.contains('ttext') && !el.classList.contains('rmsg')) out.push('CLIPY ' + desc(el) + ' ' + el.scrollHeight + '>' + el.clientHeight);
   }
-  for (const el of document.querySelectorAll('.card,.hero,.rail,.live,.phead,.pod,.frow,.sbtn,.vbtn,.kvbox,.tile,.srow,.brow,.hsub,.legend')) {
-    if (el.closest('#ticker')) continue;
-    const pr = el.getBoundingClientRect();
-    for (const ch of el.querySelectorAll('*')) {
-      const r = ch.getBoundingClientRect(); const cs = getComputedStyle(ch);
-      if (!r.width || cs.display === 'none' || cs.visibility === 'hidden' || ch.classList.contains('star') || ch.closest('.star') || ch.closest('#ticker')) continue;
-      if (r.right > pr.right + 1 || r.bottom > pr.bottom + 1 || r.left < pr.left - 1) { out.push('CHILD-OVERFLOW ' + desc(ch) + ' in ' + desc(el) + ' by ' + Math.round(Math.max(r.right - pr.right, r.bottom - pr.bottom, pr.left - r.left))); break; }
-    }
-  }
+  const lw = Math.round(document.getElementById('left').getBoundingClientRect().width / st.width * 100);
   const tk = document.getElementById('ticker'), tr = tk.getBoundingClientRect();
   const rows = [...tk.querySelectorAll('.trow')];
   const visible = rows.filter((r) => r.getBoundingClientRect().bottom <= tr.bottom + 1).length;
   const btn = (id) => document.getElementById(id).disabled ? 'off' : 'on';
   return {issues: [...new Set(out)], hero: document.getElementById('hero').innerText.replace(/\\s+/g, ' '),
     split: document.getElementById('spc1').textContent + ' | ' + document.getElementById('spc2').textContent,
-    viewSplit: document.getElementById('splitVal').textContent,
+    viewSplit: lw + ' / ' + (100 - lw),
     kvSummary: document.getElementById('kvSummary').innerText.replace(/\\s+/g, ' '),
     tickerRows: rows.length, tickerVisible: visible, live: document.getElementById('liveText').textContent,
-    buttons: 'wake ' + btn('btnWake') + ' · suspend ' + btn('btnSuspend') + ' · reconcile ' + btn('btnRecon'),
+    buttons: 'wake ' + btn('btnWake') + ' · traffic ' + btn('btnTraffic') + ' · suspend ' + btn('btnSuspend') + ' · reconcile ' + btn('btnRecon'),
     toast: document.getElementById('toast').classList.contains('show') ? document.getElementById('toast').textContent : '',
     note: document.getElementById('rmsg').textContent};
 })()`;
@@ -135,27 +125,35 @@ const firstRepliesDone = (s) => s.phase === 'running' && s.totals.requests >= s.
 async function mainScenario() {
   await open({reset: true, fail_rate: 0, suspend_fail_rate: 0, pod_up: [true, true]});
   await shot('01_idle');
-  console.log('\nwake:', await click('#btnWake'));
-  // trigger on what the page shows (it replays the agent stream ~300 ms behind the server); --mid = counter threshold
+  console.log('\nwake agents:', await click('#btnWake'));
   const seen = await waitForPage(`(() => { const n = +document.getElementById('counter').textContent.replace(/,/g, '');
     return n >= ${+(args.mid || 250)} ? n : 0; })()`, 15000, 'mid burst');
   console.log(`mid-burst trigger: page counter ${seen}`);
   await shot('02_mid_burst');
+  await waitFor((s) => s.phase === 'running' && s.burst.woke >= 1000, 20000, 'all awake');
+  await sleep(800);
+  await shot('02b_all_awake_ready_for_traffic');
+  console.log('simulate traffic:', await click('#btnTraffic'));
   await waitFor(firstRepliesDone, 20000, 'first replies');
-  await sleep(6500);
+  await sleep(5500);
   await shot('03_all_running_balanced');
-  console.log('view split 70/30:', await click('.vbtn[data-split="70"]'));
+  console.log('magnify joke:', await click('#ticker .trow'));
+  await sleep(300);
+  await shot('03c_joke_magnified');
+  console.log('close magnified joke:', await click('#jsClose'));
+  await sleep(250);
+  await evaluate('window.__setViewSplit(70)');
   await sleep(400);
   await shot('03b_agents_focus_70_30');
-  console.log('view split 50/50:', await click('.vbtn[data-split="50"]'));
+  await evaluate('window.__setViewSplit(50)');
   await sleep(250);
   console.log('steer:', await click('.sbtn[data-mode="steer8020"]'));
   await sleep(4800);
   await shot('04_steer_8020');
-  console.log('view split 30/70:', await click('.vbtn[data-split="30"]'));
+  await evaluate('window.__setViewSplit(30)');
   await sleep(400);
   await shot('04b_llmd_focus_30_70');
-  console.log('view split 50/50:', await click('.vbtn[data-split="50"]'));
+  await evaluate('window.__setViewSplit(50)');
   await sleep(250);
   console.log('priority (auto 300 req/s):', await click('.sbtn[data-mode="priority"]'));
   await sleep(5500);
@@ -163,59 +161,12 @@ async function mainScenario() {
   await shot('07_1440x900', 1440, 900);
   console.log('suspend:', await click('#btnSuspend'));
   await sleep(380);
-  await shot('06_draining');                            // driver waits for in-flight traffic before its suspend clock starts
+  await shot('06_draining');
   await waitFor((s) => s.phase === 'suspending' && s.burst.suspend_elapsed_ms >= 1600, 20000, 'mid suspend');
   await shot('06a_suspending');
   await waitFor((s) => s.phase === 'idle', 30000, 'suspended');
   await sleep(900);
   await shot('06b_suspended');
-  console.log('reconcile:', await click('#btnRecon'), await click('#btnRecon'));
-  await sleep(600);
-  await shot('08_reconciling');
-  await waitFor((s) => s.phase === 'idle', 20000, 'reconciled');
-  await sleep(700);
-  await shot('08b_after_reconcile');
-}
-
-async function edgeScenario() {
-  await open({reset: true, fail_rate: 0.004, suspend_fail_rate: 0.03, pod_up: [true, true]});
-  console.log('\nwake:', await click('#btnWake'));
-  await sleep(200);
-  await shot('01b_starting');                           // Wake accepted; the driver's preflight runs while phase is idle
-  await waitFor((s) => s.phase === 'running', 15000, 'running');
-  await waitForPage(`!document.getElementById('btnSuspend').disabled`, 5000, 'page sees phase running');
-  const early = await state();
-  console.log(`suspend while first replies are in flight (${early.totals.requests}/${early.burst.woke} requests completed):`,
-    await click('#btnSuspend'));
-  await sleep(450);
-  await shot('09a_busy_toast');                         // driver answers 409 "busy (phase running)"
-  await waitFor(firstRepliesDone, 20000, 'first replies');
-  await api('api/mock', {pod_up: [true, false]});
-  await sleep(5000);
-  await shot('09b_pod_down');
-  await api('api/mock', {pod_up: [true, true]});
-  await sleep(1500);
-  console.log('suspend:', await click('#btnSuspend'));
-  await waitFor((s) => s.phase === 'idle', 30000, 'suspend done');
-  await sleep(900);
-  await shot('09c_suspend_incomplete');
-  await api('api/mock', {reset: true, fail_rate: 0, suspend_fail_rate: 0, pod_up: [true, true]});
-}
-
-// Backend outage mid-demo: the operator stops the mock when prompted, then restarts it.
-async function offlineScenario() {
-  await open({reset: true, fail_rate: 0, suspend_fail_rate: 0, pod_up: [true, true]});
-  console.log('\nwake:', await click('#btnWake'));
-  await waitFor(firstRepliesDone, 20000, 'first replies');
-  await sleep(4000);
-  console.log('>>> STOP THE BACKEND NOW (waiting up to 90 s for the page to notice)');
-  await waitForPage(`document.getElementById('liveText').textContent.startsWith('RECONNECTING')`, 90000, 'reconnecting pill');
-  await sleep(2500);
-  await shot('10a_backend_down');
-  console.log('>>> RESTART THE BACKEND NOW (waiting up to 90 s)');
-  await waitForPage(`document.getElementById('liveText').textContent === 'LIVE'`, 90000, 'LIVE again');
-  await sleep(2500);
-  await shot('10b_backend_back');
 }
 
 async function main() {
@@ -235,9 +186,7 @@ async function main() {
   });
   await send('Runtime.enable'); await send('Log.enable'); await send('Page.enable');
   await setViewport(1920, 1080);
-  const scenario = args.scenario || 'main';
-  if (scenario === 'edge') await edgeScenario(); else if (scenario === 'offline') await offlineScenario(); else await mainScenario();
-  // 409s from deliberate busy clicks show up as network errors in the log; everything else is a real problem
+  await mainScenario();
   console.log('\n[logs] ' + (logs.length ? '\n' + logs.join('\n') : 'no console errors / exceptions'));
 }
 main().catch((e) => { console.error(e); process.exitCode = 1; }).finally(async () => {

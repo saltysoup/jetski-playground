@@ -126,6 +126,7 @@ function normalize(js) {
     busy: s.busy === true,          // optional (not in the contract today): honoured if the driver ever sends it
     burst: {
       id: b.id == null ? '' : String(b.id), t0: num(b.t0_unix_ms, 0), elapsed: nn(b.elapsed_ms),
+      wakeOnly: b.wake_only === true, trafficStarted: b.traffic_started !== false,
       running: isNum(b.running) ? b.running : countRunning(agents),
       peak: num(b.peak_running, 0), woke: num(b.woke, 0), failed: num(b.wake_failed, 0),
       allRunning: nn(b.all_running_ms), suspElapsed: nn(b.suspend_elapsed_ms), allSuspended: nn(b.all_suspended_ms),

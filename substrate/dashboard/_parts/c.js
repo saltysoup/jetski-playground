@@ -2,7 +2,8 @@
 // ------------------------------------------------------------------ UI refs
 const PROMPT = 'hello from {agent}, tell me a short joke about pytorch.';   // display only (the backend owns the real prompt)
 const UI = {
-  wake: $('btnWake'), susp: $('btnSuspend'), recon: $('btnRecon'), hero: $('hero'), counter: $('counter'), hstats: $('hstats'),
+  wake: $('btnWake'), traf: $('btnTraffic'), susp: $('btnSuspend'), recon: $('btnRecon'),
+  hero: $('hero'), counter: $('counter'), hstats: $('hstats'),
   clabel: $('clabel'), clabelSub: $('clabelSub'), clockv: $('clockv'), badge: $('badge'), badgeText: $('badgeText'),
   tReq: new Num($('tReq'), fBig), tTok: new Num($('tTok'), fBig), tUniq: new Num($('tUniq'), fInt), tRep: new Num($('tRep'), fInt),
   split: new Num(null, (v) => v, 450), sat: new Num($('satv'), (v) => fInt(v * 100) + '%', 300),
@@ -11,9 +12,19 @@ const UI = {
 };
 let wakePending = 0;   // after a successful Wake POST the driver stays 'idle' during its preflight: keep Wake disabled
                        // (and show "starting…") until the phase moves on, for at most 15 s
-let prevPhase = 'idle';
-const sBtns = [...document.querySelectorAll('.sbtn')], vBtns = [...document.querySelectorAll('.vbtn')];
+const sBtns = [...document.querySelectorAll('.sbtn')];
 const podName = (i) => { const p = S.latest && S.latest.llmd.pods[i]; return (p && p.name ? String(p.name) : '') || S.pods[i] || 'pod-' + (i + 1); };
+
+const BAND_META = {
+  premium: {label: '💎 Paid Members (Pro)', sub: 'p100'},
+  standard: {label: '🔹 Paid Standard', sub: 'p0'},
+  'best-effort': {label: '🆓 Free Users (Viral)', sub: 'p−10'},
+};
+const TAG_LABEL = {
+  premium: '💎 PAID PRO',
+  standard: '🔹 PAID STD',
+  'best-effort': '🆓 FREE TIER',
+};
 
 function buildPod(p) {
   const root = $('pod' + p);
@@ -61,21 +72,22 @@ function buildFlow(bands) {
   wrap.textContent = '';
   for (const b of bands) {
     const c = BAND_C[b.name] || '#c4c9d0';
+    const meta = BAND_META[b.name] || {label: b.name, sub: 'p' + String(b.priority).replace('-', '−')};
     const row = document.createElement('div');
     row.className = 'frow';
     row.innerHTML = `<div class="fname"><i style="background:${c}"></i><span></span><small></small></div>
       <div class="qbar"><b style="background:${c}"></b></div><div class="fv" data-k="q"></div>
       <div class="fv"><span data-k="w"></span><u>ms</u></div><div class="fv"><span data-k="r"></span><u>req/s</u></div>`;
-    row.querySelector('.fname span').textContent = b.name;
-    row.querySelector('.fname small').textContent = 'p' + String(b.priority).replace('-', '−');
+    row.querySelector('.fname span').textContent = meta.label;
+    row.querySelector('.fname small').textContent = meta.sub;
     wrap.appendChild(row);
     flowUI.rows.set(b.name, {bar: row.querySelector('.qbar b'), q: new Num(row.querySelector('[data-k="q"]'), fInt),
       w: new Num(row.querySelector('[data-k="w"]'), fInt), r: new Num(row.querySelector('[data-k="r"]'), fRate)});
   }
 }
 
-// ------------------------------------------------------------------ interactive view split (25% .. 75%)
-const leftPanel = $('left'), rightPanel = $('right'), dividerEl = $('divider'), viewSlider = $('viewSlider'), splitValEl = $('splitVal');
+// ------------------------------------------------------------------ interactive view split (25% .. 75% via center divider)
+const leftPanel = $('left'), rightPanel = $('right'), dividerEl = $('divider');
 let viewSplitPct = 50;
 function setViewSplit(rawPct) {
   const pct = clamp(Math.round(num(+rawPct, 50)), 25, 75);
@@ -86,21 +98,14 @@ function setViewSplit(rawPct) {
   stage.style.gridTemplateColumns = `${w1}px 12px ${w2}px`;
   setCls(leftPanel, 'compact', pct < 42);
   setCls(rightPanel, 'compact', pct > 58);
-  if (viewSlider && +viewSlider.value !== pct) viewSlider.value = String(pct);
-  setText(splitValEl, `${pct} / ${100 - pct}`);
-  for (const b of vBtns) setCls(b, 'active', +b.dataset.split === pct);
   for (const cv of [gridCv, rampCv, tokCv, latCv]) {
     if (cv && cv.clientWidth > 0 && cv.clientHeight > 0) csize.set(cv, {w: cv.clientWidth, h: cv.clientHeight});
   }
 }
-if (viewSlider) {
-  viewSlider.addEventListener('input', () => setViewSplit(+viewSlider.value));
-  viewSlider.addEventListener('change', () => setViewSplit(+viewSlider.value));
-}
-vBtns.forEach((b) => b.addEventListener('click', () => setViewSplit(+b.dataset.split)));
+window.__setViewSplit = setViewSplit;
 if (dividerEl) {
   let dragging = false;
-  const onMove = ( clientX ) => {
+  const onMove = (clientX) => {
     const rect = stage.getBoundingClientRect();
     if (rect.width > 0) setViewSplit(((clientX - rect.left) / rect.width) * 100);
   };
@@ -126,17 +131,19 @@ if (dividerEl) {
 // ------------------------------------------------------------------ per-poll updates
 function targetRateFor(mode) { return mode === 'priority' ? 300 : 100; }
 function updateFromState(st) {
-  setText(UI.wake, 'Wake ' + fInt(st.total));
-  setText($('mtag'), st.model ? st.model : '');
+  setText(UI.wake, 'Wake Agents');
   const ph = st.phase;   // idle | waking | running | suspending | reconciling (anything else counts as busy)
   if (ph !== 'idle') wakePending = 0;
-  // Belt-and-suspenders: if transitioning to 'running' and steady traffic hasn't started yet, request auto rate
-  if (prevPhase !== 'running' && ph === 'running' && !num(st.traffic.rate, 0)) {
-    post('api/traffic', {rate: targetRateFor(st.traffic.strategy || 'balanced')});
-  }
-  prevPhase = ph;
   const starting = performance.now() < wakePending;
   if (!pendingBtn.has(UI.wake)) UI.wake.disabled = ph !== 'idle' || st.busy || starting;
+
+  const r = num(st.traffic.rate, 0);
+  const canTraffic = (ph === 'running' || ph === 'waking') && !starting;
+  if (!pendingBtn.has(UI.traf)) UI.traf.disabled = !canTraffic;
+  setCls(UI.traf, 'ready', canTraffic && r <= 0);
+  setCls(UI.traf, 'active', canTraffic && r > 0);
+  setText(UI.traf, r > 0 && canTraffic ? `Traffic: ${fInt(r)}/s` : 'Simulate Traffic');
+
   // the driver answers 409 "busy" to a suspend while waking / suspending / reconciling; in idle it only makes
   // sense while sandboxes are still up (e.g. after a suspend that left some running)
   if (!pendingBtn.has(UI.susp)) UI.susp.disabled = st.busy || !(ph === 'running' || (ph === 'idle' && !starting && st.burst.running > 0));
@@ -196,7 +203,9 @@ function updateFlow(st) {
   bands = bands.slice(0, 3);
   buildFlow(bands);
   let qmax = 0, qsum = 0;
+  const byName = {};
   for (const b of bands) {
+    byName[b.name] = b;
     const r = flowUI.rows.get(b.name);
     r.q.set(b.queue); r.w.set(b.wait); r.r.set(b.rs);
     qmax = Math.max(qmax, num(b.queue, 0)); qsum += num(b.queue, 0);
@@ -204,21 +213,72 @@ function updateFlow(st) {
   flowUI.scaleTo = niceMax(Math.max(20, qmax * 1.05), 4);
   const sat = clamp(num(f.saturation, 0), 0, 1);
   UI.sat.set(sat);
-  setCls($('flowCard'), 'quiet', sat < 0.005 && qsum === 0);
-  setCls($('fhint'), 'off', qsum > 0);
+  setCls($('flowCard'), 'quiet', sat < 0.005 && qsum === 0 && st.traffic.strategy !== 'priority');
+  const fh = $('fhint');
+  const prem = byName['premium'] || {}, be = byName['best-effort'] || {};
+  if (qsum > 0 && isNum(prem.wait) && isNum(be.wait) && prem.wait > 0) {
+    const ratio = Math.max(2, Math.round(be.wait / Math.max(1, prem.wait)));
+    setCls(fh, 'sla', true);
+    setText(fh, `⚡ Viral Spike Protection: 💎 Paid Members served ${ratio}× faster (${fInt(prem.wait)} ms wait vs ${fInt(be.wait)} ms for 🆓 Free Users)`);
+  } else {
+    setCls(fh, 'sla', false);
+    setText(fh, 'Viral spike protection: 💎 Paid Members jump ahead of 🆓 Free Users');
+  }
 }
 function updateRail(st) {
   const tr = st.traffic;
   for (const b of sBtns) setCls(b, 'active', b.dataset.mode === tr.strategy);
   const r = num(tr.rate, 0);
   setText($('rsRate'), tr.rate == null ? '—' : r > 0 ? fInt(r) + ' req/s' : 'off');
-  setText($('rnote'), r > 0 && st.phase === 'running' ? `auto traffic · ${fInt(r)} req/s` : r > 0 ? 'flows while agents run' : '');
+  setText($('rnote'), r > 0 && st.phase === 'running' ? `traffic active · ${fInt(r)} req/s` : st.phase === 'running' ? 'click Simulate Traffic' : '');
   UI.rsInf.set(tr.inflight); UI.rsSent.set(tr.sent); UI.rsRep.set(tr.replies); UI.rsFail.set(tr.failed);
 }
 
-// ------------------------------------------------------------------ ticker (paced client-side queue)
-const T = {primed: false, lastSeq: -Infinity, queue: [], lastRelease: 0};
-const tickerEl = $('ticker');
+// ------------------------------------------------------------------ ticker + click-to-magnify spotlight
+const T = {primed: false, lastSeq: -Infinity, queue: [], lastRelease: 0, history: [], spotIdx: -1};
+const tickerEl = $('ticker'), spotEl = $('jokeSpotlight');
+function tagClass(tag) {
+  if (tag === S.pods[0]) return 't-p1';
+  if (tag === S.pods[1]) return 't-p2';
+  return {premium: 't-prem', standard: 't-std', 'best-effort': 't-be'}[tag] || 't-other';
+}
+function tagDisplay(tag) {
+  return TAG_LABEL[tag] || tag;
+}
+function showSpotlight(e, idx = -1) {
+  if (!e || !spotEl) return;
+  T.spotIdx = idx >= 0 ? idx : T.history.indexOf(e);
+  const ag = str(e.agent, 'agent-0001');
+  setText($('jsAgent'), ag);
+  setText($('jsPrompt'), `Prompt: “${PROMPT.replace('{agent}', ag)}”`);
+  setText($('jsBody'), String(e.text == null ? '' : e.text).replace(/\s+/g, ' ').trim());
+  setText($('jsLat'), isNum(e.latency_ms) ? `${fInt(e.latency_ms)} ms E2E` : '');
+  const tag = str(e.tag), jt = $('jsTag');
+  if (tag) {
+    jt.className = 'tchip ' + tagClass(tag);
+    jt.textContent = tagDisplay(tag);
+    jt.style.display = 'inline-block';
+  } else {
+    jt.style.display = 'none';
+  }
+  spotEl.classList.add('on');
+  spotEl.setAttribute('aria-hidden', 'false');
+}
+function hideSpotlight() {
+  if (!spotEl) return;
+  spotEl.classList.remove('on');
+  spotEl.setAttribute('aria-hidden', 'true');
+}
+window.__showSpotlight = showSpotlight;
+window.__hideSpotlight = hideSpotlight;
+if ($('jsClose')) $('jsClose').addEventListener('click', (ev) => { ev.stopPropagation(); hideSpotlight(); });
+if ($('jsNext')) $('jsNext').addEventListener('click', (ev) => {
+  ev.stopPropagation();
+  if (!T.history.length) return;
+  const nextIdx = (T.spotIdx + 1) % T.history.length;
+  showSpotlight(T.history[nextIdx], nextIdx);
+});
+
 function ingestTicker(st) {
   const list = st.ticker.map(obj).filter((e) => isNum(e.seq)).sort((a, b) => a.seq - b.seq);
   const maxSeq = list.length ? list[list.length - 1].seq : -Infinity;
@@ -228,7 +288,7 @@ function ingestTicker(st) {
     T.lastSeq = maxSeq;
     return;
   }
-  if (list.length && maxSeq < T.lastSeq) { T.lastSeq = -Infinity; T.queue = []; }   // seq reset: backend restarted
+  if (list.length && maxSeq < T.lastSeq) { T.lastSeq = -Infinity; T.queue = []; T.history = []; }   // seq reset: backend restarted
   for (const e of list) if (e.seq > T.lastSeq) { T.queue.push(e); T.lastSeq = e.seq; }
   if (T.queue.length > TICKER_BACKLOG) T.queue.splice(0, T.queue.length - TICKER_BACKLOG);
 }
@@ -237,31 +297,32 @@ function pumpTicker(now) {
 }
 function resetTicker() {
   T.queue = [];
+  T.history = [];
+  hideSpotlight();
   tickerEl.textContent = '';
   const ph = document.createElement('div');
-  ph.className = 'tempty'; ph.id = 'tempty'; ph.textContent = 'replies from the agents stream in here once they wake';
+  ph.className = 'tempty'; ph.id = 'tempty'; ph.textContent = 'replies from the agents stream in here once traffic starts';
   tickerEl.append(ph);
-}
-function tagClass(tag) {
-  if (tag === S.pods[0]) return 't-p1';
-  if (tag === S.pods[1]) return 't-p2';
-  return {premium: 't-prem', standard: 't-std', 'best-effort': 't-be'}[tag] || 't-other';
 }
 function addRow(e, animate) {
   const ph = $('tempty');
   if (ph) ph.remove();
+  T.history.unshift(e);
+  if (T.history.length > 60) T.history.pop();
   const row = document.createElement('div'), inner = document.createElement('div');
   row.className = 'trow'; inner.className = 'tin';
+  row.title = 'Click to magnify & freeze this joke reply';
   const meta = document.createElement('div'); meta.className = 'tmeta'; meta.textContent = str(e.agent, '—');
   const tx = document.createElement('div'); tx.className = 'ttext';
   tx.textContent = String(e.text == null ? '' : e.text).replace(/\s+/g, ' ').trim();
   const right = document.createElement('div'); right.className = 'tright';
   const tag = str(e.tag);
-  if (tag) { const chip = document.createElement('span'); chip.className = 'tchip ' + tagClass(tag); chip.textContent = tag; right.append(chip); }
+  if (tag) { const chip = document.createElement('span'); chip.className = 'tchip ' + tagClass(tag); chip.textContent = tagDisplay(tag); right.append(chip); }
   const lat = document.createElement('span'); lat.className = 'tlat'; lat.textContent = isNum(e.latency_ms) ? fInt(e.latency_ms) + ' ms' : '';
   right.append(lat);
   inner.append(meta, tx, right);
   row.append(inner);
+  row.addEventListener('click', () => showSpotlight(e));
   tickerEl.insertBefore(row, tickerEl.firstChild);
   if (animate) {
     const h = inner.offsetHeight;
@@ -350,18 +411,52 @@ function renderBars() {
   if (sb.__c !== col) { sb.__c = col; sb.style.background = col; }
 }
 
-// ------------------------------------------------------------------ canvas: agent grid
+// ------------------------------------------------------------------ canvas: agent grid (grouped into 5x5 = 25 GKE node tiles, 40 sandboxes/node)
 const gridCv = $('grid'), rampCv = $('ramp'), tokCv = $('tokChart'), latCv = $('latChart');
 function drawGrid(now) {
   const c = prep(gridCv);
   if (!c || !G.disp.length) return;
   const {ctx, w, h} = c, n = G.disp.length, cols = G.cols, rows = G.rows;
-  const pitch = Math.min(w / cols, h / rows), gap = Math.max(1.6, pitch * 0.2), size = pitch - gap;
-  const ox = (w - pitch * cols) / 2 + gap / 2, oy = (h - pitch * rows) / 2 + gap / 2;
+  const nodeGrouped = cols === 50 && rows === 20;
+  const nCols = 5, nRows = 5, bCols = 10, bRows = 4;
+  const tileGapX = nodeGrouped ? Math.max(5, Math.min(9, w * 0.008)) : 0;
+  const tileGapY = nodeGrouped ? Math.max(4, Math.min(7, h * 0.018)) : 0;
+  const availW = w - (nCols - 1) * tileGapX;
+  const availH = h - (nRows - 1) * tileGapY;
+  const pitch = Math.min(availW / cols, availH / rows), gap = Math.max(1.5, pitch * 0.19), size = pitch - gap;
+  const totW = pitch * cols + (nodeGrouped ? (nCols - 1) * tileGapX : 0);
+  const totH = pitch * rows + (nodeGrouped ? (nRows - 1) * tileGapY : 0);
+  const ox = (w - totW) / 2 + gap / 2, oy = (h - totH) / 2 + gap / 2;
   const rad = Math.min(3, size * 0.22), ts = now / 1000;
+
+  const cellPos = (i) => {
+    const col = i % cols, row = (i / cols) | 0;
+    const gx = nodeGrouped ? ((col / bCols) | 0) * tileGapX : 0;
+    const gy = nodeGrouped ? ((row / bRows) | 0) * tileGapY : 0;
+    return [ox + col * pitch + gx, oy + row * pitch + gy];
+  };
+
+  if (nodeGrouped) {
+    const tw = bCols * pitch - gap + 4, th = bRows * pitch - gap + 4;
+    ctx.lineWidth = 1;
+    ctx.strokeStyle = 'rgba(138,180,248,.16)';
+    ctx.fillStyle = 'rgba(255,255,255,.014)';
+    for (let nr = 0; nr < nRows; nr++) {
+      for (let nc = 0; nc < nCols; nc++) {
+        const tx = ox + nc * (bCols * pitch + tileGapX) - 2;
+        const ty = oy + nr * (bRows * pitch + tileGapY) - 2;
+        ctx.beginPath();
+        ctx.roundRect(tx, ty, tw, th, 4);
+        ctx.fill();
+        ctx.stroke();
+      }
+    }
+  }
+
   const paths = {}, special = [];
   for (let i = 0; i < n; i++) {
-    const code = G.disp[i], x = ox + (i % cols) * pitch, y = oy + ((i / cols) | 0) * pitch;
+    const code = G.disp[i];
+    const [x, y] = cellPos(i);
     const age = now - G.changed[i];
     if (code === 51 || (age >= 0 && age < 450)) { special.push(i); continue; }
     (paths[code] || (paths[code] = new Path2D())).roundRect(x, y, size, size, rad);
@@ -369,7 +464,7 @@ function drawGrid(now) {
   for (const code in paths) { ctx.fillStyle = CELL[code] || CELL_OTHER; ctx.fill(paths[code]); }
   for (const i of special) {
     const code = G.disp[i], age = now - G.changed[i], wake = G.fk[i] !== 2;
-    let x = ox + (i % cols) * pitch, y = oy + ((i / cols) | 0) * pitch, s = size;
+    let [x, y] = cellPos(i), s = size;
     const flash = age >= 0 && age < 450 ? 1 - age / 450 : 0;
     if (flash && wake) { const g = size * 0.45 * flash; x -= g / 2; y -= g / 2; s += g; }
     ctx.beginPath(); ctx.roundRect(x, y, s, s, rad);
@@ -388,8 +483,6 @@ function drawRamp(rt) {
   const L = 46, T = 10, B = 22;
   const info = S.bursts[S.bursts.length - 1];
   const since = info && info.start != null && isFinite(info.start) ? rt - info.start : Infinity;   // ms since t0 at the replay time
-  // The driver stamps each 1,000 ms step with its END (t_ms = 1000, 2000, ...) and includes the in-progress step;
-  // a first stamp of 0 means START stamps. Either way step k covers [k*1000, (k+1)*1000).
   const raw = st ? st.burst.ramp : [];
   const endStamp = raw.length > 0 && num(raw[0].t_ms, 0) > 0;
   let steps = raw.map((r, j) => {
@@ -404,8 +497,6 @@ function drawRamp(rt) {
   const N = clamp(steps.length, 10, 30), first = Math.max(0, steps.length - N), vis = steps.slice(first);
   const base = first > 0 ? steps[first - 1].rep : 0;
   const mx = vis.reduce((m, s) => (!s.live && s.rep != null ? Math.max(m, s.rep) : m), base || 0);
-  // Cumulative replies share the agents axis while they fit (the driver's ramp counts first replies only, so they
-  // never exceed the burst size); a separate right-hand axis appears only if a backend reports more.
   const tgt = mx <= total ? total : niceMax(mx * 1.05, 2);
   RAMP.rmax = !RAMP.rmax || Math.abs(tgt - RAMP.rmax) < tgt * 0.002 ? tgt : RAMP.rmax + (tgt - RAMP.rmax) * 0.15;
   const dual = Math.abs(RAMP.rmax - total) > 0.5;
@@ -446,7 +537,6 @@ function drawRamp(rt) {
     ctx.fillStyle = '#8AB4F8';
     for (const [x, v] of pts.slice(1)) { ctx.beginPath(); ctx.arc(x, Yr(v), 3.5, 0, Math.PI * 2); ctx.fill(); }
   }
-  // bar values sit on top of the replies line, haloed in the colour beneath them so the line never cuts a number
   ctx.font = `700 12.5px ${FONT}`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.lineJoin = 'round'; ctx.lineWidth = 4;
   for (const l of labels) { ctx.strokeStyle = l.halo; ctx.strokeText(l.t, l.x, l.y); ctx.fillStyle = l.fill; ctx.fillText(l.t, l.x, l.y); }
   ctx.lineWidth = 1; ctx.fillStyle = '#7d858f'; ctx.textBaseline = 'top'; ctx.font = `500 12px ${FONT}`;
@@ -457,7 +547,7 @@ function drawRamp(rt) {
     const t = fInt(k * 1000) + ' ms';
     let x = x0 + j * sw, al = 'center';
     if (j === 0) { al = 'left'; x -= 4; }
-    else if (x + ctx.measureText(t).width / 2 > w - 2) { al = 'right'; x = w - 2; }   // keep the last tick inside the canvas
+    else if (x + ctx.measureText(t).width / 2 > w - 2) { al = 'right'; x = w - 2; }
     ctx.textAlign = al; ctx.fillText(t, x, y0 + 6);
   }
   if (!steps.length) {
@@ -529,7 +619,7 @@ function drawTS(cv, field, conf) {
   }
   if (!conf.labels) return;
   const placed = {s: [], r: []};
-  for (let i = shown.length - 1; i >= 0; i--) {              // newest first: it always gets the primary lane
+  for (let i = shown.length - 1; i >= 0; i--) {
     const m = shown[i], xs = Math.round(X(m.t)) + 0.5, strat = m.kind === 's';
     ctx.font = strat ? `700 13.5px ${FONT}` : `500 12px ${FONT}`;
     const tw = ctx.measureText(m.label).width, bw = tw + (strat ? 14 : 10), bh = strat ? 23 : 18;
@@ -583,18 +673,23 @@ const act = {
   wake: async () => {
     if (UI.wake.disabled) return;
     UI.wake.disabled = true;
-    if (await post('api/burst', {hold: true}, UI.wake)) { wakePending = performance.now() + 15000; UI.wake.disabled = true; }
+    if (await post('api/burst', {hold: true, wake_only: true}, UI.wake)) { wakePending = performance.now() + 15000; UI.wake.disabled = true; }
+  },
+  traffic: async () => {
+    if (UI.traf.disabled) return;
+    await post('api/simulate_traffic', {toggle: true}, UI.traf);
   },
   suspend: () => { if (!UI.susp.disabled) { UI.susp.disabled = true; post('api/suspend', {}, UI.susp); } },
   strategy: async (mode) => {
     const btn = sBtns.find((b) => b.dataset.mode === mode);
     const ok = await post('api/strategy', {mode}, btn);
-    if (ok && S.latest && S.latest.phase === 'running') {
+    if (ok && S.latest && S.latest.phase === 'running' && num(S.latest.traffic.rate, 0) > 0) {
       await post('api/traffic', {rate: targetRateFor(mode)});
     }
   },
 };
 UI.wake.addEventListener('click', act.wake);
+UI.traf.addEventListener('click', act.traffic);
 UI.susp.addEventListener('click', act.suspend);
 sBtns.forEach((b) => b.addEventListener('click', () => act.strategy(b.dataset.mode)));
 // admin: POST api/reconcile, armed by a first click so it can't fire by accident on stage
@@ -608,9 +703,10 @@ UI.recon.addEventListener('click', () => {
   setTimeout(() => { if (reconArm && performance.now() >= reconArm) disarmRecon(); }, 3100);
 });
 document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && spotEl && spotEl.classList.contains('on')) { e.preventDefault(); hideSpotlight(); return; }
   if (e.ctrlKey || e.metaKey || e.altKey || e.repeat) return;
   const k = e.key.toLowerCase();
-  const map = {w: act.wake, s: act.suspend, b: () => act.strategy('balanced'), e: () => act.strategy('steer8020'),
+  const map = {w: act.wake, t: act.traffic, s: act.suspend, b: () => act.strategy('balanced'), e: () => act.strategy('steer8020'),
     p: () => act.strategy('priority')};
   if (map[k]) { e.preventDefault(); map[k](); }
 });

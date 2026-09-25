@@ -226,13 +226,15 @@ class Sim:
         self.sample_unix = unix_ms()
         self._metrics(now)
 
-    def _new_burst(self, bid, t, n, hold):
+    def _new_burst(self, bid, t, n, hold, wake_only=False):
         """Fresh per-burst bookkeeping (the driver's newBurst + T0)."""
         self.bid = bid
         self.t0 = t
         self.t0_unix = unix_ms() - int(round((mono() - t) * 1000))
         self.n = n
         self.hold = hold
+        self.wake_only = wake_only
+        self.traffic_started = not wake_only
         self.conc = 0
         self.susp_t0 = None
         self.all_running_ms = None
@@ -293,6 +295,7 @@ class Sim:
     def start_burst(self, body):
         hold = body.get("hold")
         hold = hold if isinstance(hold, bool) else True
+        wake_only = bool(body.get("wake_only"))
         n = body.get("agents")
         n = int(n) if isinstance(n, (int, float)) and not isinstance(n, bool) else 0
         if n <= 0 or n > TOTAL:
@@ -309,8 +312,32 @@ class Sim:
             rest, dead = self._leftovers()
             pre = self._preflight_s(rest, dead)
             self._sched(now + pre, "preflight_done", None)
-            self._sched(now + pre + GATE_S, "begin", (bid, n, hold, conc))
+            self._sched(now + pre + GATE_S, "begin", (bid, n, hold, conc, wake_only))
             return True, bid
+
+    def simulate_traffic(self, body):
+        stop = bool(body.get("stop"))
+        toggle = bool(body.get("toggle"))
+        with self.lock:
+            if self.phase not in ("running", "waking"):
+                return False, "wake agents first (phase %s)" % self.phase
+            if stop or (toggle and self.rate > 0):
+                self.rate = 0
+                return True, 0
+            self.rate = 300 if self.strategy == "priority" else 100
+            if self.t0 is not None and getattr(self, "wake_only", False) and not getattr(self, "traffic_started", True):
+                self.traffic_started = True
+                self.ramp_frozen = None
+                now = mono()
+                for i in range(self.n):
+                    if self.agents[i] in (C2, C1):
+                        if self.agents[i] == C2:
+                            self._set(i, C3)
+                        r = self._new_req(i, False, now)
+                        self._dispatch(now, r, self.rnd.uniform(0.2, 2.5), e2e=self.rnd.uniform(150, 900))
+                    elif self.agents[i] == C9:
+                        self._life_done(now)
+            return True, self.rate
 
     def set_traffic(self, body):
         rate = body.get("rate")
@@ -326,7 +353,7 @@ class Sim:
             return False, "mode must be balanced, steer8020 or priority"
         with self.lock:
             self.strategy = mode
-            if self.phase == "running":
+            if self.phase == "running" and self.rate > 0:
                 self.rate = 300 if mode == "priority" else 100
             return True, mode
 
@@ -375,8 +402,8 @@ class Sim:
                 self._set(i, C0)
 
     def _ev_begin(self, t, p):
-        bid, n, hold, conc = p
-        self._new_burst(bid, t, n, hold)
+        bid, n, hold, conc, wake_only = p
+        self._new_burst(bid, t, n, hold, wake_only)
         self.conc = conc
         self.totals = {"requests": 0, "replies": 0, "failed": 0, "prompt_tokens": 0, "completion_tokens": 0}
         self.unique = set()
@@ -414,9 +441,13 @@ class Sim:
             self.wake_failed += 1
             self.note = "%s wake failed: mock failure (fail_rate)" % agent_name(i)
             self._check_wake_done(ms)
-            self._life_done(t)
+            if not (self.wake_only and not self.traffic_started):
+                self._life_done(t)
             return
-        self._set(i, C3)
+        if self.wake_only and not self.traffic_started:
+            self._set(i, C2)
+        else:
+            self._set(i, C3)
         self.woke += 1
         bisect.insort(self.run_ts, ms)
         self.wake_lat.append(ms - self.wake_start[i])
@@ -429,15 +460,18 @@ class Sim:
         if up >= self.n and self.all_running_ms is None:
             self.all_running_ms = ms
         self._check_wake_done(ms)
-        r = self._new_req(i, False, t)
-        self._dispatch(t, r, self.rnd.uniform(0.2, 2.5), e2e=self.rnd.uniform(150, 900))
+        if not (self.wake_only and not self.traffic_started):
+            r = self._new_req(i, False, t)
+            self._dispatch(t, r, self.rnd.uniform(0.2, 2.5), e2e=self.rnd.uniform(150, 900))
 
     def _check_wake_done(self, ms):
         if self.woke + self.wake_failed >= self.n and self.wake_done_ms is None:
             self.wake_done_ms = ms
             if self.hold:
                 self.phase = "running"
-                if self.rate == 0:
+                if self.wake_only and not self.traffic_started:
+                    self.busy = False
+                elif self.rate == 0:
                     self.rate = 300 if self.strategy == "priority" else 100
 
     def _life_done(self, t):
@@ -451,7 +485,7 @@ class Sim:
             else:
                 if self.phase == "waking":
                     self.phase = "running"
-                if self.phase == "running" and self.rate == 0:
+                if self.phase == "running" and self.rate == 0 and not (self.wake_only and not self.traffic_started):
                     self.rate = 300 if self.strategy == "priority" else 100
 
     # -------------------------------------------------------- suspend events
@@ -755,7 +789,12 @@ class Sim:
         """The driver's rampLocked(1000, rampEnd, 120): values at the END of each step, cumulative except running."""
         if self.ramp_frozen is not None:
             return self.ramp_frozen
-        end = self.first_done_ms if self.first_done_ms is not None else (now - self.t0) * 1000.0
+        if self.first_done_ms is not None:
+            end = self.first_done_ms
+        elif getattr(self, "wake_only", False) and not getattr(self, "traffic_started", True) and self.wake_done_ms is not None:
+            end = self.wake_done_ms
+        else:
+            end = (now - self.t0) * 1000.0
         if end <= 0:
             return []
         npts = min(max(1, int(math.ceil(end / 1000.0))), RAMP_MAX_PTS)
@@ -789,7 +828,9 @@ class Sim:
                 else:
                     el = (now - self.t0) * 1000.0
                 b.update({
-                    "id": self.bid, "t0_unix_ms": self.t0_unix, "elapsed_ms": int(round(el)),
+                    "id": self.bid, "wake_only": getattr(self, "wake_only", False),
+                    "traffic_started": getattr(self, "traffic_started", True),
+                    "t0_unix_ms": self.t0_unix, "elapsed_ms": int(round(el)),
                     "peak_running": self.peak, "woke": self.woke, "wake_failed": self.wake_failed,
                     "milestones_ms": {str(k): (None if self.milestones[k] is None else int(round(self.milestones[k])))
                                       for k in self.ms_keys},
@@ -886,7 +927,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(400, {"ok": False, "error": "bad JSON: expected an object"})
         i = path.rfind("/api/")
         name = path[i + 5:] if i >= 0 else ""
-        fn = {"burst": SIM.start_burst, "traffic": SIM.set_traffic, "strategy": SIM.set_strategy,
+        fn = {"burst": SIM.start_burst, "simulate_traffic": SIM.simulate_traffic,
+              "traffic": SIM.set_traffic, "strategy": SIM.set_strategy,
               "suspend": SIM.suspend, "reconcile": SIM.reconcile, "mock": SIM.mock_control}.get(name)
         if fn is None:
             return self._json(404, {"ok": False, "error": "unknown endpoint: %s" % path})

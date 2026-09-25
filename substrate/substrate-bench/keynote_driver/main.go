@@ -195,10 +195,12 @@ type burst struct {
 	firstDoneMs   float64 // -1 until every agent finished its first request
 	msKeys        []int
 	milestones    map[int]float64
-	suspendT0     time.Time
-	allSuspMs     float64 // -1 until running hits 0 after suspend-all
-	suspendDoneMs float64
-	preflight     string
+	suspendT0      time.Time
+	allSuspMs      float64 // -1 until running hits 0 after suspend-all
+	suspendDoneMs  float64
+	preflight      string
+	wakeOnly       bool
+	trafficStarted bool
 }
 
 type tickEntry struct {
@@ -859,7 +861,7 @@ func (d *driver) recordReplyLocked(idx int, r jokeRes, tMs float64) {
 
 // startBurst wakes agents 1..n (n <= 0: all) with at most conc wakes in flight
 // (conc < 0: -burst-concurrency; 0: no limit).
-func (d *driver) startBurst(hold bool, n, conc int) (string, error) {
+func (d *driver) startBurst(hold, wakeOnly bool, n, conc int) (string, error) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	if d.busy || (d.phase != "idle") {
@@ -874,7 +876,7 @@ func (d *driver) startBurst(hold bool, n, conc int) (string, error) {
 	d.busy = true
 	d.burstN++
 	id := fmt.Sprintf("b-%s-%04d", d.runTag, d.burstN)
-	go d.runBurst(id, hold, n, conc)
+	go d.runBurst(id, hold, wakeOnly, n, conc)
 	return id, nil
 }
 
@@ -894,13 +896,15 @@ func newBurst(id string, n int, hold bool) *burst {
 	return b
 }
 
-func (d *driver) runBurst(id string, hold bool, n, conc int) {
+func (d *driver) runBurst(id string, hold, wakeOnly bool, n, conc int) {
 	ctx := context.Background()
 	pf := d.preflight(ctx)
 	log.Printf("[%s] %s", id, pf)
 	b := newBurst(id, n, hold)
 	b.preflight = pf
 	b.conc = conc
+	b.wakeOnly = wakeOnly
+	b.trafficStarted = !wakeOnly
 
 	// Reset per-burst counters and the llm-d request baseline.
 	d.mmu.Lock()
@@ -937,7 +941,9 @@ func (d *driver) runBurst(id string, hold bool, n, conc int) {
 	wg.Wait()
 
 	d.mu.Lock()
-	b.firstDoneMs = msSince(b.t0)
+	if !wakeOnly {
+		b.firstDoneMs = msSince(b.t0)
+	}
 	if !hold {
 		d.phase = "idle"
 		d.busy = false
@@ -946,13 +952,13 @@ func (d *driver) runBurst(id string, hold bool, n, conc int) {
 		if d.phase == "waking" {
 			d.phase = "running"
 		}
-		if d.cfg.autoTraffic && !d.cfg.oneshot && d.tr.Rate == 0 {
+		if !wakeOnly && d.cfg.autoTraffic && !d.cfg.oneshot && d.tr.Rate == 0 {
 			d.tr.Rate = autoRateForStrategy(d.tr.Strategy)
 		}
 	}
 	summary := d.summaryLocked(b)
 	d.mu.Unlock()
-	log.Printf("[%s] burst done\n%s", id, summary)
+	log.Printf("[%s] burst done (wakeOnly=%v)\n%s", id, wakeOnly, summary)
 	d.writeRun(b, summary)
 }
 
@@ -961,7 +967,7 @@ func (d *driver) checkWakeDoneLocked(b *burst, t float64, allUp chan struct{}) {
 		b.wakeDoneMs = t
 		if b.hold {
 			d.phase = "running"
-			if d.cfg.autoTraffic && !d.cfg.oneshot && d.tr.Rate == 0 {
+			if !b.wakeOnly && d.cfg.autoTraffic && !d.cfg.oneshot && d.tr.Rate == 0 {
 				d.tr.Rate = autoRateForStrategy(d.tr.Strategy)
 			}
 		}
@@ -1014,10 +1020,26 @@ func (d *driver) agentLife(ctx context.Context, b *burst, idx int, gate <-chan s
 	d.checkWakeDoneLocked(b, t, allUp)
 	d.mu.Unlock()
 
+	if b.wakeOnly {
+		return
+	}
 	if d.cfg.llmAfterAll {
 		<-allUp
 	}
+	d.runFirstJoke(ctx, b, idx)
+	if !b.hold {
+		d.suspendOne(ctx, b, idx)
+	}
+}
+
+func (d *driver) runFirstJoke(ctx context.Context, b *burst, idx int) {
+	i := idx - 1
+	r := &b.recs[i]
 	d.mu.Lock()
+	if d.states[i] != stRunning {
+		d.mu.Unlock()
+		return
+	}
 	d.states[i] = stRequesting
 	strategy := d.tr.Strategy
 	r.LLMStartMs = msSince(b.t0)
@@ -1037,9 +1059,51 @@ func (d *driver) agentLife(ctx context.Context, b *burst, idx int, gate <-chan s
 		d.states[i] = stRunning
 	}
 	d.mu.Unlock()
-	if !b.hold {
-		d.suspendOne(ctx, b, idx)
+}
+
+func (d *driver) simulateTraffic(stop, toggle bool) (float64, error) {
+	d.mu.Lock()
+	if d.phase != "running" && d.phase != "waking" {
+		ph := d.phase
+		d.mu.Unlock()
+		return 0, fmt.Errorf("wake agents first (phase %s)", ph)
 	}
+	if stop || (toggle && d.tr.Rate > 0) {
+		d.tr.Rate = 0
+		d.mu.Unlock()
+		return 0, nil
+	}
+	rate := autoRateForStrategy(d.tr.Strategy)
+	d.tr.Rate = rate
+	b := d.b
+	needWave := b != nil && !b.trafficStarted
+	if needWave {
+		b.trafficStarted = true
+	}
+	d.mu.Unlock()
+	if needWave {
+		go func(b *burst) {
+			ctx := context.Background()
+			var wg sync.WaitGroup
+			for idx := 1; idx <= b.total; idx++ {
+				wg.Add(1)
+				go func(idx int) {
+					defer wg.Done()
+					d.runFirstJoke(ctx, b, idx)
+				}(idx)
+			}
+			wg.Wait()
+			d.mu.Lock()
+			if d.b == b && b.firstDoneMs < 0 {
+				b.firstDoneMs = msSince(b.t0)
+			}
+			summary := d.summaryLocked(b)
+			d.mu.Unlock()
+			log.Printf("[%s] simulate-traffic initial wave done\n%s", b.id, summary)
+			d.writeRun(b, summary)
+		}(b)
+	}
+	return rate, nil
 }
 
 func (d *driver) suspendOne(ctx context.Context, b *burst, idx int) {
@@ -1282,6 +1346,9 @@ func (b *burst) rampEndLocked() float64 {
 	if b.firstDoneMs >= 0 {
 		return b.firstDoneMs
 	}
+	if b.wakeOnly && !b.trafficStarted && b.wakeDoneMs >= 0 {
+		return b.wakeDoneMs
+	}
 	return msSince(b.t0)
 }
 
@@ -1432,7 +1499,7 @@ func (d *driver) writeRun(b *burst, summary string) {
 }
 
 func (d *driver) runOneshot() {
-	id, err := d.startBurst(d.cfg.hold, 0, -1)
+	id, err := d.startBurst(d.cfg.hold, false, 0, -1)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -1826,6 +1893,8 @@ func (d *driver) snapshot() stateJSON {
 		}
 		end := b.rampEndLocked()
 		bj["id"] = b.id
+		bj["wake_only"] = b.wakeOnly
+		bj["traffic_started"] = b.trafficStarted
 		bj["t0_unix_ms"] = b.t0.UnixMilli()
 		bj["elapsed_ms"] = math.Round(elapsed)
 		bj["peak_running"] = b.peak
@@ -1917,6 +1986,7 @@ func (d *driver) serve() {
 		if v, ok := b["hold"].(bool); ok {
 			hold = v
 		}
+		wakeOnly, _ := b["wake_only"].(bool)
 		n, conc := 0, -1
 		if v, ok := b["agents"].(float64); ok {
 			n = int(v)
@@ -1924,9 +1994,16 @@ func (d *driver) serve() {
 		if v, ok := b["concurrency"].(float64); ok && v >= 0 {
 			conc = int(v)
 		}
-		id, err := d.startBurst(hold, n, conc)
-		log.Printf("API burst hold=%v agents=%d concurrency=%d -> %s %v", hold, n, conc, id, err)
+		id, err := d.startBurst(hold, wakeOnly, n, conc)
+		log.Printf("API burst hold=%v wakeOnly=%v agents=%d concurrency=%d -> %s %v", hold, wakeOnly, n, conc, id, err)
 		return id, err
+	}))
+	mux.HandleFunc("/api/simulate_traffic", post(func(b map[string]any) (any, error) {
+		stop, _ := b["stop"].(bool)
+		toggle, _ := b["toggle"].(bool)
+		rate, err := d.simulateTraffic(stop, toggle)
+		log.Printf("API simulate_traffic stop=%v toggle=%v -> rate=%v err=%v", stop, toggle, rate, err)
+		return rate, err
 	}))
 	mux.HandleFunc("/api/traffic", post(func(b map[string]any) (any, error) {
 		rate, _ := b["rate"].(float64)
@@ -1948,7 +2025,7 @@ func (d *driver) serve() {
 		}
 		d.mu.Lock()
 		d.tr.Strategy = mode
-		if d.cfg.autoTraffic && !d.cfg.oneshot && d.phase == "running" {
+		if d.cfg.autoTraffic && !d.cfg.oneshot && d.phase == "running" && d.tr.Rate > 0 {
 			d.tr.Rate = autoRateForStrategy(mode)
 		}
 		d.mu.Unlock()

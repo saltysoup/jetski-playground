@@ -40,18 +40,21 @@ button{font-family:inherit;font-variant-numeric:tabular-nums}
 .leg{display:flex;gap:16px;align-items:center;font-size:14px;font-weight:500;letter-spacing:.02em;text-transform:none;color:var(--dim)}
 .leg i{display:inline-block;width:16px;height:4px;border-radius:2px;margin-right:7px;vertical-align:3px}
 .leg i.sq{width:12px;height:12px;border-radius:3px;vertical-align:-1px}
-body.stale .data{opacity:.4;filter:saturate(.3);transition:opacity .3s,filter .3s}
+body.stale .data{opacity:.4;filter:saturate(.3);transition:opacity .3s,filter:saturate(.3)}
 
 /* ---------- panel headers ---------- */
-.phead{flex:none;height:44px;display:flex;align-items:center;justify-content:space-between;gap:16px}
+.phead{flex:none;height:44px;display:flex;align-items:center;justify-content:space-between;gap:14px}
 .ptitle{font-size:21px;letter-spacing:.02em;color:var(--dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .ptitle b{color:var(--text);font-weight:700;letter-spacing:.12em;margin-right:2px}
 .ptitle .pdot{display:inline-block;width:11px;height:11px;border-radius:50%;margin-right:12px;vertical-align:1px}
-.acts{display:flex;gap:10px;flex:none}
-.btn{height:42px;padding:0 20px;border-radius:21px;border:1px solid var(--line2);background:#141920;color:var(--text);
-  font-size:18px;font-weight:600;cursor:pointer;white-space:nowrap;transition:opacity .2s,background .2s}
+.acts{display:flex;gap:8px;flex:none}
+.btn{height:42px;padding:0 18px;border-radius:21px;border:1px solid var(--line2);background:#141920;color:var(--text);
+  font-size:17px;font-weight:600;cursor:pointer;white-space:nowrap;transition:opacity .2s,background .2s,border-color .2s,box-shadow .2s}
 .btn:hover:not(:disabled){border-color:#56606c}
 .btn.primary{background:var(--blue);border-color:var(--blue);color:#fff}
+.btn.traffic{background:rgba(36,193,224,.14);border-color:rgba(120,217,236,.55);color:var(--cyan-l)}
+.btn.traffic.ready:not(:disabled){background:var(--green);border-color:var(--green);color:#fff;box-shadow:0 0 14px rgba(52,168,83,.45)}
+.btn.traffic.active:not(:disabled){background:rgba(36,193,224,.22);border-color:var(--cyan-l);color:#fff;box-shadow:inset 0 0 0 1px var(--cyan-l)}
 .btn:disabled{opacity:.32;cursor:default}
 .pending{animation:pend .8s ease-in-out infinite}
 @keyframes pend{50%{opacity:.55}}
@@ -93,11 +96,16 @@ body.stale .data{opacity:.4;filter:saturate(.3);transition:opacity .3s,filter .3
 .hero[data-mode=reconciling] .clabel,.hero[data-mode=starting] .clabel{color:var(--yellow)}
 .hero[data-mode=reconciling] .clock{color:#4a5059}
 
-.gridCard{flex:none;height:364px;padding:12px 16px 10px;display:flex;flex-direction:column;gap:8px}
+.gridCard{flex:none;height:364px;padding:10px 16px 9px;display:flex;flex-direction:column;gap:6px}
+.denspill{display:inline-flex;align-items:center;gap:6px;padding:2px 10px;border-radius:99px;
+  background:rgba(52,168,83,.13);border:1px solid rgba(129,201,149,.42);color:var(--green-l);
+  font-size:12px;font-weight:600;letter-spacing:.03em;text-transform:none;white-space:nowrap}
+.denspill i{width:7px;height:7px;border-radius:2px;background:var(--green-l)}
+.denspill b{color:#fff;font-weight:700}
 #grid{flex:1 1 0px;min-height:0;width:100%;display:block}
-.legend{flex:none;height:22px;display:flex;align-items:center;gap:18px;font-size:15px;color:var(--dim);white-space:nowrap;overflow:hidden}
-.legend i{display:inline-block;width:13px;height:13px;border-radius:3px;margin-right:8px;vertical-align:-1px}
-.legend .note{margin-left:auto;color:var(--dim2)}
+.legend{flex:none;height:20px;display:flex;align-items:center;gap:15px;font-size:14px;color:var(--dim);white-space:nowrap;overflow:hidden}
+.legend i{display:inline-block;width:12px;height:12px;border-radius:3px;margin-right:6px;vertical-align:-1px}
+.legend .note{margin-left:auto;color:var(--text2);font-size:13px;font-weight:500}
 
 /* definite row track: an auto track would grow to the canvas' intrinsic height and overflow into the ticker */
 .mid{flex:none;height:150px;display:grid;grid-template-columns:280px minmax(0,1fr);grid-template-rows:minmax(0,1fr);gap:12px}
@@ -110,36 +118,60 @@ body.stale .data{opacity:.4;filter:saturate(.3);transition:opacity .3s,filter .3
 .rampCard{min-height:0;padding:9px 14px 6px;display:flex;flex-direction:column}
 #ramp{flex:1 1 0px;min-height:0;width:100%;display:block}
 
-.tickCard{flex:1;min-height:0;padding:9px 16px 0;display:flex;flex-direction:column}
-.prompt{font-size:14px;font-weight:500;letter-spacing:0;text-transform:none;color:var(--dim2);overflow:hidden;text-overflow:ellipsis}
-.prompt q{color:var(--dim);font-family:var(--mono);font-size:13.5px;quotes:"“" "”"}
+.tickCard{position:relative;flex:1;min-height:0;padding:9px 16px 0;display:flex;flex-direction:column;overflow:hidden}
+.thint{font-size:12px;font-weight:600;letter-spacing:.03em;text-transform:none;color:var(--blue-l);margin-left:6px}
+.prompt{font-size:13.5px;font-weight:500;letter-spacing:0;text-transform:none;color:var(--dim2);overflow:hidden;text-overflow:ellipsis}
+.prompt q{color:var(--dim);font-family:var(--mono);font-size:13px;quotes:"“" "”"}
 #ticker{flex:1 1 0px;min-height:0;overflow:hidden;margin-top:6px;
   -webkit-mask-image:linear-gradient(to bottom,#000 78%,transparent);mask-image:linear-gradient(to bottom,#000 78%,transparent)}
 .tempty{padding:30px 8px;font-size:18px;color:var(--dim2);text-align:center}
-.trow{overflow:hidden}
+.trow{overflow:hidden;cursor:pointer}
 .tin{display:grid;grid-template-columns:104px minmax(0,1fr) auto;column-gap:14px;align-items:baseline;padding:6px 8px;
-  border-top:1px solid rgba(255,255,255,.055);border-radius:8px}
+  border-top:1px solid rgba(255,255,255,.055);border-radius:8px;transition:background .15s,transform .15s}
+.trow:hover .tin{background:rgba(66,133,244,.14)}
 .trow.fresh .tin{animation:fresh 1.4s ease-out}
 @keyframes fresh{0%{background:rgba(66,133,244,.22)}100%{background:rgba(66,133,244,0)}}
 .tmeta{font-family:var(--mono);font-size:15px;color:var(--dim);white-space:nowrap}
 .ttext{font-size:18.5px;line-height:1.28;color:var(--text);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;overflow-wrap:anywhere}
 .tright{display:flex;align-items:baseline;gap:10px;white-space:nowrap}
 .tlat{font-family:var(--mono);font-size:13px;color:var(--dim2);min-width:64px;text-align:right}
-.tchip{font-size:11.5px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;padding:3px 8px;border-radius:6px;white-space:nowrap;border:1px solid}
+.tchip{font-size:11.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;padding:3px 8px;border-radius:6px;white-space:nowrap;border:1px solid}
 .t-p1{color:var(--blue-l);border-color:rgba(66,133,244,.6);background:rgba(66,133,244,.14)}
 .t-p2{color:var(--green-l);border-color:rgba(52,168,83,.6);background:rgba(52,168,83,.14)}
-.t-prem{color:var(--yellow-l);border-color:rgba(251,188,4,.6);background:rgba(251,188,4,.12)}
-.t-std{color:var(--blue-l);border-color:rgba(138,180,248,.45);background:rgba(138,180,248,.08)}
+.t-prem{color:var(--yellow-l);border-color:rgba(251,188,4,.65);background:rgba(251,188,4,.16)}
+.t-std{color:var(--blue-l);border-color:rgba(138,180,248,.45);background:rgba(138,180,248,.1)}
 .t-be{color:#b8bec6;border-color:rgba(154,160,166,.45);background:rgba(154,160,166,.1)}
 .t-other{color:var(--text2);border-color:var(--line2);background:transparent}
 
+/* Magnified Joke Spotlight Overlay */
+.jspot{position:absolute;inset:0;z-index:15;background:rgba(12,16,22,.96);backdrop-filter:blur(8px);
+  border:2px solid var(--blue);border-radius:13px;padding:14px 20px 14px;display:none;flex-direction:column;justify-content:space-between;
+  box-shadow:0 12px 36px rgba(0,0,0,.75),inset 0 0 24px rgba(66,133,244,.14)}
+.jspot.on{display:flex;animation:jpop .18s cubic-bezier(.2,.9,.3,1)}
+@keyframes jpop{0%{opacity:0;transform:scale(.96)}100%{opacity:1;transform:scale(1)}}
+.jspot-hd{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.jspot-meta{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.jspot-pin{font-size:12px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;padding:4px 10px;border-radius:6px;
+  background:rgba(66,133,244,.22);border:1px solid rgba(138,180,248,.55);color:var(--blue-l)}
+.jspot-agent{font-family:var(--mono);font-size:18px;font-weight:700;color:#fff}
+.jspot-lat{font-family:var(--mono);font-size:15px;color:var(--green-l)}
+.jspot-acts{display:flex;align-items:center;gap:8px}
+.jspot-btn{height:34px;padding:0 13px;border-radius:8px;border:1px solid var(--line2);background:#18202c;color:var(--text);
+  font-size:14px;font-weight:600;cursor:pointer;white-space:nowrap}
+.jspot-btn:hover{border-color:var(--blue-l);background:#1f2a3a}
+.jspot-btn.close{background:rgba(234,67,53,.16);border-color:rgba(242,139,130,.5);color:var(--red-l)}
+.jspot-btn.close:hover{background:rgba(234,67,53,.28)}
+.jspot-prompt{font-family:var(--mono);font-size:14px;color:var(--dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:4px}
+.jspot-body{flex:1;display:flex;align-items:center;font-size:27px;font-weight:600;line-height:1.34;color:#fff;
+  letter-spacing:-.005em;padding:6px 4px;overflow-y:auto}
+
 /* ---------- LEFT COMPACT (30/70 split) ---------- */
 #left.compact{padding:14px 16px 16px 18px}
-#left.compact .phead{gap:8px}
-#left.compact .ptitle{font-size:15.5px}
-#left.compact .ptitle .pdot{width:9px;height:9px;margin-right:7px}
-#left.compact .acts{gap:6px}
-#left.compact .btn{height:36px;padding:0 12px;font-size:14px}
+#left.compact .phead{gap:6px}
+#left.compact .ptitle{font-size:14.5px}
+#left.compact .ptitle .pdot{width:8px;height:8px;margin-right:6px}
+#left.compact .acts{gap:5px}
+#left.compact .btn{height:34px;padding:0 10px;font-size:13px}
 #left.compact .hero{grid-template-columns:186px 1fr}
 #left.compact .counter{font-size:74px;line-height:.88}
 #left.compact .hsub{margin-top:8px;flex-direction:column;align-items:flex-start;gap:2px}
@@ -151,6 +183,8 @@ body.stale .data{opacity:.4;filter:saturate(.3);transition:opacity .3s,filter .3
 #left.compact .clock{font-size:46px;margin-top:6px}
 #left.compact .brow{margin-top:10px;height:34px}
 #left.compact .badge{height:34px;padding:0 12px;font-size:15px;gap:7px}
+#left.compact .gridCard .ctitle{font-size:11px;letter-spacing:.04em}
+#left.compact .denspill{font-size:10.5px;padding:2px 7px}
 #left.compact .legend{gap:9px;font-size:12px}
 #left.compact .legend i{width:10px;height:10px;margin-right:4px}
 #left.compact .legend .note{display:none}
@@ -164,15 +198,16 @@ body.stale .data{opacity:.4;filter:saturate(.3);transition:opacity .3s,filter .3
 #left.compact .rampCard .leg{font-size:11px;gap:8px}
 #left.compact .opt{display:none}
 #left.compact .prompt{display:none}
+#left.compact .thint{display:none}
 #left.compact .tin{grid-template-columns:88px minmax(0,1fr) auto;column-gap:8px}
 #left.compact .tmeta{font-size:13px}
 #left.compact .ttext{font-size:15px}
 #left.compact .tempty{font-size:14.5px;padding:24px 6px}
+#left.compact .jspot-body{font-size:20px}
 
 /* ---------- RIGHT ---------- */
-#right{display:grid;grid-template-columns:minmax(0,1fr) 180px;min-height:0}
+#right{display:grid;grid-template-columns:minmax(0,1fr) 204px;min-height:0}
 .rmain{display:flex;flex-direction:column;gap:12px;padding:14px 20px 16px 24px;min-width:0;min-height:0}
-.mtag{font-size:14px;color:var(--dim2);font-family:var(--mono);white-space:nowrap}
 .splitCard{flex:none;height:154px;padding:10px 18px 12px;display:flex;flex-direction:column;transition:opacity .4s}
 .splitCard.quiet .sbar,.splitCard.quiet .srow{opacity:.42}
 .srow{display:grid;grid-template-columns:1fr auto 1fr;align-items:end;transition:opacity .4s}
@@ -235,52 +270,41 @@ canvas.chart{flex:1 1 0px;min-height:0;width:100%;display:block}
 
 .flowCard{flex:none;height:224px;padding:9px 18px 9px;display:flex;flex-direction:column;transition:opacity .5s}
 .flowCard.quiet{opacity:.45}
-.sat{display:flex;align-items:center;gap:12px;font-size:14px;font-weight:500;letter-spacing:.02em;text-transform:none;color:var(--dim)}
-.satbar{width:190px;height:12px;border-radius:6px;background:#232a33;overflow:hidden}
+.sat{display:flex;align-items:center;gap:10px;font-size:13.5px;font-weight:500;letter-spacing:.02em;text-transform:none;color:var(--dim)}
+.satbar{width:128px;height:12px;border-radius:6px;background:#232a33;overflow:hidden}
 .satbar b{display:block;height:100%;width:0;border-radius:6px;background:var(--green);transition:background .4s}
-.satv{font-size:24px;font-weight:700;color:var(--text);min-width:64px;text-align:right}
-.fcols,.frow{display:grid;grid-template-columns:176px minmax(0,1fr) 72px 118px 118px;align-items:center;column-gap:14px}
-.fcols{margin-top:6px;height:16px;font-size:12px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--dim2)}
+.satv{font-size:22px;font-weight:700;color:var(--text);min-width:52px;text-align:right}
+.fcols,.frow{display:grid;grid-template-columns:236px minmax(0,1fr) 68px 104px 108px;align-items:center;column-gap:12px}
+.fcols{margin-top:6px;height:16px;font-size:11.5px;font-weight:700;letter-spacing:.09em;text-transform:uppercase;color:var(--dim2)}
 .fcols span:nth-child(n+3){text-align:right}
-.frow{height:42px;border-top:1px solid rgba(255,255,255,.05)}
-.fname{font-size:19px;font-weight:600;display:flex;align-items:center;gap:9px;white-space:nowrap}
-.fname i{width:12px;height:12px;border-radius:3px;display:inline-block}
-.fname small{font-size:12px;color:var(--dim2);font-family:var(--mono);font-weight:500}
+.frow{height:40px;border-top:1px solid rgba(255,255,255,.05)}
+.fname{font-size:16.5px;font-weight:600;display:flex;align-items:center;gap:8px;white-space:nowrap}
+.fname i{width:11px;height:11px;border-radius:3px;display:inline-block;flex:none}
+.fname small{font-size:11.5px;color:var(--dim2);font-family:var(--mono);font-weight:500}
 .qbar{height:16px;border-radius:5px;background:#1d232b;overflow:hidden}
 .qbar b{display:block;height:100%;width:0;border-radius:5px}
-.fv{font-size:22px;font-weight:600;text-align:right;white-space:nowrap}
+.fv{font-size:21px;font-weight:600;text-align:right;white-space:nowrap}
 .fv u{text-decoration:none;font-size:.6em;color:var(--dim);margin-left:4px}
-.fhint{margin-top:auto;height:18px;font-size:14px;color:var(--dim);text-align:center}
-.fhint.off{visibility:hidden}
+.fhint{margin-top:auto;height:22px;font-size:13px;color:var(--dim);text-align:center;display:flex;align-items:center;justify-content:center;
+  border-radius:6px;padding:0 10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.fhint.sla{background:rgba(251,188,4,.13);border:1px solid rgba(251,188,4,.45);color:var(--yellow-l);font-weight:600}
 
-.rail{border-left:1px solid var(--line);background:#0a0c10;padding:14px 14px 16px;display:flex;flex-direction:column;gap:9px;min-height:0}
+.rail{border-left:1px solid var(--line);background:#0a0c10;padding:14px 14px 16px;display:flex;flex-direction:column;gap:10px;min-height:0}
 .live{flex:none;height:44px;display:flex;align-items:center;justify-content:center;gap:9px;font-size:14px;font-weight:700;
   letter-spacing:.12em;color:var(--green-l);border:1px solid var(--line);border-radius:12px;white-space:nowrap}
 .live i{flex:none;width:9px;height:9px;border-radius:50%;background:currentColor;box-shadow:0 0 8px currentColor}
 .live.bad{color:var(--yellow);border-color:rgba(251,188,4,.6);background:rgba(251,188,4,.1);animation:pend 1s ease-in-out infinite;
   font-size:13px;letter-spacing:.04em;gap:7px}
-.rlabel{margin-top:8px;font-size:12.5px;font-weight:700;letter-spacing:.14em;color:var(--dim);display:flex;align-items:center;justify-content:space-between;white-space:nowrap}
-.rlabel span{font-weight:600;letter-spacing:.04em;color:var(--text2);font-family:var(--mono);font-size:12px}
-.sbtn{flex:none;height:82px;border-radius:14px;border:1px solid var(--line2);background:#12161c;color:var(--text2);text-align:left;
+.rlabel{margin-top:8px;font-size:12.5px;font-weight:700;letter-spacing:.04em;color:var(--text2);line-height:1.25}
+.sbtn{flex:none;height:86px;border-radius:14px;border:1px solid var(--line2);background:#12161c;color:var(--text2);text-align:left;
   padding:9px 14px 9px 16px;cursor:pointer;display:flex;flex-direction:column;justify-content:center;gap:4px;position:relative;
   transition:background .25s,border-color .25s}
 .sbtn:hover{border-color:#56606c}
 .sbtn .b1{font-size:20px;font-weight:700;color:var(--text);white-space:nowrap}
-.sbtn .b2{font-size:13px;color:var(--dim);white-space:nowrap}
+.sbtn .b2{font-size:12.5px;color:var(--dim);white-space:nowrap}
 .sbtn.active{background:rgba(66,133,244,.2);border-color:var(--blue);box-shadow:inset 0 0 0 1px var(--blue)}
 .sbtn.active::before{content:"";position:absolute;left:-1px;top:14px;bottom:14px;width:5px;border-radius:0 4px 4px 0;background:var(--blue-l)}
 .sbtn.active .b2{color:var(--blue-l)}
-
-.vbox{flex:none;background:#12161c;border:1px solid var(--line2);border-radius:12px;padding:8px 10px 6px;display:flex;flex-direction:column;gap:4px}
-.vslider{-webkit-appearance:none;appearance:none;width:100%;height:6px;border-radius:3px;background:linear-gradient(90deg,var(--green) 0%,var(--blue) 100%);
-  outline:none;margin:2px 0;cursor:pointer}
-.vslider::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:16px;height:16px;border-radius:50%;background:#fff;
-  border:2px solid var(--blue);box-shadow:0 1px 4px rgba(0,0,0,.6);cursor:grab}
-.vends{display:flex;justify-content:space-between;font-size:11px;font-weight:600;color:var(--dim);letter-spacing:.04em}
-.vbtn{flex:none;height:38px;border-radius:10px;border:1px solid var(--line2);background:#12161c;color:var(--text2);
-  font-size:14.5px;font-weight:700;cursor:pointer;white-space:nowrap;transition:background .2s,border-color .2s,color .2s}
-.vbtn:hover{border-color:#56606c;color:var(--text)}
-.vbtn.active{background:rgba(52,168,83,.18);border-color:var(--green);color:#fff;box-shadow:inset 0 0 0 1px var(--green)}
 
 .rnote{min-height:18px;font-size:13px;color:var(--green-l);font-weight:600;text-align:center;white-space:nowrap}
 .rmsg{margin-top:auto;font-size:12px;line-height:1.35;color:var(--dim2);overflow-wrap:anywhere;
@@ -296,12 +320,11 @@ canvas.chart{flex:1 1 0px;min-height:0;width:100%;display:block}
 .radmin:disabled{opacity:.45;cursor:default}
 
 /* ---------- RIGHT COMPACT (70/30 split) ---------- */
-#right.compact{grid-template-columns:minmax(0,1fr) 136px}
+#right.compact{grid-template-columns:minmax(0,1fr) 148px}
 #right.compact .rmain{padding:14px 12px 16px 14px}
 #right.compact .phead{gap:8px}
 #right.compact .ptitle{font-size:15.5px}
 #right.compact .ptitle .pdot{width:9px;height:9px;margin-right:7px}
-#right.compact .mtag{display:none}
 #right.compact .splitCard{padding:9px 12px 10px}
 #right.compact .spn{font-size:14px;gap:6px}
 #right.compact .spc{font-size:44px}
@@ -325,25 +348,21 @@ canvas.chart{flex:1 1 0px;min-height:0;width:100%;display:block}
 #right.compact .leg{font-size:11.5px;gap:10px}
 #right.compact .flowCard{padding:9px 12px 9px}
 #right.compact .sat{gap:6px;font-size:11.5px}
-#right.compact .satbar{width:76px;height:10px}
-#right.compact .satv{font-size:17px;min-width:42px}
-#right.compact .fcols,#right.compact .frow{grid-template-columns:114px minmax(28px,1fr) 42px 66px 74px;column-gap:6px}
-#right.compact .fcols{font-size:9.5px;letter-spacing:.04em}
-#right.compact .fname{font-size:13.5px;gap:5px}
-#right.compact .fname i{width:9px;height:9px}
-#right.compact .fname small{font-size:10px}
-#right.compact .fv{font-size:14.5px}
-#right.compact .fhint{font-size:12px}
+#right.compact .satbar{width:68px;height:10px}
+#right.compact .satv{font-size:16px;min-width:38px}
+#right.compact .fcols,#right.compact .frow{grid-template-columns:138px minmax(24px,1fr) 38px 62px 68px;column-gap:5px}
+#right.compact .fcols{font-size:9px;letter-spacing:.03em}
+#right.compact .fname{font-size:12px;gap:4px}
+#right.compact .fname i{width:8px;height:8px}
+#right.compact .fname small{display:none}
+#right.compact .fv{font-size:14px}
+#right.compact .fhint{font-size:10.5px}
 #right.compact .rail{padding:12px 8px 14px;gap:7px}
 #right.compact .live{height:38px;font-size:11.5px;letter-spacing:.06em;gap:6px}
-#right.compact .rlabel{font-size:10.5px;letter-spacing:.08em;margin-top:5px}
-#right.compact .rlabel span{font-size:10.5px}
+#right.compact .rlabel{font-size:11px;letter-spacing:.02em;margin-top:5px}
 #right.compact .sbtn{height:68px;padding:7px 9px 7px 11px}
 #right.compact .sbtn .b1{font-size:16px}
-#right.compact .sbtn .b2{font-size:11px}
-#right.compact .vbox{padding:6px 8px 5px}
-#right.compact .vends{font-size:10px}
-#right.compact .vbtn{height:34px;font-size:12.5px}
+#right.compact .sbtn .b2{font-size:10.5px}
 #right.compact .rnote{font-size:11.5px}
 #right.compact .rstats{font-size:12px;row-gap:4px;padding-top:8px}
 #right.compact .rkeys{font-size:10px}
@@ -359,9 +378,10 @@ canvas.chart{flex:1 1 0px;min-height:0;width:100%;display:block}
 <div id="stage">
   <section id="left" class="panel">
     <header class="phead">
-      <div class="ptitle"><span class="pdot" style="background:var(--green)"></span><b>AGENTS</b> · Agent Substrate on GKE</div>
+      <div class="ptitle"><span class="pdot" style="background:var(--green)"></span><b>AGENTS</b><span class="opt"> · Agent Substrate on GKE</span></div>
       <div class="acts">
-        <button id="btnWake" class="btn primary" title="Wake all agents (W)">Wake 1,000</button>
+        <button id="btnWake" class="btn primary" title="Wake all 1,000 agents (W)">Wake Agents</button>
+        <button id="btnTraffic" class="btn traffic" title="Send LLM requests from awake agents (T)" disabled>Simulate Traffic</button>
         <button id="btnSuspend" class="btn" title="Suspend all agents (S)">Suspend all</button>
       </div>
     </header>
@@ -377,6 +397,10 @@ canvas.chart{flex:1 1 0px;min-height:0;width:100%;display:block}
       </div>
     </div>
     <div class="card gridCard data">
+      <div class="ctitle">
+        <span>1,000 gVisor Sandboxes<span class="opt"> · 25 GKE Nodes (5×5 Node Tiles)</span></span>
+        <span class="denspill"><i></i><b>40 sandboxes / node</b><span>·</span><b>10 / vCPU</b><span class="opt">· 0 CPU at rest</span></span>
+      </div>
       <canvas id="grid"></canvas>
       <div class="legend">
         <span><i style="background:#2a313a"></i>suspended</span>
@@ -385,7 +409,7 @@ canvas.chart{flex:1 1 0px;min-height:0;width:100%;display:block}
         <span><i style="background:var(--blue)"></i>request in flight</span>
         <span><i style="background:var(--purple)"></i>suspending</span>
         <span><i style="background:var(--red)"></i>failed</span>
-        <span class="note" id="gridNote">1 cell = 1 agent = 1 gVisor sandbox</span>
+        <span class="note" id="gridNote">1 tile = 1 node (40 gVisor sandboxes · 4 vCPU)</span>
       </div>
     </div>
     <div class="mid data">
@@ -401,8 +425,24 @@ canvas.chart{flex:1 1 0px;min-height:0;width:100%;display:block}
       </div>
     </div>
     <div class="card tickCard data">
-      <div class="ctitle"><span>Replies · newest first</span><span class="prompt" id="promptLine">each agent asks Gemma <q id="promptQ">hello from agent-0421, tell me a short joke about pytorch.</q></span></div>
-      <div id="ticker"><div class="tempty" id="tempty">replies from the agents stream in here once they wake</div></div>
+      <div class="ctitle"><span>Replies · newest first<span class="thint">· click any joke to magnify &amp; freeze</span></span><span class="prompt" id="promptLine"><q id="promptQ">hello from agent-0421, tell me a short joke about pytorch.</q></span></div>
+      <div id="ticker"><div class="tempty" id="tempty">replies from the agents stream in here once traffic starts</div></div>
+      <div class="jspot" id="jokeSpotlight" aria-hidden="true">
+        <div class="jspot-hd">
+          <div class="jspot-meta">
+            <span class="jspot-pin">📌 MAGNIFIED &amp; FROZEN</span>
+            <span class="jspot-agent" id="jsAgent">agent-0001</span>
+            <span class="tchip" id="jsTag" style="display:none"></span>
+            <span class="jspot-lat" id="jsLat"></span>
+          </div>
+          <div class="jspot-acts">
+            <button class="jspot-btn" id="jsNext" title="Cycle to another joke from the reply stream">🎲 Next Joke</button>
+            <button class="jspot-btn close" id="jsClose" title="Close magnified view (Esc)">✕ Close</button>
+          </div>
+        </div>
+        <div class="jspot-prompt" id="jsPrompt"></div>
+        <div class="jspot-body" id="jsBody"></div>
+      </div>
     </div>
   </section>
   <div class="divider" id="divider" title="Drag to adjust Agents vs llm-d view split (double-click for 50/50)">
@@ -411,8 +451,7 @@ canvas.chart{flex:1 1 0px;min-height:0;width:100%;display:block}
   <section id="right" class="panel">
     <div class="rmain">
       <header class="phead">
-        <div class="ptitle"><span class="pdot" style="background:var(--blue)"></span><b>LLM-D</b> · Gemma 4 12B on TPU v6e (vLLM)</div>
-        <div class="mtag" id="mtag"></div>
+        <div class="ptitle"><span class="pdot" style="background:var(--blue)"></span><b>LLM-D</b> · Gemma 4 12B on llm-d + vllm + TPUs</div>
       </header>
       <div class="card splitCard data" id="splitCard">
         <div class="srow">
@@ -442,27 +481,19 @@ canvas.chart{flex:1 1 0px;min-height:0;width:100%;display:block}
         <canvas class="chart" id="latChart"></canvas>
       </div>
       <div class="card flowCard data quiet" id="flowCard">
-        <div class="ctitle"><span>llm-d flow control</span>
+        <div class="ctitle"><span>llm-d Priority Flow Control<span class="opt"> · Paid vs Free</span></span>
           <span class="sat">pool saturation<span class="satbar"><b id="satb"></b></span><span class="satv" id="satv">0%</span></span></div>
-        <div class="fcols"><span>priority band</span><span>queue depth</span><span>queue</span><span>mean wait</span><span>dispatch</span></div>
+        <div class="fcols"><span>user tier (priority)</span><span>queue depth</span><span>queued</span><span>queue wait</span><span>dispatched</span></div>
         <div id="frows"></div>
-        <div class="fhint" id="fhint">queues form only when the pool is saturated</div>
+        <div class="fhint" id="fhint">Viral spike protection: 💎 Paid Members jump ahead of 🆓 Free Users</div>
       </div>
     </div>
     <nav class="rail">
       <div class="live" id="live"><i></i><span id="liveText">CONNECTING…</span></div>
-      <div class="rlabel">ROUTING</div>
+      <div class="rlabel">llm-d: Flow Control Strategy</div>
       <button class="sbtn" data-mode="balanced" title="Balanced (B)"><span class="b1">Balanced</span><span class="b2">cache-aware 50/50</span></button>
       <button class="sbtn" data-mode="steer8020" title="Steer 80/20 (E)"><span class="b1">Steer 80/20</span><span class="b2">request header</span></button>
-      <button class="sbtn" data-mode="priority" title="Priority (P)"><span class="b1">Priority</span><span class="b2">flow control</span></button>
-      <div class="rlabel">VIEW SPLIT<span id="splitVal">50 / 50</span></div>
-      <div class="vbox">
-        <input id="viewSlider" class="vslider" type="range" min="25" max="75" step="1" value="50" title="Adjust Agents vs llm-d width split (25%–75%)">
-        <div class="vends"><span>Agents</span><span>llm-d</span></div>
-      </div>
-      <button class="vbtn" data-split="70" title="Focus on Agents (70 / 30)">Agents 70/30</button>
-      <button class="vbtn active" data-split="50" title="Balanced 50 / 50 split">50 / 50</button>
-      <button class="vbtn" data-split="30" title="Focus on llm-d (30 / 70)">llm-d 30/70</button>
+      <button class="sbtn" data-mode="priority" title="Priority (P)"><span class="b1">Priority</span><span class="b2">💎 Paid vs 🆓 Free</span></button>
       <div class="rnote" id="rnote"></div>
       <div class="rmsg" id="rmsg"></div>
       <div class="rstats data">
@@ -472,7 +503,7 @@ canvas.chart{flex:1 1 0px;min-height:0;width:100%;display:block}
         <span>replies</span><b id="rsRep">—</b>
         <span>failed</span><b id="rsFail">—</b>
       </div>
-      <div class="rkeys">keys: W wake · S suspend<br>B / E / P strategy</div>
+      <div class="rkeys">keys: W wake · T traffic · S suspend<br>B / E / P strategy</div>
       <button class="radmin" id="btnRecon" title="Admin: POST api/reconcile (heal all agents back to suspended). Click twice.">reconcile agents</button>
     </nav>
   </section>
@@ -606,6 +637,7 @@ function normalize(js) {
     busy: s.busy === true,          // optional (not in the contract today): honoured if the driver ever sends it
     burst: {
       id: b.id == null ? '' : String(b.id), t0: num(b.t0_unix_ms, 0), elapsed: nn(b.elapsed_ms),
+      wakeOnly: b.wake_only === true, trafficStarted: b.traffic_started !== false,
       running: isNum(b.running) ? b.running : countRunning(agents),
       peak: num(b.peak_running, 0), woke: num(b.woke, 0), failed: num(b.wake_failed, 0),
       allRunning: nn(b.all_running_ms), suspElapsed: nn(b.suspend_elapsed_ms), allSuspended: nn(b.all_suspended_ms),
@@ -843,10 +875,12 @@ function ingestMarkers(st, key) {
   S.markers = S.markers.filter((m) => m.t > key - SPAN_MS - 5000);
 }
 
+
 // ------------------------------------------------------------------ UI refs
 const PROMPT = 'hello from {agent}, tell me a short joke about pytorch.';   // display only (the backend owns the real prompt)
 const UI = {
-  wake: $('btnWake'), susp: $('btnSuspend'), recon: $('btnRecon'), hero: $('hero'), counter: $('counter'), hstats: $('hstats'),
+  wake: $('btnWake'), traf: $('btnTraffic'), susp: $('btnSuspend'), recon: $('btnRecon'),
+  hero: $('hero'), counter: $('counter'), hstats: $('hstats'),
   clabel: $('clabel'), clabelSub: $('clabelSub'), clockv: $('clockv'), badge: $('badge'), badgeText: $('badgeText'),
   tReq: new Num($('tReq'), fBig), tTok: new Num($('tTok'), fBig), tUniq: new Num($('tUniq'), fInt), tRep: new Num($('tRep'), fInt),
   split: new Num(null, (v) => v, 450), sat: new Num($('satv'), (v) => fInt(v * 100) + '%', 300),
@@ -855,9 +889,19 @@ const UI = {
 };
 let wakePending = 0;   // after a successful Wake POST the driver stays 'idle' during its preflight: keep Wake disabled
                        // (and show "starting…") until the phase moves on, for at most 15 s
-let prevPhase = 'idle';
-const sBtns = [...document.querySelectorAll('.sbtn')], vBtns = [...document.querySelectorAll('.vbtn')];
+const sBtns = [...document.querySelectorAll('.sbtn')];
 const podName = (i) => { const p = S.latest && S.latest.llmd.pods[i]; return (p && p.name ? String(p.name) : '') || S.pods[i] || 'pod-' + (i + 1); };
+
+const BAND_META = {
+  premium: {label: '💎 Paid Members (Pro)', sub: 'p100'},
+  standard: {label: '🔹 Paid Standard', sub: 'p0'},
+  'best-effort': {label: '🆓 Free Users (Viral)', sub: 'p−10'},
+};
+const TAG_LABEL = {
+  premium: '💎 PAID PRO',
+  standard: '🔹 PAID STD',
+  'best-effort': '🆓 FREE TIER',
+};
 
 function buildPod(p) {
   const root = $('pod' + p);
@@ -905,21 +949,22 @@ function buildFlow(bands) {
   wrap.textContent = '';
   for (const b of bands) {
     const c = BAND_C[b.name] || '#c4c9d0';
+    const meta = BAND_META[b.name] || {label: b.name, sub: 'p' + String(b.priority).replace('-', '−')};
     const row = document.createElement('div');
     row.className = 'frow';
     row.innerHTML = `<div class="fname"><i style="background:${c}"></i><span></span><small></small></div>
       <div class="qbar"><b style="background:${c}"></b></div><div class="fv" data-k="q"></div>
       <div class="fv"><span data-k="w"></span><u>ms</u></div><div class="fv"><span data-k="r"></span><u>req/s</u></div>`;
-    row.querySelector('.fname span').textContent = b.name;
-    row.querySelector('.fname small').textContent = 'p' + String(b.priority).replace('-', '−');
+    row.querySelector('.fname span').textContent = meta.label;
+    row.querySelector('.fname small').textContent = meta.sub;
     wrap.appendChild(row);
     flowUI.rows.set(b.name, {bar: row.querySelector('.qbar b'), q: new Num(row.querySelector('[data-k="q"]'), fInt),
       w: new Num(row.querySelector('[data-k="w"]'), fInt), r: new Num(row.querySelector('[data-k="r"]'), fRate)});
   }
 }
 
-// ------------------------------------------------------------------ interactive view split (25% .. 75%)
-const leftPanel = $('left'), rightPanel = $('right'), dividerEl = $('divider'), viewSlider = $('viewSlider'), splitValEl = $('splitVal');
+// ------------------------------------------------------------------ interactive view split (25% .. 75% via center divider)
+const leftPanel = $('left'), rightPanel = $('right'), dividerEl = $('divider');
 let viewSplitPct = 50;
 function setViewSplit(rawPct) {
   const pct = clamp(Math.round(num(+rawPct, 50)), 25, 75);
@@ -930,21 +975,14 @@ function setViewSplit(rawPct) {
   stage.style.gridTemplateColumns = `${w1}px 12px ${w2}px`;
   setCls(leftPanel, 'compact', pct < 42);
   setCls(rightPanel, 'compact', pct > 58);
-  if (viewSlider && +viewSlider.value !== pct) viewSlider.value = String(pct);
-  setText(splitValEl, `${pct} / ${100 - pct}`);
-  for (const b of vBtns) setCls(b, 'active', +b.dataset.split === pct);
   for (const cv of [gridCv, rampCv, tokCv, latCv]) {
     if (cv && cv.clientWidth > 0 && cv.clientHeight > 0) csize.set(cv, {w: cv.clientWidth, h: cv.clientHeight});
   }
 }
-if (viewSlider) {
-  viewSlider.addEventListener('input', () => setViewSplit(+viewSlider.value));
-  viewSlider.addEventListener('change', () => setViewSplit(+viewSlider.value));
-}
-vBtns.forEach((b) => b.addEventListener('click', () => setViewSplit(+b.dataset.split)));
+window.__setViewSplit = setViewSplit;
 if (dividerEl) {
   let dragging = false;
-  const onMove = ( clientX ) => {
+  const onMove = (clientX) => {
     const rect = stage.getBoundingClientRect();
     if (rect.width > 0) setViewSplit(((clientX - rect.left) / rect.width) * 100);
   };
@@ -970,17 +1008,19 @@ if (dividerEl) {
 // ------------------------------------------------------------------ per-poll updates
 function targetRateFor(mode) { return mode === 'priority' ? 300 : 100; }
 function updateFromState(st) {
-  setText(UI.wake, 'Wake ' + fInt(st.total));
-  setText($('mtag'), st.model ? st.model : '');
+  setText(UI.wake, 'Wake Agents');
   const ph = st.phase;   // idle | waking | running | suspending | reconciling (anything else counts as busy)
   if (ph !== 'idle') wakePending = 0;
-  // Belt-and-suspenders: if transitioning to 'running' and steady traffic hasn't started yet, request auto rate
-  if (prevPhase !== 'running' && ph === 'running' && !num(st.traffic.rate, 0)) {
-    post('api/traffic', {rate: targetRateFor(st.traffic.strategy || 'balanced')});
-  }
-  prevPhase = ph;
   const starting = performance.now() < wakePending;
   if (!pendingBtn.has(UI.wake)) UI.wake.disabled = ph !== 'idle' || st.busy || starting;
+
+  const r = num(st.traffic.rate, 0);
+  const canTraffic = (ph === 'running' || ph === 'waking') && !starting;
+  if (!pendingBtn.has(UI.traf)) UI.traf.disabled = !canTraffic;
+  setCls(UI.traf, 'ready', canTraffic && r <= 0);
+  setCls(UI.traf, 'active', canTraffic && r > 0);
+  setText(UI.traf, r > 0 && canTraffic ? `Traffic: ${fInt(r)}/s` : 'Simulate Traffic');
+
   // the driver answers 409 "busy" to a suspend while waking / suspending / reconciling; in idle it only makes
   // sense while sandboxes are still up (e.g. after a suspend that left some running)
   if (!pendingBtn.has(UI.susp)) UI.susp.disabled = st.busy || !(ph === 'running' || (ph === 'idle' && !starting && st.burst.running > 0));
@@ -1040,7 +1080,9 @@ function updateFlow(st) {
   bands = bands.slice(0, 3);
   buildFlow(bands);
   let qmax = 0, qsum = 0;
+  const byName = {};
   for (const b of bands) {
+    byName[b.name] = b;
     const r = flowUI.rows.get(b.name);
     r.q.set(b.queue); r.w.set(b.wait); r.r.set(b.rs);
     qmax = Math.max(qmax, num(b.queue, 0)); qsum += num(b.queue, 0);
@@ -1048,21 +1090,72 @@ function updateFlow(st) {
   flowUI.scaleTo = niceMax(Math.max(20, qmax * 1.05), 4);
   const sat = clamp(num(f.saturation, 0), 0, 1);
   UI.sat.set(sat);
-  setCls($('flowCard'), 'quiet', sat < 0.005 && qsum === 0);
-  setCls($('fhint'), 'off', qsum > 0);
+  setCls($('flowCard'), 'quiet', sat < 0.005 && qsum === 0 && st.traffic.strategy !== 'priority');
+  const fh = $('fhint');
+  const prem = byName['premium'] || {}, be = byName['best-effort'] || {};
+  if (qsum > 0 && isNum(prem.wait) && isNum(be.wait) && prem.wait > 0) {
+    const ratio = Math.max(2, Math.round(be.wait / Math.max(1, prem.wait)));
+    setCls(fh, 'sla', true);
+    setText(fh, `⚡ Viral Spike Protection: 💎 Paid Members served ${ratio}× faster (${fInt(prem.wait)} ms wait vs ${fInt(be.wait)} ms for 🆓 Free Users)`);
+  } else {
+    setCls(fh, 'sla', false);
+    setText(fh, 'Viral spike protection: 💎 Paid Members jump ahead of 🆓 Free Users');
+  }
 }
 function updateRail(st) {
   const tr = st.traffic;
   for (const b of sBtns) setCls(b, 'active', b.dataset.mode === tr.strategy);
   const r = num(tr.rate, 0);
   setText($('rsRate'), tr.rate == null ? '—' : r > 0 ? fInt(r) + ' req/s' : 'off');
-  setText($('rnote'), r > 0 && st.phase === 'running' ? `auto traffic · ${fInt(r)} req/s` : r > 0 ? 'flows while agents run' : '');
+  setText($('rnote'), r > 0 && st.phase === 'running' ? `traffic active · ${fInt(r)} req/s` : st.phase === 'running' ? 'click Simulate Traffic' : '');
   UI.rsInf.set(tr.inflight); UI.rsSent.set(tr.sent); UI.rsRep.set(tr.replies); UI.rsFail.set(tr.failed);
 }
 
-// ------------------------------------------------------------------ ticker (paced client-side queue)
-const T = {primed: false, lastSeq: -Infinity, queue: [], lastRelease: 0};
-const tickerEl = $('ticker');
+// ------------------------------------------------------------------ ticker + click-to-magnify spotlight
+const T = {primed: false, lastSeq: -Infinity, queue: [], lastRelease: 0, history: [], spotIdx: -1};
+const tickerEl = $('ticker'), spotEl = $('jokeSpotlight');
+function tagClass(tag) {
+  if (tag === S.pods[0]) return 't-p1';
+  if (tag === S.pods[1]) return 't-p2';
+  return {premium: 't-prem', standard: 't-std', 'best-effort': 't-be'}[tag] || 't-other';
+}
+function tagDisplay(tag) {
+  return TAG_LABEL[tag] || tag;
+}
+function showSpotlight(e, idx = -1) {
+  if (!e || !spotEl) return;
+  T.spotIdx = idx >= 0 ? idx : T.history.indexOf(e);
+  const ag = str(e.agent, 'agent-0001');
+  setText($('jsAgent'), ag);
+  setText($('jsPrompt'), `Prompt: “${PROMPT.replace('{agent}', ag)}”`);
+  setText($('jsBody'), String(e.text == null ? '' : e.text).replace(/\s+/g, ' ').trim());
+  setText($('jsLat'), isNum(e.latency_ms) ? `${fInt(e.latency_ms)} ms E2E` : '');
+  const tag = str(e.tag), jt = $('jsTag');
+  if (tag) {
+    jt.className = 'tchip ' + tagClass(tag);
+    jt.textContent = tagDisplay(tag);
+    jt.style.display = 'inline-block';
+  } else {
+    jt.style.display = 'none';
+  }
+  spotEl.classList.add('on');
+  spotEl.setAttribute('aria-hidden', 'false');
+}
+function hideSpotlight() {
+  if (!spotEl) return;
+  spotEl.classList.remove('on');
+  spotEl.setAttribute('aria-hidden', 'true');
+}
+window.__showSpotlight = showSpotlight;
+window.__hideSpotlight = hideSpotlight;
+if ($('jsClose')) $('jsClose').addEventListener('click', (ev) => { ev.stopPropagation(); hideSpotlight(); });
+if ($('jsNext')) $('jsNext').addEventListener('click', (ev) => {
+  ev.stopPropagation();
+  if (!T.history.length) return;
+  const nextIdx = (T.spotIdx + 1) % T.history.length;
+  showSpotlight(T.history[nextIdx], nextIdx);
+});
+
 function ingestTicker(st) {
   const list = st.ticker.map(obj).filter((e) => isNum(e.seq)).sort((a, b) => a.seq - b.seq);
   const maxSeq = list.length ? list[list.length - 1].seq : -Infinity;
@@ -1072,7 +1165,7 @@ function ingestTicker(st) {
     T.lastSeq = maxSeq;
     return;
   }
-  if (list.length && maxSeq < T.lastSeq) { T.lastSeq = -Infinity; T.queue = []; }   // seq reset: backend restarted
+  if (list.length && maxSeq < T.lastSeq) { T.lastSeq = -Infinity; T.queue = []; T.history = []; }   // seq reset: backend restarted
   for (const e of list) if (e.seq > T.lastSeq) { T.queue.push(e); T.lastSeq = e.seq; }
   if (T.queue.length > TICKER_BACKLOG) T.queue.splice(0, T.queue.length - TICKER_BACKLOG);
 }
@@ -1081,31 +1174,32 @@ function pumpTicker(now) {
 }
 function resetTicker() {
   T.queue = [];
+  T.history = [];
+  hideSpotlight();
   tickerEl.textContent = '';
   const ph = document.createElement('div');
-  ph.className = 'tempty'; ph.id = 'tempty'; ph.textContent = 'replies from the agents stream in here once they wake';
+  ph.className = 'tempty'; ph.id = 'tempty'; ph.textContent = 'replies from the agents stream in here once traffic starts';
   tickerEl.append(ph);
-}
-function tagClass(tag) {
-  if (tag === S.pods[0]) return 't-p1';
-  if (tag === S.pods[1]) return 't-p2';
-  return {premium: 't-prem', standard: 't-std', 'best-effort': 't-be'}[tag] || 't-other';
 }
 function addRow(e, animate) {
   const ph = $('tempty');
   if (ph) ph.remove();
+  T.history.unshift(e);
+  if (T.history.length > 60) T.history.pop();
   const row = document.createElement('div'), inner = document.createElement('div');
   row.className = 'trow'; inner.className = 'tin';
+  row.title = 'Click to magnify & freeze this joke reply';
   const meta = document.createElement('div'); meta.className = 'tmeta'; meta.textContent = str(e.agent, '—');
   const tx = document.createElement('div'); tx.className = 'ttext';
   tx.textContent = String(e.text == null ? '' : e.text).replace(/\s+/g, ' ').trim();
   const right = document.createElement('div'); right.className = 'tright';
   const tag = str(e.tag);
-  if (tag) { const chip = document.createElement('span'); chip.className = 'tchip ' + tagClass(tag); chip.textContent = tag; right.append(chip); }
+  if (tag) { const chip = document.createElement('span'); chip.className = 'tchip ' + tagClass(tag); chip.textContent = tagDisplay(tag); right.append(chip); }
   const lat = document.createElement('span'); lat.className = 'tlat'; lat.textContent = isNum(e.latency_ms) ? fInt(e.latency_ms) + ' ms' : '';
   right.append(lat);
   inner.append(meta, tx, right);
   row.append(inner);
+  row.addEventListener('click', () => showSpotlight(e));
   tickerEl.insertBefore(row, tickerEl.firstChild);
   if (animate) {
     const h = inner.offsetHeight;
@@ -1194,18 +1288,52 @@ function renderBars() {
   if (sb.__c !== col) { sb.__c = col; sb.style.background = col; }
 }
 
-// ------------------------------------------------------------------ canvas: agent grid
+// ------------------------------------------------------------------ canvas: agent grid (grouped into 5x5 = 25 GKE node tiles, 40 sandboxes/node)
 const gridCv = $('grid'), rampCv = $('ramp'), tokCv = $('tokChart'), latCv = $('latChart');
 function drawGrid(now) {
   const c = prep(gridCv);
   if (!c || !G.disp.length) return;
   const {ctx, w, h} = c, n = G.disp.length, cols = G.cols, rows = G.rows;
-  const pitch = Math.min(w / cols, h / rows), gap = Math.max(1.6, pitch * 0.2), size = pitch - gap;
-  const ox = (w - pitch * cols) / 2 + gap / 2, oy = (h - pitch * rows) / 2 + gap / 2;
+  const nodeGrouped = cols === 50 && rows === 20;
+  const nCols = 5, nRows = 5, bCols = 10, bRows = 4;
+  const tileGapX = nodeGrouped ? Math.max(5, Math.min(9, w * 0.008)) : 0;
+  const tileGapY = nodeGrouped ? Math.max(4, Math.min(7, h * 0.018)) : 0;
+  const availW = w - (nCols - 1) * tileGapX;
+  const availH = h - (nRows - 1) * tileGapY;
+  const pitch = Math.min(availW / cols, availH / rows), gap = Math.max(1.5, pitch * 0.19), size = pitch - gap;
+  const totW = pitch * cols + (nodeGrouped ? (nCols - 1) * tileGapX : 0);
+  const totH = pitch * rows + (nodeGrouped ? (nRows - 1) * tileGapY : 0);
+  const ox = (w - totW) / 2 + gap / 2, oy = (h - totH) / 2 + gap / 2;
   const rad = Math.min(3, size * 0.22), ts = now / 1000;
+
+  const cellPos = (i) => {
+    const col = i % cols, row = (i / cols) | 0;
+    const gx = nodeGrouped ? ((col / bCols) | 0) * tileGapX : 0;
+    const gy = nodeGrouped ? ((row / bRows) | 0) * tileGapY : 0;
+    return [ox + col * pitch + gx, oy + row * pitch + gy];
+  };
+
+  if (nodeGrouped) {
+    const tw = bCols * pitch - gap + 4, th = bRows * pitch - gap + 4;
+    ctx.lineWidth = 1;
+    ctx.strokeStyle = 'rgba(138,180,248,.16)';
+    ctx.fillStyle = 'rgba(255,255,255,.014)';
+    for (let nr = 0; nr < nRows; nr++) {
+      for (let nc = 0; nc < nCols; nc++) {
+        const tx = ox + nc * (bCols * pitch + tileGapX) - 2;
+        const ty = oy + nr * (bRows * pitch + tileGapY) - 2;
+        ctx.beginPath();
+        ctx.roundRect(tx, ty, tw, th, 4);
+        ctx.fill();
+        ctx.stroke();
+      }
+    }
+  }
+
   const paths = {}, special = [];
   for (let i = 0; i < n; i++) {
-    const code = G.disp[i], x = ox + (i % cols) * pitch, y = oy + ((i / cols) | 0) * pitch;
+    const code = G.disp[i];
+    const [x, y] = cellPos(i);
     const age = now - G.changed[i];
     if (code === 51 || (age >= 0 && age < 450)) { special.push(i); continue; }
     (paths[code] || (paths[code] = new Path2D())).roundRect(x, y, size, size, rad);
@@ -1213,7 +1341,7 @@ function drawGrid(now) {
   for (const code in paths) { ctx.fillStyle = CELL[code] || CELL_OTHER; ctx.fill(paths[code]); }
   for (const i of special) {
     const code = G.disp[i], age = now - G.changed[i], wake = G.fk[i] !== 2;
-    let x = ox + (i % cols) * pitch, y = oy + ((i / cols) | 0) * pitch, s = size;
+    let [x, y] = cellPos(i), s = size;
     const flash = age >= 0 && age < 450 ? 1 - age / 450 : 0;
     if (flash && wake) { const g = size * 0.45 * flash; x -= g / 2; y -= g / 2; s += g; }
     ctx.beginPath(); ctx.roundRect(x, y, s, s, rad);
@@ -1232,8 +1360,6 @@ function drawRamp(rt) {
   const L = 46, T = 10, B = 22;
   const info = S.bursts[S.bursts.length - 1];
   const since = info && info.start != null && isFinite(info.start) ? rt - info.start : Infinity;   // ms since t0 at the replay time
-  // The driver stamps each 1,000 ms step with its END (t_ms = 1000, 2000, ...) and includes the in-progress step;
-  // a first stamp of 0 means START stamps. Either way step k covers [k*1000, (k+1)*1000).
   const raw = st ? st.burst.ramp : [];
   const endStamp = raw.length > 0 && num(raw[0].t_ms, 0) > 0;
   let steps = raw.map((r, j) => {
@@ -1248,8 +1374,6 @@ function drawRamp(rt) {
   const N = clamp(steps.length, 10, 30), first = Math.max(0, steps.length - N), vis = steps.slice(first);
   const base = first > 0 ? steps[first - 1].rep : 0;
   const mx = vis.reduce((m, s) => (!s.live && s.rep != null ? Math.max(m, s.rep) : m), base || 0);
-  // Cumulative replies share the agents axis while they fit (the driver's ramp counts first replies only, so they
-  // never exceed the burst size); a separate right-hand axis appears only if a backend reports more.
   const tgt = mx <= total ? total : niceMax(mx * 1.05, 2);
   RAMP.rmax = !RAMP.rmax || Math.abs(tgt - RAMP.rmax) < tgt * 0.002 ? tgt : RAMP.rmax + (tgt - RAMP.rmax) * 0.15;
   const dual = Math.abs(RAMP.rmax - total) > 0.5;
@@ -1290,7 +1414,6 @@ function drawRamp(rt) {
     ctx.fillStyle = '#8AB4F8';
     for (const [x, v] of pts.slice(1)) { ctx.beginPath(); ctx.arc(x, Yr(v), 3.5, 0, Math.PI * 2); ctx.fill(); }
   }
-  // bar values sit on top of the replies line, haloed in the colour beneath them so the line never cuts a number
   ctx.font = `700 12.5px ${FONT}`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.lineJoin = 'round'; ctx.lineWidth = 4;
   for (const l of labels) { ctx.strokeStyle = l.halo; ctx.strokeText(l.t, l.x, l.y); ctx.fillStyle = l.fill; ctx.fillText(l.t, l.x, l.y); }
   ctx.lineWidth = 1; ctx.fillStyle = '#7d858f'; ctx.textBaseline = 'top'; ctx.font = `500 12px ${FONT}`;
@@ -1301,7 +1424,7 @@ function drawRamp(rt) {
     const t = fInt(k * 1000) + ' ms';
     let x = x0 + j * sw, al = 'center';
     if (j === 0) { al = 'left'; x -= 4; }
-    else if (x + ctx.measureText(t).width / 2 > w - 2) { al = 'right'; x = w - 2; }   // keep the last tick inside the canvas
+    else if (x + ctx.measureText(t).width / 2 > w - 2) { al = 'right'; x = w - 2; }
     ctx.textAlign = al; ctx.fillText(t, x, y0 + 6);
   }
   if (!steps.length) {
@@ -1373,7 +1496,7 @@ function drawTS(cv, field, conf) {
   }
   if (!conf.labels) return;
   const placed = {s: [], r: []};
-  for (let i = shown.length - 1; i >= 0; i--) {              // newest first: it always gets the primary lane
+  for (let i = shown.length - 1; i >= 0; i--) {
     const m = shown[i], xs = Math.round(X(m.t)) + 0.5, strat = m.kind === 's';
     ctx.font = strat ? `700 13.5px ${FONT}` : `500 12px ${FONT}`;
     const tw = ctx.measureText(m.label).width, bw = tw + (strat ? 14 : 10), bh = strat ? 23 : 18;
@@ -1427,18 +1550,23 @@ const act = {
   wake: async () => {
     if (UI.wake.disabled) return;
     UI.wake.disabled = true;
-    if (await post('api/burst', {hold: true}, UI.wake)) { wakePending = performance.now() + 15000; UI.wake.disabled = true; }
+    if (await post('api/burst', {hold: true, wake_only: true}, UI.wake)) { wakePending = performance.now() + 15000; UI.wake.disabled = true; }
+  },
+  traffic: async () => {
+    if (UI.traf.disabled) return;
+    await post('api/simulate_traffic', {toggle: true}, UI.traf);
   },
   suspend: () => { if (!UI.susp.disabled) { UI.susp.disabled = true; post('api/suspend', {}, UI.susp); } },
   strategy: async (mode) => {
     const btn = sBtns.find((b) => b.dataset.mode === mode);
     const ok = await post('api/strategy', {mode}, btn);
-    if (ok && S.latest && S.latest.phase === 'running') {
+    if (ok && S.latest && S.latest.phase === 'running' && num(S.latest.traffic.rate, 0) > 0) {
       await post('api/traffic', {rate: targetRateFor(mode)});
     }
   },
 };
 UI.wake.addEventListener('click', act.wake);
+UI.traf.addEventListener('click', act.traffic);
 UI.susp.addEventListener('click', act.suspend);
 sBtns.forEach((b) => b.addEventListener('click', () => act.strategy(b.dataset.mode)));
 // admin: POST api/reconcile, armed by a first click so it can't fire by accident on stage
@@ -1452,9 +1580,10 @@ UI.recon.addEventListener('click', () => {
   setTimeout(() => { if (reconArm && performance.now() >= reconArm) disarmRecon(); }, 3100);
 });
 document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && spotEl && spotEl.classList.contains('on')) { e.preventDefault(); hideSpotlight(); return; }
   if (e.ctrlKey || e.metaKey || e.altKey || e.repeat) return;
   const k = e.key.toLowerCase();
-  const map = {w: act.wake, s: act.suspend, b: () => act.strategy('balanced'), e: () => act.strategy('steer8020'),
+  const map = {w: act.wake, t: act.traffic, s: act.suspend, b: () => act.strategy('balanced'), e: () => act.strategy('steer8020'),
     p: () => act.strategy('priority')};
   if (map[k]) { e.preventDefault(); map[k](); }
 });
