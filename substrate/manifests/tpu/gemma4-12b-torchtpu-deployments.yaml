@@ -1,0 +1,221 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  annotations:
+    llm-d.ai/vllm-torchtpu-source: github.com/vllm-project/vllm-torchtpu@3eb7abb5cc6ff4bae816e988010cf7bee6e9225c
+  labels:
+    app: gemma4-12b-torchtpu
+    llm-d.ai/replica: pod-1
+  name: gemma4-12b-torchtpu-1
+  namespace: default
+spec:
+  progressDeadlineSeconds: 600
+  replicas: 1
+  revisionHistoryLimit: 10
+  selector:
+    matchLabels:
+      app: gemma4-12b-torchtpu
+      llm-d.ai/replica: pod-1
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: gemma4-12b-torchtpu
+        llm-d.ai/inference-serving: 'true'
+        llm-d.ai/model: gemma-4-12b-it
+        llm-d.ai/replica: pod-1
+      annotations:
+        llm-d.ai/vllm-torchtpu-source: github.com/vllm-project/vllm-torchtpu@3eb7abb5cc6ff4bae816e988010cf7bee6e9225c
+    spec:
+      containers:
+      - command:
+        - /bin/bash
+        - -c
+        - "set -e\necho \"=== gemma-4-12B-it | UPSTREAM github.com/vllm-project/vllm-torchtpu @ 3eb7abb5cc6ff4bae816e988010cf7bee6e9225c | official docker/Dockerfile prod image, unmodified | aggregated\
+          \ (no KV connector) | replica=${REPLICA_ID} ===\"\npython3 - <<'PYEOF'\nimport importlib.metadata as m\npk = [\"vllm\", \"vllm_torchtpu\", \"torch\", \"torch_tpu\", \"tpu-sync-torch\", \"jax\"\
+          , \"jaxlib\",\n      \"libtpu\", \"transformers\", \"tokenizers\"]\nout = []\nfor p in pk:\n    try:\n        out.append(\"%s=%s\" % (p, m.version(p)))\n    except Exception:\n        out.append(\"\
+          %s=n/a\" % p)\nprint(\"installed:\", \" \".join(out))\nPYEOF\nKV_EVENTS_CONFIG=\"{\\\"enable_kv_cache_events\\\":true,\\\"publisher\\\":\\\"zmq\\\",\\\"endpoint\\\":\\\"tcp://*:5557\\\",\\\"topic\\\
+          \":\\\"kv@${POD_IP}:8000@google/gemma-4-12B-it\\\"}\"\necho \"KV_EVENTS_CONFIG=$KV_EVENTS_CONFIG\"\nexec vllm serve \"google/gemma-4-12B-it\" \\\n  --port 8000 \\\n  --tensor-parallel-size 4 \\\
+          \n  --disable-uvicorn-access-log \\\n  --gpu-memory-utilization 0.90 \\\n  --max-model-len 2048 \\\n  --kv-events-config \"${KV_EVENTS_CONFIG}\"\n"
+        env:
+        - name: POD_IP
+          valueFrom:
+            fieldRef:
+              apiVersion: v1
+              fieldPath: status.podIP
+        - name: REPLICA_ID
+          value: pod-1
+        - name: HF_TOKEN
+          valueFrom:
+            secretKeyRef:
+              key: HF_TOKEN
+              name: llm-d-hf-token
+        image: asia-northeast1-docker.pkg.dev/tpu-launchpad-playground/ikwak-vllm-torchtpu/vllm-torchtpu:3eb7abb5@sha256:699c7ccfce3a007298675dd8991950004b137171dac4c5738408599eadfec846
+        imagePullPolicy: IfNotPresent
+        livenessProbe:
+          failureThreshold: 3
+          httpGet:
+            path: /health
+            port: http
+            scheme: HTTP
+          periodSeconds: 10
+          successThreshold: 1
+          timeoutSeconds: 5
+        name: vllm
+        ports:
+        - containerPort: 8000
+          name: http
+          protocol: TCP
+        - containerPort: 5557
+          name: kv-events
+          protocol: TCP
+        readinessProbe:
+          failureThreshold: 3
+          httpGet:
+            path: /v1/models
+            port: http
+            scheme: HTTP
+          periodSeconds: 5
+          successThreshold: 1
+          timeoutSeconds: 2
+        resources:
+          limits:
+            cpu: '64'
+            google.com/tpu: '4'
+            memory: 256Gi
+          requests:
+            cpu: '64'
+            google.com/tpu: '4'
+            memory: 256Gi
+        startupProbe:
+          failureThreshold: 120
+          httpGet:
+            path: /health
+            port: http
+            scheme: HTTP
+          initialDelaySeconds: 15
+          periodSeconds: 30
+          successThreshold: 1
+          timeoutSeconds: 5
+        terminationMessagePath: /dev/termination-log
+        terminationMessagePolicy: File
+        volumeMounts:
+        - mountPath: /.config
+          name: metrics-volume
+        - mountPath: /dev/shm
+          name: shm
+        - mountPath: /.cache
+          name: torch-compile-cache
+        - mountPath: /root/.cache/huggingface
+          name: model-storage
+      dnsPolicy: ClusterFirst
+      nodeSelector:
+        cloud.google.com/gke-nodepool: tpu-v6e-spot
+        cloud.google.com/gke-tpu-accelerator: tpu-v6e-slice
+        cloud.google.com/gke-tpu-topology: 2x2
+      restartPolicy: Always
+      schedulerName: default-scheduler
+      securityContext: {}
+      serviceAccount: ms-pd-llm-d-modelservice
+      serviceAccountName: ms-pd-llm-d-modelservice
+      terminationGracePeriodSeconds: 30
+      volumes:
+      - emptyDir: {}
+        name: metrics-volume
+      - emptyDir:
+          medium: Memory
+          sizeLimit: 16Gi
+        name: shm
+      - emptyDir: {}
+        name: torch-compile-cache
+      - name: model-storage
+        persistentVolumeClaim:
+          claimName: model-storage-ms-pd-llm-d-modelservice-prefill-0
+
+======DIFF
+10c10
+<             "llm-d.ai/replica": "pod-1"
+---
+>             "llm-d.ai/replica": "pod-2"
+12c12
+<         "name": "gemma4-12b-torchtpu-1",
+---
+>         "name": "gemma4-12b-torchtpu-2",
+22c22
+<                 "llm-d.ai/replica": "pod-1"
+---
+>                 "llm-d.ai/replica": "pod-2"
+34c34
+<                     "llm-d.ai/replica": "pod-1"
+---
+>                     "llm-d.ai/replica": "pod-2"
+60c60
+<                                 "value": "pod-1"
+---
+>                                 "value": "pod-2"
+157c157
+<                     "cloud.google.com/gke-nodepool": "tpu-v6e-spot",
+---
+>                     "cloud.google.com/gke-nodepool": "tpu-v6e-spot-decode",
+186c186
+<                             "claimName": "model-storage-ms-pd-llm-d-modelservice-prefill-0"
+---
+>                             "claimName": "model-storage-decode"
+=====RENDER
+# ClusterIP Service fronting the two Gemma 4 12B vLLM pods so the EPP
+# token-producer can call vLLM's /v1/*/render endpoints (tokenization only).
+# Mirrors the llm-d precise-prefix-cache-routing guide's default "render"
+# overlay (render served by the model servers themselves).
+apiVersion: v1
+kind: Service
+metadata:
+  name: gemma4-12b-render
+  namespace: default
+  labels:
+    app: gemma4-12b-torchtpu
+spec:
+  type: ClusterIP
+  selector:
+    app: gemma4-12b-torchtpu
+  ports:
+  - name: http
+    port: 8000
+    targetPort: 8000
+    protocol: TCP
+====OBJ
+# InferenceObjectives for llm-d flow control (priority bands), adapted from the
+# llm-d flow-control guide. Legacy group (inference.networking.x-k8s.io) because
+# that is the only InferenceObjective CRD installed on this cluster; the v0.10.0
+# EPP auto-detects and watches it. poolRef.group defaults to
+# inference.networking.k8s.io (matches the gaie-pd InferencePool).
+apiVersion: inference.networking.x-k8s.io/v1alpha2
+kind: InferenceObjective
+metadata:
+  name: premium-traffic
+  namespace: default
+spec:
+  priority: 100
+  poolRef:
+    name: gaie-pd
+---
+apiVersion: inference.networking.x-k8s.io/v1alpha2
+kind: InferenceObjective
+metadata:
+  name: standard-traffic
+  namespace: default
+spec:
+  priority: 0
+  poolRef:
+    name: gaie-pd
+---
+apiVersion: inference.networking.x-k8s.io/v1alpha2
+kind: InferenceObjective
+metadata:
+  name: best-effort-traffic
+  namespace: default
+spec:
+  priority: -10
+  poolRef:
+    name: gaie-pd
+

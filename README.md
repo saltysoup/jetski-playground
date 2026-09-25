@@ -14,14 +14,20 @@ jetski-playground/
 ├── reliability/              # Multi-node Reinforcement Learning (NeMo-RL / Kuberay) & Reliability Engineering
 │   ├── README.md             # Comprehensive AIME 2024 empirical report & RL training instructions
 │   └── gemma3-27b-it/        # Helm charts, DAPO/GRPO recipes, & workstation orchestrators for Gemma 3 27B IT
-└── inference/                # LLM Inference Workloads & Serving Benchmarks
-    └── README.md             # Overview of inference workloads and recipes
+├── inference/                # LLM Inference Workloads & Serving Benchmarks
+│   └── README.md             # Overview of inference workloads and recipes
+└── substrate/                # Agent Substrate on GKE × llm-d on Cloud TPU v6e (1,000-Agent Keynote Demo)
+    ├── README.md             # Architecture, dashboard gallery, benchmarks & step-by-step reproduction guide
+    ├── dashboard/            # Interactive stage dashboard UI + zero-dependency rehearsal mock server
+    ├── manifests/            # GKE, Agent Substrate, vllm-torchtpu, llm-d EPP & Envoy gateway manifests
+    └── substrate-bench/      # Go benchmark suite & live keynote_driver orchestrator
 ```
 
 ---
 
 ## Sections
 
+* **[`substrate/`](./substrate/README.md):** **Agent Substrate on GKE × `llm-d` on Cloud TPU v6e (Trillium)** — 1,000 stateful gVisor agent sandboxes scaling from zero (`0 → 1,000` in `4.95s`, `602ms` first wake) paired with 2 × `google/gemma-4-12B-it` (`vllm-torchtpu`) pods behind `llm-d` (`>90%` KV prefix cache hit rate, live 80/20 header steering, `InferenceObjective` priority flow control), interactive stage dashboard, and end-to-end reproduction guide.
 * **[`robotics/unitree-r1/`](./robotics/unitree-r1/README.md):** Complete offline deployment guide for Unitree R1 (Jetson Orin) running native CUDA `NeMo-Speech.cpp` (Nemotron ASR + Magpie TTS) with `google/gemma-4-E2B-it` VLM, hardware I/O audio testing, and multimodal vision streaming.
 * **[`reliability/`](./reliability/README.md):** Production multi-node reinforcement learning recipes, OOM bottleneck solutions (`/dev/shm`), Hopper/Blackwell kernel compatibility, and empirical AIME 2024 Olympiad benchmark reports for **Gemma 3 27B IT** (`google/gemma-3-27b-it`).
 * **[`inference/`](./inference/README.md):** Inference workloads, high-throughput serving recipes, and latency benchmarks.

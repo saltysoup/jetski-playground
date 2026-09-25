@@ -1,0 +1,79 @@
+# gaie-pd (inferencepool chart v1.2.0) values — Phase 1:
+# Gemma 4 12B, 2 aggregated vllm-torchtpu pods, precise KV-cache-aware routing.
+# Scorer weights = llm-d optimized-baseline / flow-control guide mix
+# (prefix 3, queue 2, kv-util 2). Prefix scores come from the precise
+# (KV-events-driven) producer instead of the approximate one.
+inferenceExtension:
+  extProcPort: 9002
+  image:
+    hub: ghcr.io/llm-d
+    name: llm-d-router-endpoint-picker
+    pullPolicy: IfNotPresent
+    tag: v0.10.0
+  monitoring:
+    interval: 10s
+    prometheus:
+      auth:
+        enabled: false
+      enabled: false
+  nodeSelector:
+    cloud.google.com/gke-nodepool: default-pool
+  replicas: 1
+  pluginsConfigFile: kv-aware-config.yaml
+  pluginsCustomConfig:
+    kv-aware-config.yaml: |
+      apiVersion: llm-d.ai/v1alpha1
+      kind: EndpointPickerConfig
+      plugins:
+      # Real token IDs via vLLM /v1/*/render on the model servers themselves.
+      - type: token-producer
+        parameters:
+          modelName: google/gemma-4-12B-it
+          vllm:
+            url: http://gemma4-12b-render.default.svc.cluster.local:8000
+      - type: endpoint-notification-source
+      # Precise KV index fed by per-pod vLLM KV events (ZMQ tcp://<podIP>:5557).
+      - type: precise-prefix-cache-producer
+        parameters:
+          tokenProcessorConfig:
+            blockSizeTokens: 64
+          speculativeIndexing: true
+          indexerConfig:
+            kvBlockIndexConfig:
+              enableMetrics: true
+          kvEventsConfig:
+            topicFilter: "kv@"
+            concurrency: 4
+            discoverPods: true
+            podDiscoveryConfig:
+              socketPort: 5557
+      - type: prefix-cache-scorer
+        parameters:
+          prefixMatchInfoProducerName: precise-prefix-cache-producer
+      - type: queue-scorer
+      - type: kv-cache-utilization-scorer
+      - type: max-score-picker
+      - type: single-profile-handler
+      dataLayer:
+        sources:
+        - pluginRef: endpoint-notification-source
+          extractors:
+          - pluginRef: precise-prefix-cache-producer
+      schedulingProfiles:
+      - name: default
+        plugins:
+        - pluginRef: prefix-cache-scorer
+          weight: 3
+        - pluginRef: queue-scorer
+          weight: 2
+        - pluginRef: kv-cache-utilization-scorer
+          weight: 2
+        - pluginRef: max-score-picker
+inferencePool:
+  modelServerType: vllm
+  modelServers:
+    matchLabels:
+      llm-d.ai/inference-serving: "true"
+      llm-d.ai/model: gemma-4-12b-it
+  targetPorts:
+  - number: 8000

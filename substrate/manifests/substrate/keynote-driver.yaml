@@ -1,0 +1,116 @@
+# In-cluster keynote driver for the Agent Substrate x llm-d demo.
+#
+# - ServiceAccount keynote-driver can list ClusterTrustBundles (to verify the
+#   ate-api serving cert) and mint tokens for ate-system/ate-client, which is
+#   exactly what `kubectl ate` does from a workstation.
+# - The pod runs busybox and restarts /work/keynote_driver whenever it exits;
+#   copy a new static binary + args into /work to (re)start it.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: keynote-demo
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: keynote-driver
+  namespace: keynote-demo
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: keynote-driver-trust-bundles
+rules:
+- apiGroups: ["certificates.k8s.io"]
+  resources: ["clustertrustbundles"]
+  verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: keynote-driver-trust-bundles
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: keynote-driver-trust-bundles
+subjects:
+- kind: ServiceAccount
+  name: keynote-driver
+  namespace: keynote-demo
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: keynote-driver-mint-ate-client
+  namespace: ate-system
+rules:
+- apiGroups: [""]
+  resources: ["serviceaccounts/token"]
+  resourceNames: ["ate-client"]
+  verbs: ["create"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: keynote-driver-mint-ate-client
+  namespace: ate-system
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: keynote-driver-mint-ate-client
+subjects:
+- kind: ServiceAccount
+  name: keynote-driver
+  namespace: keynote-demo
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: keynote-driver
+  namespace: keynote-demo
+  labels:
+    app: keynote-driver
+spec:
+  serviceAccountName: keynote-driver
+  terminationGracePeriodSeconds: 5
+  # Dedicated 1-node pool (see docs): the worker pods fill every pod slot on the
+  # Substrate nodes, and the driver must not steal CPU from ate-api/Postgres.
+  nodeSelector:
+    pool: keynote-driver
+  tolerations:
+  - key: dedicated
+    operator: Equal
+    value: keynote-driver
+    effect: NoSchedule
+  containers:
+  - name: driver
+    image: busybox:1.36
+    command:
+    - sh
+    - -c
+    - |
+      mkdir -p /work/runs /work/static
+      while true; do
+        if [ -x /work/keynote_driver ] && [ -f /work/args ]; then
+          echo "=== $(date -u +%FT%TZ) starting keynote_driver $(cat /work/args)" >> /work/driver.log
+          /work/keynote_driver $(cat /work/args) >> /work/driver.log 2>&1
+          echo "=== $(date -u +%FT%TZ) keynote_driver exited rc=$?" >> /work/driver.log
+        fi
+        sleep 1
+      done
+    ports:
+    - containerPort: 8090
+      name: http
+    resources:
+      requests:
+        cpu: "1"
+        memory: 512Mi
+      limits:
+        cpu: "3"
+        memory: 2Gi
+    volumeMounts:
+    - name: work
+      mountPath: /work
+  volumes:
+  - name: work
+    emptyDir: {}

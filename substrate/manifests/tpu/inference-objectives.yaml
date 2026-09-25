@@ -1,0 +1,34 @@
+# InferenceObjectives for llm-d flow control (priority bands), adapted from the
+# llm-d flow-control guide. Legacy group (inference.networking.x-k8s.io) because
+# that is the only InferenceObjective CRD installed on this cluster; the v0.10.0
+# EPP auto-detects and watches it. poolRef.group defaults to
+# inference.networking.k8s.io (matches the gaie-pd InferencePool).
+apiVersion: inference.networking.x-k8s.io/v1alpha2
+kind: InferenceObjective
+metadata:
+  name: premium-traffic
+  namespace: default
+spec:
+  priority: 100
+  poolRef:
+    name: gaie-pd
+---
+apiVersion: inference.networking.x-k8s.io/v1alpha2
+kind: InferenceObjective
+metadata:
+  name: standard-traffic
+  namespace: default
+spec:
+  priority: 0
+  poolRef:
+    name: gaie-pd
+---
+apiVersion: inference.networking.x-k8s.io/v1alpha2
+kind: InferenceObjective
+metadata:
+  name: best-effort-traffic
+  namespace: default
+spec:
+  priority: -10
+  poolRef:
+    name: gaie-pd

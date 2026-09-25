@@ -1,0 +1,20 @@
+# ClusterIP Service fronting the two Gemma 4 12B vLLM pods so the EPP
+# token-producer can call vLLM's /v1/*/render endpoints (tokenization only).
+# Mirrors the llm-d precise-prefix-cache-routing guide's default "render"
+# overlay (render served by the model servers themselves).
+apiVersion: v1
+kind: Service
+metadata:
+  name: gemma4-12b-render
+  namespace: default
+  labels:
+    app: gemma4-12b-torchtpu
+spec:
+  type: ClusterIP
+  selector:
+    app: gemma4-12b-torchtpu
+  ports:
+  - name: http
+    port: 8000
+    targetPort: 8000
+    protocol: TCP
