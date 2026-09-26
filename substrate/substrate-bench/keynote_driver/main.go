@@ -53,6 +53,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -97,16 +98,21 @@ set -- --header="Content-Type: application/json" --header="x-request-id: $REQ_ID
 [ -n "$HDR_TARGET" ] && set -- "$@" --header="x-target-pod: $HDR_TARGET"
 [ -n "$HDR_OBJECTIVE" ] && set -- "$@" --header="x-llm-d-inference-objective: $HDR_OBJECTIVE"
 [ -n "$HDR_FAIRNESS" ] && set -- "$@" --header="x-llm-d-inference-fairness-id: $HDR_FAIRNESS"
-rm -f /tmp/llmd_resp.json /tmp/llmd_wget_err
-wget -qO /tmp/llmd_resp.json "$@" --post-data="$PAYLOAD" "$LLM_URL" 2>/tmp/llmd_wget_err
+# Per-invocation files: an agent can have several requests in flight at once
+# (steady traffic above 100 req/s), and shared paths let one request's
+# rm/wget clobber another request's response.
+R=/tmp/llmd_resp.$$.json E=/tmp/llmd_wget_err.$$
+wget -qO "$R" "$@" --post-data="$PAYLOAD" "$LLM_URL" 2>"$E"
 rc=$?
-if [ $rc -ne 0 ] || [ ! -s /tmp/llmd_resp.json ]; then
-  echo "LLM_CALL_FAILED rc=$rc $(head -c 300 /tmp/llmd_wget_err 2>/dev/null)"
+if [ $rc -ne 0 ] || [ ! -s "$R" ]; then
+  echo "LLM_CALL_FAILED rc=$rc $(head -c 300 "$E" 2>/dev/null)"
+  rm -f "$R" "$E"
   exit 0
 fi
-printf '{"agent_name":"%s","saved_at_utc":"%s","llm_response":%s}\n' "$AGENT_NAME" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$(cat /tmp/llmd_resp.json)" > /tmp/agent_memory.json
+printf '{"agent_name":"%s","saved_at_utc":"%s","llm_response":%s}\n' "$AGENT_NAME" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$(cat "$R")" > "/tmp/agent_memory.json.$$" && mv -f "/tmp/agent_memory.json.$$" /tmp/agent_memory.json
 sync
-cat /tmp/llmd_resp.json
+cat "$R"
+rm -f "$R" "$E"
 `
 
 type processRequest struct {
@@ -180,21 +186,21 @@ type agentRec struct {
 }
 
 type burst struct {
-	id            string
-	t0            time.Time
-	hold          bool
-	total         int
-	conc          int    // max wakes in flight; 0 = all at once
-	restMode      string // how agents were taken to zero: suspend | pause
-	recs          []agentRec
-	woke, failed  int
-	peak          int
-	peakMs        float64
-	allRunningMs  float64 // -1 until every agent is up at the same time
-	wakeDoneMs    float64 // -1 until woke+failed == total
-	firstDoneMs   float64 // -1 until every agent finished its first request
-	msKeys        []int
-	milestones    map[int]float64
+	id             string
+	t0             time.Time
+	hold           bool
+	total          int
+	conc           int    // max wakes in flight; 0 = all at once
+	restMode       string // how agents were taken to zero: suspend | pause
+	recs           []agentRec
+	woke, failed   int
+	peak           int
+	peakMs         float64
+	allRunningMs   float64 // -1 until every agent is up at the same time
+	wakeDoneMs     float64 // -1 until woke+failed == total
+	firstDoneMs    float64 // -1 until every agent finished its first request
+	msKeys         []int
+	milestones     map[int]float64
 	suspendT0      time.Time
 	allSuspMs      float64 // -1 until running hits 0 after suspend-all
 	suspendDoneMs  float64
@@ -222,6 +228,13 @@ type totals struct {
 	PromptTokens     int64 `json:"prompt_tokens"`
 	CompletionTokens int64 `json:"completion_tokens"`
 	UniqueReplies    int   `json:"unique_replies"`
+	// askJoke retries failed attempts (up to 35), so "failed" only counts
+	// requests that never succeeded; these make the hidden retries visible.
+	Retried        int64 `json:"retried"`         // requests that needed more than one attempt
+	FailedAttempts int64 `json:"failed_attempts"` // attempts that failed before a later success
+	// Requests whose retries were stopped because the driver was putting the
+	// agent to rest (a retry would have woken it again via atenet). No reply.
+	Abandoned int64 `json:"abandoned"`
 }
 
 type trafficState struct {
@@ -243,17 +256,20 @@ type jokeRes struct {
 	latencyMs float64
 	err       string
 	tag       string
+	attempts  int
+	firstErr  string // first failed attempt's error (for retry accounting)
+	abandoned bool   // retries stopped because the agent is being put to rest
 }
 
 // ---- llm-d metrics ----
 
 type vllmRaw struct {
-	t                                   time.Time
-	ok                                  bool
-	req, prompt, gen, cached            float64
-	e2eSum, e2eCnt, ttftSum, ttftCnt    float64
-	queueSum, queueCnt                  float64
-	running, waiting, kvUsage           float64
+	t                                time.Time
+	ok                               bool
+	req, prompt, gen, cached         float64
+	e2eSum, e2eCnt, ttftSum, ttftCnt float64
+	queueSum, queueCnt               float64
+	running, waiting, kvUsage        float64
 }
 
 type eppRaw struct {
@@ -347,7 +363,15 @@ type driver struct {
 	tickSeq  int64
 	tr       trafficState
 	note     string
-	inflight int64 // atomic: steady-traffic requests in flight
+	inflight int64 // atomic: LLM requests in flight (first jokes + steady traffic)
+	// dutyOps counts duty-cycle wakes/pauses that have claimed an agent but not
+	// finished yet; suspend-all waits for it so no wake lands after its sweep.
+	dutyOps int
+	// reqBusy[i] counts LLM requests in flight on agent i+1; pauses wait for it
+	// to drop to 0 so an agent is never checkpointed mid-request.
+	reqBusy []int32
+	// retryReasons buckets why LLM requests needed a retry (reset per burst).
+	retryReasons map[string]int
 
 	mmu       sync.Mutex
 	vHist     [][]vllmRaw
@@ -427,12 +451,13 @@ func main() {
 
 	ctx := context.Background()
 	d := &driver{
-		cfg:    c,
-		runTag: strconv.FormatInt(time.Now().Unix(), 36),
-		phase:  "idle",
-		states: bytes.Repeat([]byte{stSuspended}, c.agents),
-		uniq:   map[string]struct{}{},
-		tr:     trafficState{Strategy: "balanced"},
+		cfg:     c,
+		runTag:  strconv.FormatInt(time.Now().Unix(), 36),
+		phase:   "idle",
+		states:  bytes.Repeat([]byte{stSuspended}, c.agents),
+		reqBusy: make([]int32, c.agents),
+		uniq:    map[string]struct{}{},
+		tr:      trafficState{Strategy: "balanced"},
 		httpc: &http.Client{
 			Timeout: 120 * time.Second,
 			Transport: &http.Transport{
@@ -554,7 +579,12 @@ func (d *driver) applyStates(st map[string]ateapipb.ActorState) {
 		case s == ateapipb.ActorState_ACTOR_STATE_RUNNING || s == ateapipb.ActorState_ACTOR_STATE_RESUMING:
 			d.states[i] = stRunning
 			d.up++
-		case s == ateapipb.ActorState_ACTOR_STATE_CRASHED:
+		case s == ateapipb.ActorState_ACTOR_STATE_PAUSING || s == ateapipb.ActorState_ACTOR_STATE_SUSPENDING:
+			// Sandbox still up while its checkpoint finishes (or is stuck): show it
+			// as suspending instead of hiding it as suspended.
+			d.states[i] = stSuspending
+			d.up++
+		case s == ateapipb.ActorState_ACTOR_STATE_CRASHED || s == ateapipb.ActorState_ACTOR_STATE_DELETING:
 			d.states[i] = stFailed
 		default:
 			d.states[i] = stSuspended
@@ -809,26 +839,38 @@ func (d *driver) askJoke(ctx context.Context, idx int, strategy string) jokeRes 
 
 	t0 := time.Now()
 	res := jokeRes{tag: tag}
+	fail := func(msg string) {
+		res.err = msg
+		if res.firstErr == "" {
+			res.firstErr = msg
+		}
+	}
 	for attempt := 1; attempt <= 35; attempt++ {
+		if attempt > 1 && d.agentResting(idx) {
+			res.abandoned = true
+			res.err = "agent is being put to rest; retry skipped (atenet would wake it again)"
+			break
+		}
+		res.attempts = attempt
 		req, _ := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
 		req.Header.Set("Content-Type", "application/json")
 		req.Host = host
 		resp, err := d.httpc.Do(req)
 		if err != nil {
-			res.err = err.Error()
+			fail(err.Error())
 			time.Sleep(100 * time.Millisecond)
 			continue
 		}
 		raw, _ := io.ReadAll(resp.Body)
 		resp.Body.Close()
 		if resp.StatusCode != http.StatusOK {
-			res.err = fmt.Sprintf("process HTTP %d: %.200s", resp.StatusCode, string(raw))
+			fail(fmt.Sprintf("process HTTP %d: %.200s", resp.StatusCode, string(raw)))
 			time.Sleep(100 * time.Millisecond)
 			continue
 		}
 		var pr processResponse
 		if err := json.Unmarshal(raw, &pr); err != nil {
-			res.err = "bad process response: " + err.Error()
+			fail("bad process response: " + err.Error())
 			continue
 		}
 		out := strings.TrimSpace(pr.Stdout)
@@ -842,11 +884,43 @@ func (d *driver) askJoke(ctx context.Context, idx int, strategy string) jokeRes 
 			res.compTok = cr.Usage.CompletionTokens
 			break
 		}
-		res.err = fmt.Sprintf("agent stdout: %.200s stderr: %.120s", out, strings.TrimSpace(pr.Stderr))
+		fail(fmt.Sprintf("agent stdout: %.200s stderr: %.120s", out, strings.TrimSpace(pr.Stderr)))
 		time.Sleep(100 * time.Millisecond)
 	}
 	res.latencyMs = msSince(t0)
 	return res
+}
+
+var httpStatusRe = regexp.MustCompile(`HTTP/1\.[01] (\d{3})|HTTP (\d{3})`)
+
+// retryReason buckets a failed attempt's error so the summary can say why
+// requests were retried (e.g. "llm HTTP 429" = rejected by the gateway).
+func retryReason(e string) string {
+	code := ""
+	if m := httpStatusRe.FindStringSubmatch(e); m != nil {
+		code = m[1] + m[2]
+	}
+	switch {
+	case strings.Contains(e, "LLM_CALL_FAILED"):
+		if code != "" {
+			return "llm HTTP " + code
+		}
+		if i := strings.Index(e, "rc="); i >= 0 {
+			return "llm wget " + strings.Fields(e[i:])[0]
+		}
+		return "llm call failed"
+	case strings.HasPrefix(e, "process HTTP"):
+		return "atenet /process HTTP " + code
+	case strings.HasPrefix(e, "bad process response"):
+		return "bad /process response"
+	case strings.HasPrefix(e, "agent stdout"):
+		return "non-JSON agent output"
+	default:
+		if len(e) > 48 {
+			e = e[:48]
+		}
+		return "transport: " + e
+	}
 }
 
 func normReply(s string) string { return strings.Join(strings.Fields(strings.ToLower(s)), " ") }
@@ -854,7 +928,29 @@ func normReply(s string) string { return strings.Join(strings.Fields(strings.ToL
 // recordReplyLocked updates totals + ticker. Caller holds d.mu.
 func (d *driver) recordReplyLocked(idx int, r jokeRes, tMs float64) {
 	d.tot.Requests++
+	if r.attempts > 1 {
+		d.tot.Retried++
+		failedAttempts := r.attempts - 1
+		if !r.ok {
+			failedAttempts = r.attempts
+		}
+		d.tot.FailedAttempts += int64(failedAttempts)
+	}
+	if r.attempts > 1 || r.abandoned {
+		if d.retryReasons == nil {
+			d.retryReasons = map[string]int{}
+		}
+		reason := retryReason(r.firstErr)
+		if r.abandoned {
+			reason = "abandoned (agent put to rest) after " + reason
+		}
+		d.retryReasons[reason]++
+	}
 	if !r.ok {
+		if r.abandoned {
+			d.tot.Abandoned++
+			return
+		}
 		d.tot.Failed++
 		d.note = fmt.Sprintf("%s: %s", agentName(idx), r.err)
 		return
@@ -908,6 +1004,16 @@ func newBurst(id string, n int, hold bool) *burst {
 	return b
 }
 
+// rec returns agent i's record in this burst. A burst of fewer than all agents
+// has fewer recs, but the duty cycle and suspend-all can touch any agent, so
+// out-of-range agents get a scratch record instead of an index panic.
+func (b *burst) rec(i int) *agentRec {
+	if i >= 0 && i < len(b.recs) {
+		return &b.recs[i]
+	}
+	return &agentRec{Agent: agentName(i + 1), RunningMs: -1, LLMDoneMs: -1, SuspendStartMs: -1, SuspendedMs: -1}
+}
+
 func (d *driver) runBurst(id string, hold, wakeOnly bool, n, conc int) {
 	ctx := context.Background()
 	d.mu.Lock()
@@ -958,6 +1064,7 @@ func (d *driver) runBurst(id string, hold, wakeOnly bool, n, conc int) {
 
 	d.mu.Lock()
 	d.tot = totals{}
+	d.retryReasons = map[string]int{}
 	d.uniq = map[string]struct{}{}
 	d.ticker = nil
 	d.note = ""
@@ -1062,18 +1169,22 @@ func (d *driver) agentLife(ctx context.Context, b *burst, idx int, gate <-chan s
 
 func (d *driver) runFirstJoke(ctx context.Context, b *burst, idx int) {
 	i := idx - 1
-	r := &b.recs[i]
+	r := b.rec(i)
 	d.mu.Lock()
-	if d.states[i] != stRunning {
+	if d.states[i] != stRunning || d.phase == "suspending" {
 		d.mu.Unlock()
 		return
 	}
 	d.states[i] = stRequesting
+	d.reqBusy[i]++
+	atomic.AddInt64(&d.inflight, 1)
 	strategy := d.tr.Strategy
 	r.LLMStartMs = msSince(b.t0)
 	d.mu.Unlock()
 	res := d.askJoke(ctx, idx, strategy)
 	d.mu.Lock()
+	d.reqBusy[i]--
+	atomic.AddInt64(&d.inflight, -1)
 	done := msSince(b.t0)
 	r.LLMDoneMs, r.LLMMs = done, res.latencyMs
 	r.PromptTokens, r.CompTokens, r.Finish, r.Tag = res.promptTok, res.compTok, res.finish, res.tag
@@ -1087,6 +1198,32 @@ func (d *driver) runFirstJoke(ctx context.Context, b *burst, idx int) {
 		d.states[i] = stRunning
 	}
 	d.mu.Unlock()
+}
+
+// waitNotBusy blocks (up to 5 s) until agent idx has no LLM request in flight.
+// Callers first mark the agent stSuspending so no new request can target it.
+func (d *driver) waitNotBusy(idx int) {
+	for w := 0; w < 500; w++ {
+		d.mu.Lock()
+		n := d.reqBusy[idx-1]
+		d.mu.Unlock()
+		if n <= 0 {
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	log.Printf("%s still has requests in flight after 5 s; pausing anyway", agentName(idx))
+}
+
+// agentResting reports whether the driver has started putting agent idx
+// (1-based) to rest. A request must not be retried then: atenet's ingress
+// calls ResumeActor for every request it routes, so a retry would silently
+// wake the agent again behind the driver's back.
+func (d *driver) agentResting(idx int) bool {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	s := d.states[idx-1]
+	return s == stSuspending || s == stSuspended
 }
 
 func (d *driver) dutyActiveCountLocked() int {
@@ -1167,20 +1304,26 @@ func (d *driver) dutyPauseOne(ctx context.Context, b *burst, idx int) bool {
 	defer func() { <-d.suspSem }()
 	i := idx - 1
 	d.mu.Lock()
-	if d.phase != "running" || d.b != b || !b.dutyCycle || (d.states[i] != stRunning && d.states[i] != stRequesting) {
+	// Only idle running agents: an agent with its own request in flight
+	// (stRequesting) is never picked, and reqBusy[] covers steady-traffic requests.
+	if d.phase != "running" || d.b != b || !b.dutyCycle || d.states[i] != stRunning {
 		d.mu.Unlock()
 		return false
 	}
 	d.states[i] = stSuspending
+	d.dutyOps++
 	d.mu.Unlock()
+	d.waitNotBusy(idx)
 	err := d.suspendRPC(ctx, idx, 4)
 	d.mu.Lock()
 	defer d.mu.Unlock()
+	d.dutyOps--
 	if d.states[i] != stSuspending {
 		return false
 	}
 	if err != nil {
 		d.states[i] = stRunning
+		d.note = fmt.Sprintf("%s pause failed: %v", agentName(idx), err)
 		return false
 	}
 	d.states[i] = stSuspended
@@ -1205,47 +1348,67 @@ func (d *driver) dutyWakeAndRequest(ctx context.Context, b *burst) {
 			break
 		}
 	}
-	strategy := d.tr.Strategy
-	d.mu.Unlock()
 	if idx < 0 {
+		d.mu.Unlock()
 		return
 	}
+	// Counted until this function returns: suspend-all waits for dutyOps == 0
+	// before its final sweep, so a wake that lands late is paused, not orphaned.
+	d.dutyOps++
+	d.mu.Unlock()
+	defer func() {
+		d.mu.Lock()
+		d.dutyOps--
+		d.mu.Unlock()
+	}()
 	_, err := d.wakeRPC(ctx, idx)
 	d.mu.Lock()
 	if d.states[idx-1] != stWaking {
 		d.mu.Unlock()
 		return
 	}
-	if err != nil || d.phase != "running" {
+	if err != nil {
+		// ResumeActor failed, so the agent should still be at rest; suspend-all
+		// re-checks ate-api and pauses it if it came up anyway.
 		d.states[idx-1] = stSuspended
+		d.note = fmt.Sprintf("%s wake failed: %v", agentName(idx), err)
 		d.mu.Unlock()
 		return
 	}
+	// The sandbox is up now, even if "Suspend all" started meanwhile. It must
+	// stay marked running so the suspend-all sweep pauses it (the old code
+	// marked it suspended here and left it RUNNING in Substrate).
 	d.states[idx-1] = stRunning
 	d.up++
+	stillDuty := d.phase == "running" && d.b == b && b.dutyCycle
 	d.mu.Unlock()
+	if !stillDuty {
+		return
+	}
 
 	// Brief pause so the running (green) state is visible before transitioning to requesting (cyan)
 	time.Sleep(time.Duration(70+rand.Intn(70)) * time.Millisecond)
 
 	d.mu.Lock()
-	if d.phase != "running" || d.tr.Rate <= 0 || d.b != b || !b.dutyCycle {
+	if d.phase != "running" || d.tr.Rate <= 0 || d.b != b || !b.dutyCycle || d.states[idx-1] != stRunning {
 		d.mu.Unlock()
+		// Traffic stopped: park it again (a no-op if suspend-all or the
+		// over-cap pauser already took it).
 		d.dutyPauseOne(ctx, b, idx)
 		return
 	}
-	if d.states[idx-1] == stRunning {
-		d.states[idx-1] = stRequesting
-	}
-	strategy = d.tr.Strategy
+	d.states[idx-1] = stRequesting
+	d.reqBusy[idx-1]++
+	atomic.AddInt64(&d.inflight, 1)
+	strategy := d.tr.Strategy
 	d.tr.Sent++
 	d.mu.Unlock()
 
-	atomic.AddInt64(&d.inflight, 1)
 	res := d.askJoke(ctx, idx, strategy)
-	atomic.AddInt64(&d.inflight, -1)
 
 	d.mu.Lock()
+	d.reqBusy[idx-1]--
+	atomic.AddInt64(&d.inflight, -1)
 	t := 0.0
 	if d.b != nil {
 		t = msSince(d.b.t0)
@@ -1253,13 +1416,13 @@ func (d *driver) dutyWakeAndRequest(ctx context.Context, b *burst) {
 	d.recordReplyLocked(idx, res, t)
 	if res.ok {
 		d.tr.Replies++
-	} else {
+	} else if !res.abandoned {
 		d.tr.Failed++
 	}
 	if d.states[idx-1] == stRequesting {
 		d.states[idx-1] = stRunning
 	}
-	stillDuty := d.phase == "running" && d.b == b && b.dutyCycle
+	stillDuty = d.phase == "running" && d.b == b && b.dutyCycle
 	d.mu.Unlock()
 
 	if stillDuty {
@@ -1355,12 +1518,21 @@ func (d *driver) simulateTraffic(stop, toggle bool) (float64, error) {
 }
 
 func (d *driver) suspendOne(ctx context.Context, b *burst, idx int) {
+	i := idx - 1
+	r := b.rec(i)
+	d.mu.Lock()
+	// Claim the agent before queueing on suspSem so nothing else wakes, pauses
+	// or sends a request to it meanwhile; skip agents someone else is handling.
+	if s := d.states[i]; s != stRunning && s != stRequesting && s != stWaking {
+		d.mu.Unlock()
+		return
+	}
+	d.states[i] = stSuspending
+	d.mu.Unlock()
 	d.suspSem <- struct{}{}
 	defer func() { <-d.suspSem }()
-	i := idx - 1
-	r := &b.recs[i]
+	d.waitNotBusy(idx) // never checkpoint an agent mid-request
 	d.mu.Lock()
-	d.states[i] = stSuspending
 	r.SuspendStartMs = msSince(b.t0)
 	d.mu.Unlock()
 	err := d.suspendRPC(ctx, idx, 8)
@@ -1413,20 +1585,6 @@ func (d *driver) startSuspendAll() error {
 	d.busy = true
 	d.phase = "suspending"
 	d.tr.Rate = 0
-	if d.b != nil {
-		d.b.dutyCycle = false
-	}
-	go d.runSuspendAll()
-	return nil
-}
-
-func (d *driver) runSuspendAll() {
-	ctx := context.Background()
-	deadline := time.Now().Add(15 * time.Second)
-	for atomic.LoadInt64(&d.inflight) > 0 && time.Now().Before(deadline) {
-		time.Sleep(20 * time.Millisecond)
-	}
-	d.mu.Lock()
 	b := d.b
 	if b == nil {
 		d.burstN++
@@ -1434,38 +1592,138 @@ func (d *driver) runSuspendAll() {
 		b.t0 = time.Now()
 		d.b = b
 	}
+	b.dutyCycle = false
+	// The suspend clock starts at the click, so "all suspended in N ms" includes
+	// letting in-flight requests and wakes finish.
 	b.suspendT0 = time.Now()
 	b.allSuspMs = -1
-	var idxs []int
-	for i, s := range d.states {
-		if s == stRunning || s == stRequesting || s == stWaking {
-			idxs = append(idxs, i+1)
+	b.suspendDoneMs = -1
+	go d.runSuspendAll(b)
+	return nil
+}
+
+func (d *driver) runSuspendAll(b *burst) {
+	ctx := context.Background()
+	upNow := func(withWaking bool) []int {
+		d.mu.Lock()
+		defer d.mu.Unlock()
+		var idxs []int
+		for i, s := range d.states {
+			if s == stRunning || s == stRequesting || (withWaking && s == stWaking) {
+				idxs = append(idxs, i+1)
+			}
+		}
+		return idxs
+	}
+	suspendEach := func(idxs []int, wg *sync.WaitGroup) {
+		for _, idx := range idxs {
+			wg.Add(1)
+			go func(idx int) {
+				defer wg.Done()
+				d.suspendOne(ctx, b, idx)
+			}(idx)
 		}
 	}
-	if d.up == 0 {
-		b.allSuspMs = 0
-	}
-	d.mu.Unlock()
+	// Pass 1 right away: every agent that is up now is paused as soon as its
+	// in-flight request (if any) finishes.
 	var wg sync.WaitGroup
-	for _, idx := range idxs {
-		wg.Add(1)
-		go func(idx int) {
-			defer wg.Done()
-			d.suspendOne(ctx, b, idx)
-		}(idx)
+	first := upNow(false)
+	suspendEach(first, &wg)
+	// Meanwhile let in-flight duty-cycle wakes/pauses and requests land, so
+	// nothing comes up after the final sweep.
+	deadline := time.Now().Add(15 * time.Second)
+	for time.Now().Before(deadline) {
+		d.mu.Lock()
+		ops := d.dutyOps
+		d.mu.Unlock()
+		if ops == 0 && atomic.LoadInt64(&d.inflight) == 0 {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
 	}
 	wg.Wait()
+	swept := len(first)
+	for pass := 2; pass <= 6; pass++ {
+		idxs := upNow(true)
+		if len(idxs) == 0 {
+			break
+		}
+		swept += len(idxs)
+		var wg2 sync.WaitGroup
+		suspendEach(idxs, &wg2)
+		wg2.Wait()
+	}
 	d.mu.Lock()
 	b.suspendDoneMs = msSince(b.suspendT0)
 	if d.up <= 0 && b.allSuspMs < 0 {
 		b.allSuspMs = b.suspendDoneMs
 	}
+	d.mu.Unlock()
+
+	// Cross-check ate-api (the source of truth), not only our own bookkeeping.
+	fixed, notRest, verr := d.verifyAtRest(ctx)
+	d.mu.Lock()
+	switch {
+	case verr != nil:
+		d.note = "suspend-all: ate-api check failed: " + verr.Error()
+	case notRest > 0:
+		b.allSuspMs = -1
+		d.note = fmt.Sprintf("suspend-all: %d agents still not at rest in ate-api (see driver log)", notRest)
+	default:
+		if fixed > 0 || b.allSuspMs < 0 {
+			b.allSuspMs = msSince(b.suspendT0) // honest: includes the check-and-fix time
+		}
+		if fixed > 0 {
+			d.note = fmt.Sprintf("suspend-all: ate-api still had %d agents up after the sweep; paused them", fixed)
+		}
+	}
 	d.phase = "idle"
 	d.busy = false
 	summary := d.summaryLocked(b)
 	d.mu.Unlock()
-	log.Printf("[%s] suspend-all done (%d agents)\n%s", b.id, len(idxs), summary)
+	log.Printf("[%s] suspend-all done: swept %d agents; ate-api check: fixed %d, not at rest %d, err %v\n%s",
+		b.id, swept, fixed, notRest, verr, summary)
 	d.writeRun(b, summary)
+}
+
+// verifyAtRest cross-checks ate-api after suspend-all: any agent still RUNNING,
+// RESUMING, PAUSING or SUSPENDING gets the matching rest RPC again (up to 3
+// rounds), then the grid is re-synced from ate-api. It returns how many agents
+// needed a fix and how many are still not at rest.
+func (d *driver) verifyAtRest(ctx context.Context) (fixed, notRest int, err error) {
+	fixedSet := map[int]bool{}
+	for round := 1; ; round++ {
+		st, err := d.listStates(ctx)
+		if err != nil {
+			return len(fixedSet), 0, err
+		}
+		var left []int
+		modeOf := map[int]string{}
+		for i := 1; i <= d.cfg.agents; i++ {
+			switch st[agentName(i)] {
+			case ateapipb.ActorState_ACTOR_STATE_RUNNING, ateapipb.ActorState_ACTOR_STATE_RESUMING:
+				modeOf[i] = d.cfg.restMode
+			case ateapipb.ActorState_ACTOR_STATE_PAUSING:
+				modeOf[i] = "pause"
+			case ateapipb.ActorState_ACTOR_STATE_SUSPENDING:
+				modeOf[i] = "suspend"
+			default:
+				continue
+			}
+			left = append(left, i)
+		}
+		if len(left) == 0 || round > 3 {
+			d.applyStates(st)
+			return len(fixedSet), len(left), nil
+		}
+		names := make([]string, 0, len(left))
+		for _, i := range left {
+			fixedSet[i] = true
+			names = append(names, fmt.Sprintf("%s(%s)", agentName(i), st[agentName(i)]))
+		}
+		log.Printf("suspend-all check round %d: ate-api still has %d agents up: %s", round, len(left), strings.Join(names, " "))
+		d.forEachLimited(left, func(idx int) error { return d.restRPC(ctx, idx, 3, modeOf[idx]) })
+	}
 }
 
 // trafficLoop dispatches steady agent traffic at tr.Rate requests/s to random
@@ -1503,45 +1761,52 @@ func (d *driver) trafficLoop() {
 				d.mu.Unlock()
 				continue
 			}
-			atomic.AddInt64(&d.inflight, 1)
 			go d.trafficRequest(idx, strategy, duty)
 		}
 	}
 }
 
+// pickIdle picks a random running agent for one steady-traffic request and
+// marks the request in flight (inflight + reqBusy[]) under the same lock that
+// checks the phase, so suspend-all never misses a request that is starting.
 func (d *driver) pickIdle(duty bool) int {
 	d.mu.Lock()
 	defer d.mu.Unlock()
+	if d.phase != "running" {
+		return -1
+	}
 	n := len(d.states)
+	take := func(i int) int {
+		if !duty {
+			d.states[i] = stRequesting
+		}
+		d.reqBusy[i]++
+		atomic.AddInt64(&d.inflight, 1)
+		d.tr.Sent++
+		return i + 1
+	}
 	for try := 0; try < 64; try++ {
 		i := rand.Intn(n)
 		if d.states[i] == stRunning || (duty && d.states[i] == stRequesting) {
-			if !duty {
-				d.states[i] = stRequesting
-			}
-			d.tr.Sent++
-			return i + 1
+			return take(i)
 		}
 	}
 	start := rand.Intn(n)
 	for k := 0; k < n; k++ {
 		i := (start + k) % n
 		if d.states[i] == stRunning || (duty && d.states[i] == stRequesting) {
-			if !duty {
-				d.states[i] = stRequesting
-			}
-			d.tr.Sent++
-			return i + 1
+			return take(i)
 		}
 	}
 	return -1
 }
 
 func (d *driver) trafficRequest(idx int, strategy string, duty bool) {
-	defer atomic.AddInt64(&d.inflight, -1)
 	res := d.askJoke(context.Background(), idx, strategy)
 	d.mu.Lock()
 	defer d.mu.Unlock()
+	d.reqBusy[idx-1]--
+	atomic.AddInt64(&d.inflight, -1)
 	t := 0.0
 	if d.b != nil {
 		t = msSince(d.b.t0)
@@ -1549,10 +1814,10 @@ func (d *driver) trafficRequest(idx int, strategy string, duty bool) {
 	d.recordReplyLocked(idx, res, t)
 	if res.ok {
 		d.tr.Replies++
-	} else {
+	} else if !res.abandoned {
 		d.tr.Failed++
 	}
-	if !duty && d.states[idx-1] == stRequesting {
+	if !duty && d.states[idx-1] == stRequesting && d.reqBusy[idx-1] == 0 {
 		d.states[idx-1] = stRunning
 	}
 }
@@ -1731,6 +1996,13 @@ func (d *driver) summaryLocked(b *burst) string {
 		len(llm), llmFail, msStr(l.P50), msStr(l.P90), msStr(l.Max), length)
 	fmt.Fprintf(&sb, "  tokens: %s prompt + %s completion | unique replies %d / %d | all first replies done at T+%s\n",
 		commaInt(int64(pTok)), commaInt(int64(cTok)), len(uniq), len(llm), msStr(b.firstDoneMs))
+	var reasons []string
+	for k, v := range d.retryReasons {
+		reasons = append(reasons, fmt.Sprintf("%s=%d", k, v))
+	}
+	sort.Strings(reasons)
+	fmt.Fprintf(&sb, "ALL LLM REQUESTS: %s sent | %s replies | %s failed | %s abandoned (agent put to rest) | %s needed a retry (%s failed attempts) %v\n",
+		commaInt(d.tot.Requests), commaInt(d.tot.Replies), commaInt(d.tot.Failed), commaInt(d.tot.Abandoned), commaInt(d.tot.Retried), commaInt(d.tot.FailedAttempts), reasons)
 	fmt.Fprintf(&sb, "RAMP (1,000 ms steps; value at the end of each step):\n  %10s | %7s | %7s | %7s | %9s\n", "T+", "running", "woke", "replies", "tokens")
 	for _, p := range b.rampLocked(1000, b.rampEndLocked(), 600) {
 		fmt.Fprintf(&sb, "  %10s | %7d | %7d | %7d | %9s\n", msStr(p.TMs), p.Running, p.Woke, p.Replies, commaInt(int64(p.Tokens)))
@@ -2112,6 +2384,7 @@ type stateJSON struct {
 	Traffic      trafficState   `json:"traffic"`
 	LLMD         llmdView       `json:"llmd"`
 	Note         string         `json:"note,omitempty"`
+	RetryReasons map[string]int `json:"retry_reasons,omitempty"`
 }
 
 func (d *driver) snapshot() stateJSON {
@@ -2138,6 +2411,12 @@ func (d *driver) snapshot() stateJSON {
 		Traffic: d.tr,
 		LLMD:    view,
 		Note:    d.note,
+	}
+	if len(d.retryReasons) > 0 {
+		s.RetryReasons = make(map[string]int, len(d.retryReasons))
+		for k, v := range d.retryReasons {
+			s.RetryReasons[k] = v
+		}
 	}
 	s.Traffic.Inflight = atomic.LoadInt64(&d.inflight)
 	activeUp := d.up
