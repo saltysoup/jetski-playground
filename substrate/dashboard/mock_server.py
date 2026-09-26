@@ -172,7 +172,7 @@ def percentiles(v):
 
 class Req:
     __slots__ = ("agent", "steady", "first", "band", "pod", "t_arrive", "queue_ms", "prompt",
-                 "completion", "text", "ttft", "e2e", "vq", "mode")
+                 "completion", "text", "ttft", "e2e", "vq", "mode", "suspend_after")
 
 
 class Sim:
@@ -235,6 +235,13 @@ class Sim:
         self.hold = hold
         self.wake_only = wake_only
         self.traffic_started = not wake_only
+        self.duty_cycle = False
+        self.traffic_t0 = None
+        self.duty_Settled = False
+        self.duty_acc = 0.0
+        self.ramp_wake_pts = None
+        self.ramp_duty_pts = []
+        self.next_duty_ramp = None
         self.conc = 0
         self.susp_t0 = None
         self.all_running_ms = None
@@ -269,8 +276,13 @@ class Sim:
             self.agents[i] = c
 
     def _up(self):
-        """Sandboxes up, like the driver's d.up: running, requesting and suspending."""
+        """Sandboxes up, like the driver's d.up: running, requesting and suspending (plus waking during duty cycle)."""
+        if getattr(self, "duty_cycle", False):
+            return self.cnt[C1] + self.cnt[C2] + self.cnt[C3] + self.cnt[C4]
         return self.cnt[C2] + self.cnt[C3] + self.cnt[C4]
+
+    def _idle_pct(self):
+        return round(100.0 * (TOTAL - self._up()) / float(TOTAL), 1)
 
     def _ms(self, t):
         return (t - self.t0) * 1000.0 if self.t0 is not None else 0.0
@@ -315,6 +327,36 @@ class Sim:
             self._sched(now + pre + GATE_S, "begin", (bid, n, hold, conc, wake_only))
             return True, bid
 
+    def _start_duty_cycle(self, now):
+        """Transition awake fleet into ~90% idle duty cycle (staggered request -> suspend -> random resume)."""
+        if self.ramp_wake_pts is None and self.t0 is not None:
+            end = self.wake_done_ms if self.wake_done_ms is not None else max(1000.0, (now - self.t0) * 1000.0)
+            npts = min(max(1, int(math.ceil(end / 1000.0))), 10)
+            self.ramp_wake_pts = []
+            for k in range(npts):
+                t = (k + 1) * 1000
+                tt = min(t, end)
+                woke = bisect.bisect_right(self.run_ts, tt)
+                self.ramp_wake_pts.append({"t_ms": t, "running": woke, "woke": woke, "replies": 0, "tokens": 0})
+        self.traffic_started = True
+        self.duty_cycle = True
+        self.traffic_t0 = now
+        self.duty_Settled = False
+        self.duty_acc = 0.0
+        self.ramp_frozen = None
+        self.next_duty_ramp = now + 1.0
+        running_idxs = [i for i in range(self.n) if self.agents[i] in (C1, C2)]
+        self.rnd.shuffle(running_idxs)
+        # Stagger initial wave: first 100 agents stagger a request over 0..0.9s then suspend;
+        # remaining ~900 stagger-suspend over 0.03..1.5s so the fleet settles smoothly to ~100 active (~90% idle).
+        for rank, i in enumerate(running_idxs):
+            if rank < 100:
+                delay = 0.01 + 0.85 * (rank / 100.0) + self.rnd.uniform(0.0, 0.08)
+                self._sched(now + delay, "duty_send", (i, True))
+            else:
+                delay = 0.02 + 1.45 * ((rank - 100) / max(1.0, float(len(running_idxs) - 100))) + self.rnd.uniform(0.0, 0.12)
+                self._sched(now + delay, "duty_park", i)
+
     def simulate_traffic(self, body):
         stop = bool(body.get("stop"))
         toggle = bool(body.get("toggle"))
@@ -325,18 +367,9 @@ class Sim:
                 self.rate = 0
                 return True, 0
             self.rate = 300 if self.strategy == "priority" else 100
-            if self.t0 is not None and getattr(self, "wake_only", False) and not getattr(self, "traffic_started", True):
-                self.traffic_started = True
-                self.ramp_frozen = None
-                now = mono()
-                for i in range(self.n):
-                    if self.agents[i] in (C2, C1):
-                        if self.agents[i] == C2:
-                            self._set(i, C3)
-                        r = self._new_req(i, False, now)
-                        self._dispatch(now, r, self.rnd.uniform(0.2, 2.5), e2e=self.rnd.uniform(150, 900))
-                    elif self.agents[i] == C9:
-                        self._life_done(now)
+            now = mono()
+            if self.t0 is not None and not getattr(self, "duty_cycle", False):
+                self._start_duty_cycle(now)
             return True, self.rate
 
     def set_traffic(self, body):
@@ -345,6 +378,8 @@ class Sim:
             return False, "rate must be 0..2000"
         with self.lock:
             self.rate = int(rate) if float(rate).is_integer() else float(rate)
+            if self.rate > 0 and self.phase == "running" and self.t0 is not None and not getattr(self, "duty_cycle", False):
+                self._start_duty_cycle(mono())
             return True, self.rate
 
     def set_strategy(self, body):
@@ -461,7 +496,7 @@ class Sim:
             self.all_running_ms = ms
         self._check_wake_done(ms)
         if not (self.wake_only and not self.traffic_started):
-            r = self._new_req(i, False, t)
+            r = self._new_req(i, False, t, suspend_after=getattr(self, "duty_cycle", False))
             self._dispatch(t, r, self.rnd.uniform(0.2, 2.5), e2e=self.rnd.uniform(150, 900))
 
     def _check_wake_done(self, ms):
@@ -496,9 +531,10 @@ class Sim:
         if self.t0 is None:                 # no burst yet: the driver creates a bookkeeping burst
             self.burst_no += 1
             self._new_burst("s-%s-%04d" % (RUN_TAG, self.burst_no), t, TOTAL, True)
+        self.duty_cycle = False
         self.susp_t0 = t
         self.all_susp_ms = None
-        idx = [i for i in range(TOTAL) if self.agents[i] in (C2, C3)]
+        idx = [i for i in range(TOTAL) if self.agents[i] in (C1, C2, C3, C4)]
         if self._up() == 0:
             self.all_susp_ms = 0.0
         self.rnd.shuffle(idx)
@@ -558,10 +594,11 @@ class Sim:
         self.busy = False
 
     # ------------------------------------------------------------ LLM requests
-    def _new_req(self, i, steady, t):
+    def _new_req(self, i, steady, t, suspend_after=False):
         rnd = self.rnd
         r = Req()
         r.agent, r.steady, r.first, r.t_arrive, r.mode = i, steady, not steady, t, self.strategy
+        r.suspend_after = suspend_after
         self.hdr_seq += 1
         if self.strategy == "priority":     # like the driver's headers: 1 in 5 premium, 1 in 5 best-effort
             m = self.hdr_seq % 5
@@ -607,13 +644,95 @@ class Sim:
 
     def _req_finished(self, t, r):
         i = r.agent
-        if self.agents[i] == C3:
+        if getattr(r, "suspend_after", False):
+            if self.phase == "running" and self.agents[i] in (C2, C3):
+                self._set(i, C2)
+                self._sched(t + self.rnd.uniform(0.06, 0.14), "duty_park", i)
+            return
+        if self.agents[i] == C3 and not getattr(self, "duty_cycle", False):
             self._set(i, C2)
         if r.first and self.t0 is not None:
             if self.hold:
                 self._life_done(t)
             else:
                 self._susp_request(t, i)    # one-shot burst: every agent suspends right after its reply
+
+    def _ev_duty_wake(self, t, i):
+        if self.phase != "running" or self.rate <= 0 or self.agents[i] != C1:
+            if self.agents[i] == C1 and self.phase != "waking":
+                self._set(i, C0)
+            return
+        self._set(i, C2)
+        self._sched(t + self.rnd.uniform(0.08, 0.16), "duty_send", (i, True))
+
+    def _ev_duty_send(self, t, payload):
+        i, suspend_after = payload
+        if self.phase != "running" or self.rate <= 0:
+            if self.agents[i] in (C1, C2, C3) and self.phase != "suspending":
+                self._set(i, C0)
+            return
+        if suspend_after and self.agents[i] not in (C1, C2):
+            return
+        if suspend_after:
+            self._set(i, C3)
+        r = self._new_req(i, True, t, suspend_after=suspend_after)
+        self.tr["sent"] += 1
+        self.tr["inflight"] += 1
+        if self.strategy == "priority" and self.pressure > 0.02:
+            w = BAND_WAIT_MS[r.band] * self.pressure * self.rnd.uniform(0.55, 1.45)
+            self.band_queue[r.band] += 1
+            if suspend_after:
+                # Don't block the sandbox's own ~1s wake-request-suspend visual cycle on a 1.1s best-effort queue wait:
+                # schedule its park after a realistic ~0.45s turn while the request finishes through the EPP queue.
+                r.suspend_after = False
+                self._sched(t + self.rnd.uniform(0.35, 0.55), "duty_park", i)
+            self._sched(t + w / 1000.0, "dispatch", r)
+        else:
+            self._dispatch(t, r, self.rnd.uniform(0.2, 3.0))
+
+    def _ev_duty_park(self, t, i):
+        if self.phase != "running":
+            return
+        if self.agents[i] in (C1, C2, C3):
+            self._set(i, C4)
+            self._sched(t + self.rnd.uniform(0.12, 0.22), "duty_susp_done", i)
+
+    def _ev_duty_susp_done(self, t, i):
+        if self.phase == "suspending":
+            return
+        if self.agents[i] == C4:
+            self._set(i, C0)
+            if self.t0 is not None:
+                bisect.insort(self.susp_ts, self._ms(t))
+            if self._up() <= 115:
+                self.duty_Settled = True
+
+    def _pick_suspended(self):
+        rnd, a = self.rnd, self.agents
+        for _ in range(64):
+            i = rnd.randrange(TOTAL)
+            if a[i] == C0:
+                return i
+        if self.cnt[C0] == 0:
+            return None
+        j = a.find(b"0", rnd.randrange(TOTAL))
+        if j < 0:
+            j = a.find(b"0")
+        return j if j >= 0 else None
+
+    def _pick_active_for_req(self):
+        rnd, a = self.rnd, self.agents
+        for _ in range(64):
+            i = rnd.randrange(TOTAL)
+            if a[i] in (C2, C3):
+                return i
+        for ch in (b"3", b"2"):
+            j = a.find(ch, rnd.randrange(TOTAL))
+            if j < 0:
+                j = a.find(ch)
+            if j >= 0:
+                return j
+        return None
 
     def _fail(self, t, r):
         self.totals["requests"] += 1
@@ -670,6 +789,21 @@ class Sim:
         return j if j >= 0 else None
 
     def _steady(self, t):
+        if getattr(self, "duty_cycle", False):
+            i = self._pick_active_for_req()
+            if i is None:
+                self.tr["skipped"] += 1
+                return
+            r = self._new_req(i, True, t, suspend_after=False)
+            self.tr["sent"] += 1
+            self.tr["inflight"] += 1
+            if self.strategy == "priority" and self.pressure > 0.02:
+                w = BAND_WAIT_MS[r.band] * self.pressure * self.rnd.uniform(0.55, 1.45)
+                self.band_queue[r.band] += 1
+                self._sched(t + w / 1000.0, "dispatch", r)
+            else:
+                self._dispatch(t, r, self.rnd.uniform(0.2, 3.0))
+            return
         i = self._pick_idle()
         if i is None:
             self.tr["skipped"] += 1
@@ -700,18 +834,61 @@ class Sim:
                            and self.rate >= SATURATE_AT_RPS) else 0.0
             self.pressure += (want - self.pressure) * (1.0 - math.exp(-dt / 0.9))
             if self.phase == "running" and self.rate > 0 and dt > 0:
-                self.arr_acc = min(self.arr_acc + self.rate * dt, float(self.rate))  # <= 1 s of backlog
-                n = int(self.arr_acc)
-                if n:
-                    self.arr_acc -= n
-                    for k in range(n):
-                        self._steady(now - dt + dt * (k + 1) / n)
+                if getattr(self, "duty_cycle", False):
+                    # Maintain ~100 active agents (~90% idle rate) waking from C0 -> C1 -> C2 -> C3 -> C4 -> C0
+                    up = self._up()
+                    if up < 140:
+                        target_active = 100.0
+                        err = target_active - up
+                        wake_rate = max(15.0, min(190.0, 108.0 + err * 5.0))
+                        self.duty_acc = min(self.duty_acc + wake_rate * dt, 40.0)
+                        nw = int(self.duty_acc)
+                        if nw:
+                            self.duty_acc -= nw
+                            for k in range(nw):
+                                idx = self._pick_suspended()
+                                if idx is not None:
+                                    wt = now - dt + dt * (k + 1) / nw
+                                    self._set(idx, C1)
+                                    self._sched(wt + self.rnd.uniform(0.06, 0.11), "duty_wake", idx)
+                    else:
+                        self.duty_acc = 0.0
+                        nw = 0
+                    # Any extra req/s above the duty wake rate (e.g. 300 req/s in priority mode)
+                    extra_rate = max(0.0, float(self.rate) - 100.0)
+                    self.arr_acc = min(self.arr_acc + extra_rate * dt, max(1.0, extra_rate))
+                    n = int(self.arr_acc)
+                    if n:
+                        self.arr_acc -= n
+                        for k in range(n):
+                            self._steady(now - dt + dt * (k + 1) / n)
+                else:
+                    self.arr_acc = min(self.arr_acc + self.rate * dt, float(self.rate))  # <= 1 s of backlog
+                    n = int(self.arr_acc)
+                    if n:
+                        self.arr_acc -= n
+                        for k in range(n):
+                            self._steady(now - dt + dt * (k + 1) / n)
             else:
                 self.arr_acc = 0.0
+                self.duty_acc = 0.0
             ev = self.events
             while ev and ev[0][0] <= now:
                 t, _, kind, p = heapq.heappop(ev)
                 getattr(self, "_ev_" + kind)(t, p)
+            if (getattr(self, "duty_cycle", False) and self.phase == "running"
+                    and self.next_duty_ramp is not None and now >= self.next_duty_ramp
+                    and len(self.ramp_duty_pts) < 12):
+                self.next_duty_ramp += 1.0
+                base_n = len(self.ramp_wake_pts or [])
+                step_t = (base_n + len(self.ramp_duty_pts) + 1) * 1000
+                self.ramp_duty_pts.append({
+                    "t_ms": step_t,
+                    "running": self._up(),
+                    "woke": self.woke,
+                    "replies": self.totals["replies"],
+                    "tokens": self.totals["prompt_tokens"] + self.totals["completion_tokens"],
+                })
             if now >= self.next_metrics:
                 self.next_metrics = now + METRICS_EVERY_S
                 self._metrics(now)
@@ -745,6 +922,7 @@ class Sim:
             bw[band] += qms
         tot_d = dn[0] + dn[1]
         up_frac = self._up() / float(TOTAL)
+        fleet_active_scale = 1.0 if (getattr(self, "duty_cycle", False) and self.rate > 0) else up_frac
         rnd = self.rnd
         pods = []
         for p in range(2):
@@ -753,8 +931,8 @@ class Sim:
             k = n[p]
             pod_share = (dn[p] / float(tot_d)) if tot_d else 0.5
             kv_pct = (
-                round(max(1.0, min(97.0, 18.0 * up_frac + 36.0 * up_frac * pod_share + running * 0.55 + rnd.gauss(0, 0.4))), 1)
-                if (inflight or (k and up_frac > 0))
+                round(max(1.0, min(97.0, 18.0 * fleet_active_scale + 36.0 * fleet_active_scale * pod_share + running * 0.55 + rnd.gauss(0, 0.4))), 1)
+                if (inflight or (k and fleet_active_scale > 0))
                 else 0
             )
             pods.append({
@@ -787,6 +965,8 @@ class Sim:
     # --------------------------------------------------------------- snapshot
     def _ramp(self, now):
         """The driver's rampLocked(1000, rampEnd, 120): values at the END of each step, cumulative except running."""
+        if getattr(self, "duty_cycle", False) and self.ramp_wake_pts is not None:
+            return list(self.ramp_wake_pts) + list(self.ramp_duty_pts)
         if self.ramp_frozen is not None:
             return self.ramp_frozen
         if self.first_done_ms is not None:
@@ -817,8 +997,8 @@ class Sim:
     def snapshot(self):
         with self.lock:
             now = mono()
-            b = {"id": "", "t0_unix_ms": 0, "elapsed_ms": 0, "running": self._up(), "peak_running": 0,
-                 "woke": 0, "wake_failed": 0, "all_running_ms": None, "suspend_elapsed_ms": None,
+            b = {"id": "", "t0_unix_ms": 0, "elapsed_ms": 0, "running": self._up(), "idle_rate_pct": self._idle_pct(),
+                 "peak_running": 0, "woke": 0, "wake_failed": 0, "all_running_ms": None, "suspend_elapsed_ms": None,
                  "all_suspended_ms": None, "milestones_ms": {}, "wake_ms": percentiles([]), "ramp": []}
             if self.t0 is not None:
                 if self.all_running_ms is not None:
@@ -830,6 +1010,8 @@ class Sim:
                 b.update({
                     "id": self.bid, "wake_only": getattr(self, "wake_only", False),
                     "traffic_started": getattr(self, "traffic_started", True),
+                    "duty_cycle": getattr(self, "duty_cycle", False),
+                    "idle_rate_pct": self._idle_pct(),
                     "t0_unix_ms": self.t0_unix, "elapsed_ms": int(round(el)),
                     "peak_running": self.peak, "woke": self.woke, "wake_failed": self.wake_failed,
                     "milestones_ms": {str(k): (None if self.milestones[k] is None else int(round(self.milestones[k])))

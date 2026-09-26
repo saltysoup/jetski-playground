@@ -201,6 +201,9 @@ type burst struct {
 	preflight      string
 	wakeOnly       bool
 	trafficStarted bool
+	dutyCycle      bool
+	wakeRamp       []rampPt
+	dutyRamp       []rampPt
 }
 
 type tickEntry struct {
@@ -482,6 +485,7 @@ func main() {
 
 	go d.metricsLoop()
 	go d.trafficLoop()
+	go d.dutyLoop()
 	go d.serve()
 
 	if c.oneshot {
@@ -660,10 +664,11 @@ func (d *driver) forEachLimited(idxs []int, fn func(idx int) error) int {
 
 // recreate deletes one agent (any state) and creates it again from the template.
 func (d *driver) recreate(ctx context.Context, idx int, existed bool) error {
+	cli := d.cliFor(idx)
 	ref := &ateapipb.ObjectRef{Atespace: d.cfg.atespace, Name: agentName(idx)}
 	if existed {
 		cctx, cancel := context.WithTimeout(ctx, 90*time.Second)
-		_, err := d.cli.DeleteActor(cctx, &ateapipb.DeleteActorRequest{Actor: ref, AnyState: true})
+		_, err := cli.DeleteActor(cctx, &ateapipb.DeleteActorRequest{Actor: ref, AnyState: true})
 		cancel()
 		if err != nil && status.Code(err) != codes.NotFound {
 			return fmt.Errorf("delete: %w", err)
@@ -672,7 +677,7 @@ func (d *driver) recreate(ctx context.Context, idx int, existed bool) error {
 	var err error
 	for attempt := 1; attempt <= 30; attempt++ {
 		cctx, cancel := context.WithTimeout(ctx, 60*time.Second)
-		_, err = d.cli.CreateActor(cctx, &ateapipb.CreateActorRequest{Actor: &ateapipb.Actor{
+		_, err = cli.CreateActor(cctx, &ateapipb.CreateActorRequest{Actor: &ateapipb.Actor{
 			Metadata:      &ateapipb.ResourceMetadata{Atespace: d.cfg.atespace, Name: agentName(idx)},
 			ActorTemplate: &ateapipb.ObjectRef{Atespace: d.cfg.atespace, Name: d.cfg.tpl},
 		}})
@@ -700,13 +705,14 @@ func retryable(err error) bool {
 
 // wakeRPC resumes one actor; ResumeActor returns once the sandbox is RUNNING.
 func (d *driver) wakeRPC(ctx context.Context, idx int) (int, error) {
+	cli := d.cliFor(idx)
 	ref := &ateapipb.ObjectRef{Atespace: d.cfg.atespace, Name: agentName(idx)}
 	deadline := time.Now().Add(90 * time.Second)
 	var err error
 	attempt := 0
 	for attempt = 1; ; attempt++ {
 		cctx, cancel := context.WithTimeout(ctx, 60*time.Second)
-		_, err = d.cli.ResumeActor(cctx, &ateapipb.ResumeActorRequest{Actor: ref})
+		_, err = cli.ResumeActor(cctx, &ateapipb.ResumeActorRequest{Actor: ref})
 		cancel()
 		if err == nil || !retryable(err) || time.Now().After(deadline) || attempt >= 40 {
 			return attempt, err
@@ -716,7 +722,7 @@ func (d *driver) wakeRPC(ctx context.Context, idx int) (int, error) {
 }
 
 func (d *driver) suspendRPC(ctx context.Context, idx, attempts int) error {
-	return d.restRPC(ctx, idx, attempts, "suspend")
+	return d.restRPC(ctx, idx, attempts, d.cfg.restMode)
 }
 
 // restRPC takes one agent to zero compute. mode "suspend" (SuspendActor)
@@ -724,14 +730,15 @@ func (d *driver) suspendRPC(ctx context.Context, idx, attempts int) error {
 // worker; mode "pause" (PauseActor) checkpoints to the node's local disk and
 // releases the worker too, but the next resume is pinned to that node.
 func (d *driver) restRPC(ctx context.Context, idx, attempts int, mode string) error {
+	cli := d.cliFor(idx)
 	ref := &ateapipb.ObjectRef{Atespace: d.cfg.atespace, Name: agentName(idx)}
 	var err error
 	for attempt := 1; attempt <= attempts; attempt++ {
 		cctx, cancel := context.WithTimeout(ctx, 90*time.Second)
 		if mode == "pause" {
-			_, err = d.cli.PauseActor(cctx, &ateapipb.PauseActorRequest{Actor: ref})
+			_, err = cli.PauseActor(cctx, &ateapipb.PauseActorRequest{Actor: ref})
 		} else {
-			_, err = d.cli.SuspendActor(cctx, &ateapipb.SuspendActorRequest{Actor: ref})
+			_, err = cli.SuspendActor(cctx, &ateapipb.SuspendActorRequest{Actor: ref})
 		}
 		cancel()
 		if err == nil || !retryable(err) {
@@ -1061,6 +1068,236 @@ func (d *driver) runFirstJoke(ctx context.Context, b *burst, idx int) {
 	d.mu.Unlock()
 }
 
+func (d *driver) startDutyCycleLocked(b *burst) {
+	if b == nil || b.dutyCycle {
+		return
+	}
+	b.trafficStarted = true
+	b.dutyCycle = true
+	end := b.wakeDoneMs
+	if end <= 0 {
+		end = msSince(b.t0)
+	}
+	b.wakeRamp = b.computeRampLocked(1000, end, 10)
+	var runningIdxs []int
+	for i, s := range d.states {
+		if s == stRunning || s == stWaking {
+			runningIdxs = append(runningIdxs, i+1)
+		}
+	}
+	rand.Shuffle(len(runningIdxs), func(i, j int) { runningIdxs[i], runningIdxs[j] = runningIdxs[j], runningIdxs[i] })
+	go func(b *burst, idxs []int) {
+		ctx := context.Background()
+		var wg sync.WaitGroup
+		// First ~100 agents immediately send a joke request while remaining ~900 stagger-pause over 0..1.6s
+		// so the fleet settles smoothly from 1,000 awake to ~100 active (~90% idle rate).
+		for rank, idx := range idxs {
+			if rank < 100 {
+				wg.Add(1)
+				go func(idx, rank int) {
+					defer wg.Done()
+					time.Sleep(time.Duration(rank*8+rand.Intn(40)) * time.Millisecond)
+					d.runFirstJoke(ctx, b, idx)
+				}(idx, rank)
+			} else {
+				go func(idx, rank int) {
+					delayMs := 20 + int(1500.0*float64(rank-100)/math.Max(1, float64(len(idxs)-100))) + rand.Intn(120)
+					time.Sleep(time.Duration(delayMs) * time.Millisecond)
+					d.mu.Lock()
+					stillDuty := d.phase == "running" && d.b == b && b.dutyCycle
+					d.mu.Unlock()
+					if stillDuty {
+						d.dutyPauseOne(ctx, b, idx)
+					}
+				}(idx, rank)
+			}
+		}
+		wg.Wait()
+		d.mu.Lock()
+		if d.b == b && b.firstDoneMs < 0 {
+			b.firstDoneMs = msSince(b.t0)
+		}
+		summary := d.summaryLocked(b)
+		d.mu.Unlock()
+		log.Printf("[%s] simulate-traffic duty-cycle initial wave done\n%s", b.id, summary)
+		d.writeRun(b, summary)
+	}(b, runningIdxs)
+}
+
+func (d *driver) dutyPauseOne(ctx context.Context, b *burst, idx int) bool {
+	d.suspSem <- struct{}{}
+	defer func() { <-d.suspSem }()
+	i := idx - 1
+	d.mu.Lock()
+	if d.phase != "running" || d.b != b || !b.dutyCycle || d.states[i] != stRunning {
+		d.mu.Unlock()
+		return false
+	}
+	d.states[i] = stSuspending
+	d.mu.Unlock()
+	err := d.suspendRPC(ctx, idx, 4)
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	if d.states[i] != stSuspending {
+		return false
+	}
+	if err != nil {
+		d.states[i] = stRunning
+		return false
+	}
+	d.states[i] = stSuspended
+	d.up--
+	return true
+}
+
+func (d *driver) dutyWakeAndRequest(ctx context.Context, b *burst) {
+	d.mu.Lock()
+	if d.phase != "running" || d.tr.Rate <= 0 || d.b != b || !b.dutyCycle || d.up >= 112 {
+		d.mu.Unlock()
+		return
+	}
+	n := len(d.states)
+	idx := -1
+	start := rand.Intn(n)
+	for k := 0; k < n; k++ {
+		i := (start + k) % n
+		if d.states[i] == stSuspended {
+			d.states[i] = stWaking
+			idx = i + 1
+			break
+		}
+	}
+	strategy := d.tr.Strategy
+	d.mu.Unlock()
+	if idx < 0 {
+		return
+	}
+	_, err := d.wakeRPC(ctx, idx)
+	d.mu.Lock()
+	if d.states[idx-1] != stWaking {
+		d.mu.Unlock()
+		return
+	}
+	if err != nil || d.phase != "running" {
+		d.states[idx-1] = stSuspended
+		d.mu.Unlock()
+		return
+	}
+	d.states[idx-1] = stRunning
+	d.up++
+	if d.tr.Rate <= 0 || d.b != b || !b.dutyCycle {
+		d.mu.Unlock()
+		return
+	}
+	d.states[idx-1] = stRequesting
+	d.tr.Sent++
+	d.mu.Unlock()
+
+	atomic.AddInt64(&d.inflight, 1)
+	res := d.askJoke(ctx, idx, strategy)
+	atomic.AddInt64(&d.inflight, -1)
+
+	d.mu.Lock()
+	t := 0.0
+	if d.b != nil {
+		t = msSince(d.b.t0)
+	}
+	d.recordReplyLocked(idx, res, t)
+	if res.ok {
+		d.tr.Replies++
+	} else {
+		d.tr.Failed++
+	}
+	if d.states[idx-1] == stRequesting {
+		d.states[idx-1] = stRunning
+	}
+	needPause := d.phase == "running" && d.b == b && b.dutyCycle && d.up >= 94
+	d.mu.Unlock()
+
+	if needPause {
+		time.Sleep(time.Duration(40+rand.Intn(90)) * time.Millisecond)
+		if !d.dutyPauseOne(ctx, b, idx) {
+			// If idx got picked by another request, pause another idle running agent to keep ~90% idle rate.
+			d.mu.Lock()
+			pIdx := -1
+			st := rand.Intn(n)
+			for k := 0; k < n; k++ {
+				j := (st + k) % n
+				if d.states[j] == stRunning {
+					pIdx = j + 1
+					break
+				}
+			}
+			d.mu.Unlock()
+			if pIdx > 0 {
+				d.dutyPauseOne(ctx, b, pIdx)
+			}
+		}
+	}
+}
+
+func (d *driver) dutyLoop() {
+	ctx := context.Background()
+	// 16 worker goroutines continuously wake random suspended agents, send a joke request, and pause back to 0 CPU.
+	for w := 0; w < 16; w++ {
+		go func(w int) {
+			time.Sleep(time.Duration(w*35) * time.Millisecond)
+			for {
+				d.mu.Lock()
+				active := d.phase == "running" && d.tr.Rate > 0 && d.b != nil && d.b.dutyCycle && d.up <= 125
+				b := d.b
+				up := d.up
+				d.mu.Unlock()
+				if !active {
+					time.Sleep(80 * time.Millisecond)
+					continue
+				}
+				if up > 105 {
+					// Nudge down toward 100 active (~90% idle)
+					d.mu.Lock()
+					pIdx := -1
+					n := len(d.states)
+					st := rand.Intn(n)
+					for k := 0; k < n; k++ {
+						j := (st + k) % n
+						if d.states[j] == stRunning {
+							pIdx = j + 1
+							break
+						}
+					}
+					d.mu.Unlock()
+					if pIdx > 0 {
+						d.dutyPauseOne(ctx, b, pIdx)
+					}
+					time.Sleep(time.Duration(60+rand.Intn(60)) * time.Millisecond)
+					continue
+				}
+				d.dutyWakeAndRequest(ctx, b)
+				time.Sleep(time.Duration(50+rand.Intn(80)) * time.Millisecond)
+			}
+		}(w)
+	}
+	// 1-second step sampler for dutyRamp so the 1,000 ms step chart shows the ~100 active (90% idle) bars + climbing replies.
+	tick := time.NewTicker(1 * time.Second)
+	defer tick.Stop()
+	for range tick.C {
+		d.mu.Lock()
+		b := d.b
+		if d.phase == "running" && b != nil && b.dutyCycle && len(b.dutyRamp) < 12 {
+			baseN := len(b.wakeRamp)
+			stepT := float64(baseN+len(b.dutyRamp)+1) * 1000.0
+			b.dutyRamp = append(b.dutyRamp, rampPt{
+				TMs:     stepT,
+				Running: d.up,
+				Woke:    b.woke,
+				Replies: int(d.tot.Replies),
+				Tokens:  int(d.tot.PromptTokens + d.tot.CompletionTokens),
+			})
+		}
+		d.mu.Unlock()
+	}
+}
+
 func (d *driver) simulateTraffic(stop, toggle bool) (float64, error) {
 	d.mu.Lock()
 	if d.phase != "running" && d.phase != "waking" {
@@ -1075,34 +1312,10 @@ func (d *driver) simulateTraffic(stop, toggle bool) (float64, error) {
 	}
 	rate := autoRateForStrategy(d.tr.Strategy)
 	d.tr.Rate = rate
-	b := d.b
-	needWave := b != nil && !b.trafficStarted
-	if needWave {
-		b.trafficStarted = true
+	if d.b != nil && !d.b.dutyCycle {
+		d.startDutyCycleLocked(d.b)
 	}
 	d.mu.Unlock()
-	if needWave {
-		go func(b *burst) {
-			ctx := context.Background()
-			var wg sync.WaitGroup
-			for idx := 1; idx <= b.total; idx++ {
-				wg.Add(1)
-				go func(idx int) {
-					defer wg.Done()
-					d.runFirstJoke(ctx, b, idx)
-				}(idx)
-			}
-			wg.Wait()
-			d.mu.Lock()
-			if d.b == b && b.firstDoneMs < 0 {
-				b.firstDoneMs = msSince(b.t0)
-			}
-			summary := d.summaryLocked(b)
-			d.mu.Unlock()
-			log.Printf("[%s] simulate-traffic initial wave done\n%s", b.id, summary)
-			d.writeRun(b, summary)
-		}(b)
-	}
 	return rate, nil
 }
 
@@ -1165,6 +1378,9 @@ func (d *driver) startSuspendAll() error {
 	d.busy = true
 	d.phase = "suspending"
 	d.tr.Rate = 0
+	if d.b != nil {
+		d.b.dutyCycle = false
+	}
 	go d.runSuspendAll()
 	return nil
 }
@@ -1187,7 +1403,7 @@ func (d *driver) runSuspendAll() {
 	b.allSuspMs = -1
 	var idxs []int
 	for i, s := range d.states {
-		if s == stRunning || s == stRequesting {
+		if s == stRunning || s == stRequesting || s == stWaking {
 			idxs = append(idxs, i+1)
 		}
 	}
@@ -1304,8 +1520,7 @@ type rampPt struct {
 	Tokens  int     `json:"tokens"`
 }
 
-// rampLocked samples the burst at the END of each step (t_ms = step, 2*step, ...).
-func (b *burst) rampLocked(step, endMs float64, maxPts int) []rampPt {
+func (b *burst) computeRampLocked(step, endMs float64, maxPts int) []rampPt {
 	if b == nil || b.t0.IsZero() || endMs <= 0 {
 		return []rampPt{}
 	}
@@ -1337,6 +1552,17 @@ func (b *burst) rampLocked(step, endMs float64, maxPts int) []rampPt {
 		pts[k] = p
 	}
 	return pts
+}
+
+// rampLocked samples the burst at the END of each step (t_ms = step, 2*step, ...).
+func (b *burst) rampLocked(step, endMs float64, maxPts int) []rampPt {
+	if b != nil && step == 1000 && len(b.wakeRamp) > 0 && (b.dutyCycle || len(b.dutyRamp) > 0) {
+		out := make([]rampPt, 0, len(b.wakeRamp)+len(b.dutyRamp))
+		out = append(out, b.wakeRamp...)
+		out = append(out, b.dutyRamp...)
+		return out
+	}
+	return b.computeRampLocked(step, endMs, maxPts)
 }
 
 func (b *burst) rampEndLocked() float64 {
@@ -1867,7 +2093,8 @@ func (d *driver) snapshot() stateJSON {
 		Note:    d.note,
 	}
 	s.Traffic.Inflight = atomic.LoadInt64(&d.inflight)
-	bj := map[string]any{"id": "", "t0_unix_ms": 0, "elapsed_ms": 0, "running": d.up, "peak_running": 0,
+	idlePct := math.Round(1000.0*float64(max(0, d.cfg.agents-d.up))/float64(max(1, d.cfg.agents))) / 10.0
+	bj := map[string]any{"id": "", "t0_unix_ms": 0, "elapsed_ms": 0, "running": d.up, "idle_rate_pct": idlePct, "peak_running": 0,
 		"woke": 0, "wake_failed": 0, "all_running_ms": nil, "suspend_elapsed_ms": nil, "all_suspended_ms": nil,
 		"milestones_ms": map[string]any{}, "wake_ms": pct{}, "ramp": []rampPt{}, "ramp_fine": []rampPt{}}
 	if b := d.b; b != nil && !b.t0.IsZero() {
@@ -1895,6 +2122,8 @@ func (d *driver) snapshot() stateJSON {
 		bj["id"] = b.id
 		bj["wake_only"] = b.wakeOnly
 		bj["traffic_started"] = b.trafficStarted
+		bj["duty_cycle"] = b.dutyCycle
+		bj["idle_rate_pct"] = idlePct
 		bj["t0_unix_ms"] = b.t0.UnixMilli()
 		bj["elapsed_ms"] = math.Round(elapsed)
 		bj["peak_running"] = b.peak
@@ -2012,6 +2241,9 @@ func (d *driver) serve() {
 		}
 		d.mu.Lock()
 		d.tr.Rate = rate
+		if rate > 0 && d.phase == "running" && d.b != nil && !d.b.dutyCycle {
+			d.startDutyCycleLocked(d.b)
+		}
 		d.mu.Unlock()
 		log.Printf("API traffic rate=%v", rate)
 		return rate, nil
