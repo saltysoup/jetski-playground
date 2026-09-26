@@ -1,0 +1,95 @@
+# ate-node-tuner: node-level tuning DaemonSet used by the keynote demo on the
+# 25 Substrate (gVisor) nodes. Exported from the live cluster (identical spec).
+#
+# DISCLOSURE — this makes the benchmark faster at the cost of safety. Use it for
+# a demo cluster only, and delete it afterwards
+# (`kubectl -n ate-system delete ds ate-node-tuner`; the sysctl and mount changes
+# persist until each node reboots or is recreated).
+#   * privileged + hostPID; enters the host mount namespace with nsenter.
+#   * remounts /mnt/stateful_partition and /var with `nobarrier,commit=600`:
+#     up to 10 minutes of writes can be lost, and the filesystem can be corrupted,
+#     if a node crashes or loses power.
+#   * vm.dirty_ratio=80, dirty_background_ratio=50, dirty_expire_centisecs=30000,
+#     dirty_writeback_centisecs=5000, vfs_cache_pressure=10, max_map_count=4194304,
+#     transparent hugepages enabled=madvise / defrag=never, CPU governor=performance.
+#   * a page-cache warmer: every 20 s it reads every Substrate static file and every
+#     node-local actor checkpoint (/var/lib/ateom-gvisor/actors/*/local-checkpoint)
+#     so restores are served from RAM instead of the persistent disk.
+#   * it also gives the demo tooling a hostPID pod on every node, which the
+#     verification scripts use to count real runsc sandbox processes.
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: ate-node-tuner
+  namespace: ate-system
+spec:
+  selector:
+    matchLabels:
+      app: ate-node-tuner
+  template:
+    metadata:
+      labels:
+        app: ate-node-tuner
+    spec:
+      containers:
+      - command:
+        - /bin/sh
+        - -c
+        - |
+          trap 'exit 0' TERM INT
+          echo never > /host/sys/kernel/mm/transparent_hugepage/defrag || true
+          echo madvise > /host/sys/kernel/mm/transparent_hugepage/enabled || true
+          echo 4194304 > /host/proc/sys/vm/max_map_count || true
+          echo 80 > /host/proc/sys/vm/dirty_ratio || true
+          echo 50 > /host/proc/sys/vm/dirty_background_ratio || true
+          echo 30000 > /host/proc/sys/vm/dirty_expire_centisecs || true
+          echo 5000 > /host/proc/sys/vm/dirty_writeback_centisecs || true
+          echo 10 > /host/proc/sys/vm/vfs_cache_pressure || true
+          nsenter -t 1 -m -- mount -o remount,noatime,nobarrier,commit=600 /mnt/stateful_partition 2>/dev/null || true
+          nsenter -t 1 -m -- mount -o remount,noatime,nobarrier,commit=600 /var 2>/dev/null || true
+          for g in /host/sys/devices/system/cpu/cpu*/cpufreq/scaling_governor; do
+            [ -f "$g" ] && echo performance > "$g" 2>/dev/null || true
+          done
+          while true; do
+            cat /var/lib/ateom-gvisor/static-files/*/* /var/lib/ateom-gvisor/static-files/*/*/* >/dev/null 2>&1 || true
+            cat /var/lib/ateom-gvisor/actors/*/local-checkpoint/*/* >/dev/null 2>&1 || true
+            sleep 20 &
+            wait $!
+          done
+        image: postgres:18-alpine
+        imagePullPolicy: IfNotPresent
+        name: tuner
+        resources:
+          requests:
+            cpu: 10m
+            memory: 32Mi
+        securityContext:
+          privileged: true
+          runAsUser: 0
+        volumeMounts:
+        - mountPath: /host/sys
+          name: host-sys
+        - mountPath: /host/proc
+          name: host-proc
+        - mountPath: /var/lib/ateom-gvisor
+          name: ate
+      hostPID: true
+      nodeSelector:
+        ate.dev/substrate-version: v0.1.0-gke.1
+      terminationGracePeriodSeconds: 0
+      tolerations:
+      - operator: Exists
+      volumes:
+      - hostPath:
+          path: /sys
+        name: host-sys
+      - hostPath:
+          path: /proc
+        name: host-proc
+      - hostPath:
+          path: /var/lib/ateom-gvisor
+        name: ate
+  updateStrategy:
+    rollingUpdate:
+      maxUnavailable: 25
+    type: RollingUpdate

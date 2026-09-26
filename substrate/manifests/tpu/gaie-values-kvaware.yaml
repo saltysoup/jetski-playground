@@ -1,3 +1,5 @@
+# NOT DEPLOYED - earlier phase kept for reference. The live release uses
+# gaie-values-flowctl.yaml.
 # gaie-pd (inferencepool chart v1.2.0) values — Phase 1:
 # Gemma 4 12B, 2 aggregated vllm-torchtpu pods, precise KV-cache-aware routing.
 # Scorer weights = llm-d optimized-baseline / flow-control guide mix

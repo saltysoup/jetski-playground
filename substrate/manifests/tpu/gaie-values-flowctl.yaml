@@ -1,6 +1,6 @@
-# gaie-pd (inferencepool chart v1.2.0) values — Phase 2:
-# Phase 1 (precise KV-cache-aware routing) + llm-d flow control + header-based
-# pod steering.
+# gaie-pd (inferencepool chart v1.2.0) values: the exact values of the live
+# release (helm get values gaie-pd). Precise KV-cache-aware routing + llm-d flow
+# control + header-based pod steering.
 #
 #  * Flow control (featureGates: flowControl) = admission/queuing layer. It reads
 #      x-llm-d-inference-objective   -> InferenceObjective -> priority band
@@ -12,8 +12,13 @@
 #    (pod-1 / pod-2), 0 otherwise. Weight 100 >> sum of the other weights (7),
 #    so the header wins whenever that pod is a candidate; with no header it
 #    contributes 0 and KV-cache-aware scoring decides.
+#  * flags: allow-experimental-plugins: true and v: 3 (verbose logging) are set
+#    on the live release; kept as is.
 inferenceExtension:
   extProcPort: 9002
+  flags:
+    allow-experimental-plugins: true
+    v: 3
   image:
     hub: ghcr.io/llm-d
     name: llm-d-router-endpoint-picker
@@ -27,7 +32,6 @@ inferenceExtension:
       enabled: false
   nodeSelector:
     cloud.google.com/gke-nodepool: default-pool
-  replicas: 1
   pluginsConfigFile: kv-aware-flowctl-config.yaml
   pluginsCustomConfig:
     kv-aware-flowctl-config.yaml: |
@@ -59,7 +63,11 @@ inferenceExtension:
       - type: prefix-cache-scorer
         parameters:
           prefixMatchInfoProducerName: precise-prefix-cache-producer
-      - type: queue-scorer
+      # active-request-scorer instead of the default queue-scorer: it uses the
+      # EPP's own in-flight request count (no lag). queue-scorer reads vLLM's
+      # scraped waiting-queue gauge, which lagged during a 1000-request burst
+      # and herded ~750 consecutive requests onto one pod (86.5/13.5 split).
+      - type: active-request-scorer
       - type: kv-cache-utilization-scorer
       - type: header-label-affinity-scorer
         name: target-pod-affinity
@@ -90,7 +98,7 @@ inferenceExtension:
           weight: 100
         - pluginRef: prefix-cache-scorer
           weight: 3
-        - pluginRef: queue-scorer
+        - pluginRef: active-request-scorer
           weight: 2
         - pluginRef: kv-cache-utilization-scorer
           weight: 2
@@ -114,6 +122,7 @@ inferenceExtension:
           maxRequests: "2k"
           fairnessPolicyRef: round-robin-fairness-policy
           orderingPolicyRef: fcfs-ordering-policy
+  replicas: 1
 inferencePool:
   modelServerType: vllm
   modelServers:

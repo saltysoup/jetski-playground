@@ -1,0 +1,32 @@
+# ActorTemplate "sandbox-dense" used by the 1,000 keynote agents (the driver's
+# -template default). Same app as the upstream sandbox demo template, sized to the
+# dense WorkerPool (1 vCPU / 256 MiB per agent).
+# Not a Kubernetes object: create it through the ate API after
+# `ate-setup deploy demo sandbox` has created the ate-demo-sandbox atespace:
+#   envsubst < sandbox-dense-template.yaml.tmpl | kubectl ate create actor-template -f -
+# ${BUCKET_NAME} is the snapshot bucket created by `setup-gcp bootstrap`.
+metadata:
+  atespace: ate-demo-sandbox
+  name: sandbox-dense
+workerSelector:
+  matchLabels:
+    workload: sandbox
+containers:
+- name: sandbox
+  image: us-docker.pkg.dev/gke-substrate-release/substrate/sandbox:v0.1.0-gke.1@sha256:2c563d43739cc579ec6f3a2dff3d433619dc6335254eb26036462b7d6f976e75
+  env:
+  - name: PORT
+    value: "80"
+resources:
+  limits:
+  - name: cpu
+    quantity: "1"
+  - name: memory
+    quantity: 256Mi
+snapshotsConfig:
+  onPause: SNAPSHOT_CONTENT_SCOPE_FULL
+  onCommit: SNAPSHOT_CONTENT_SCOPE_FULL
+  storageLocation: gs://${BUCKET_NAME}/ate-demo-sandbox-dense/
+sandboxConfig:
+  sandboxClass: SANDBOX_CLASS_GVISOR
+  configName: gvisor-default

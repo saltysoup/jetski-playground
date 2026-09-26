@@ -1,425 +1,632 @@
-# Agent Substrate on GKE × `llm-d` on Cloud TPU v6e (Trillium)
+# Agent Substrate × llm-d: 1,000 agents on GKE calling Gemma 4 12B on Cloud TPU v6e
 
-End-to-end architecture, interactive stage dashboard, benchmark suite, and full reproduction guide for the **1,000-Agent Scale-from-Zero × `llm-d` TPU Inference** keynote demo on Google Kubernetes Engine (GKE).
+A keynote demo:
+- **Agent Substrate** wakes 1,000 sandboxed agents from zero in about 3 seconds on GKE.
+- The agents call **Gemma 4 12B**, served by vLLM on **Cloud TPU v6e** behind the **llm-d** router.
+- The stage dashboard shows both sides live, and lets the presenter switch llm-d's routing (balanced, header-steered 80/20, priority flow control).
+
+This folder has the dashboard, the orchestrator ("keynote driver"), the patches, the manifests, and a step-by-step guide. The guide was re-verified against the running clusters on 2026-09-26 (see [How this guide was verified](#10-how-this-guide-was-verified)).
+
+> [!WARNING]
+> This is a demo setup, and several settings trade safety for speed:
+> - Postgres runs with `fsync=off`;
+> - a privileged node tuner is used;
+> - the gVisor flags weaken isolation;
+> - an unauthenticated file server exposes the Postgres data directory.
+>
+> Read [Known issues and disclosures](#9-known-issues-and-disclosures) before reusing any of it.
+
+**Contents:** [1. What the demo shows](#1-what-the-demo-shows) · [2. Results](#2-results) · [3. Architecture](#3-architecture) · [4. Changes from stock](#4-changes-from-stock) · [5. Repository layout](#5-repository-layout) · [6. Reproduce it](#6-reproduce-it) · [7. Pre-show health check](#7-pre-show-health-check) · [8. Stage runbook](#8-stage-runbook) · [9. Known issues and disclosures](#9-known-issues-and-disclosures) · [10. How this guide was verified](#10-how-this-guide-was-verified) · [11. Cleanup and revert](#11-cleanup-and-revert)
 
 ---
 
-## 1. Overview & Architecture
+## 1. What the demo shows
 
-This workload pairs two GKE clusters in the same regional VPC (`asia-northeast1-b`) to demonstrate **elastic, stateful agent sandboxes** coupled with **KV-cache-aware, priority-scheduled TPU inference**:
+The dashboard is one 1920×1080 page with a draggable divider.
 
-1. **Left Plane — Agent Substrate on GKE (`ikwak-substrate-ane1`)**
-   * **1,000 stateful gVisor-isolated agent sandboxes** (`agent-0001` .. `agent-1000`) hosted across `25 × c3-standard-4` worker nodes (`1,600` pre-warmed `sandbox-workerpool` pods, 64 per node) and a `4 × n2-standard-8` control-plane pool (`8 × ate-api-server` replicas, `4 × atenet-router`, `4 × atenet-egress`, tuned Postgres).
-   * **Scale from zero (`0 → 1,000`) in `4.95s` (`p50 = 3.15s`, fastest agent wake `602 ms`)** from node-local `PauseActor` memory/filesystem snapshots (`ACTOR_STATE_PAUSED`), or `8.01s` (`p50 = 6.55s`) from cold Google Cloud Storage (`ACTOR_STATE_SUSPENDED`) snapshots.
-   * Each woken agent executes real Python code inside its gVisor sandbox, sends a shared 286-token system prompt + unique user prompt across the VPC to the `llm-d` gateway, persists the response to `/tmp/agent_memory.json` inside its sandbox filesystem, and scales back to zero in `~5s` with full memory and filesystem state preserved.
+**Left panel, "Agents":** 1,000 Agent Substrate actors (`agent-0001` … `agent-1000`).
+- Each agent is a gVisor sandbox. When idle it is paused to a snapshot on its node's local disk.
+- A 50×20 grid shows every agent's state.
+- Also shown: a millisecond wake clock, a ramp chart, and a ticker with the agents' LLM replies.
 
-2. **Right Plane — `llm-d` Inference on Cloud TPU v6e Trillium (`ikwak-tpu-v6e-ane1`)**
-   * **2 × `google/gemma-4-12B-it` serving replicas** (`pod-1` and `pod-2`) running upstream **`vllm-torchtpu`** (`TP=4` per pod on `2 × ct6e-standard-4t` TPU v6e-4 node pools) with ZMQ KV-cache event publishing enabled.
-   * **`llm-d` Endpoint Picker (`gaie-pd-epp` `v0.10.0`)** fronted by an in-cluster Envoy proxy (`llmd-envoy-gateway`, `ext_proc` `FULL_DUPLEX_STREAMED` + `ORIGINAL_DST`), combining:
-     * **Precise Prefix-Cache & KV-Cache-Utilization Scoring**: Achieves **>90% prompt KV cache hit rate** across the 1,000 agents' shared 286-token system prefix.
-     * **Live Header-Based Traffic Steering (`x-target-pod`)**: Instantaneous transition from a `50/50` balanced split to an `80/20` pod split (`header-label-affinity-scorer`).
-     * **Saturation-Gated Priority Flow Control (`InferenceObjective`)**: Separates incoming agent traffic into `premium-traffic` (`priority: 100`), `standard-traffic` (`priority: 0`), and `best-effort-traffic` (`priority: -10`) queues when the TPU pool reaches saturation.
+**Right panel, "llm-d":** two vLLM replicas (`pod-1`, `pod-2`) of `google/gemma-4-12B-it` on TPU v6e.
+- They sit behind the llm-d endpoint picker (EPP).
+- Shown per pod: live split, request rate, tokens/s, latency, prefix-cache hit rate and KV usage.
+- A flow-control panel shows the three priority bands.
 
-```text
-┌─────────────────────────────────────────────────────┐        ┌────────────────────────────────────────────────────────────┐
-│ Cluster 1: Agent Substrate on GKE                   │        │ Cluster 2: llm-d on Cloud TPU v6e (Trillium)               │
-│ (4x n2-standard-8 CP + 25x c3-standard-4 Workers)   │        │ (1x n2-standard-8 CP + 2x ct6e-standard-4t TPU v6e-4)      │
-│                                                     │        │                                                            │
-│  ┌───────────────────────────────────────────────┐  │        │  ┌──────────────────────────────────────────────────────┐  │
-│  │ keynote-driver (:8090 Stage UI + Orchestrator)│  │        │  │ llmd-envoy-gateway (:8080, ext_proc + ORIGINAL_DST)  │  │
-│  └───────┬───────────────────────────────┬───────┘  │        │  └──────────┬───────────────────────────────┬───────────┘  │
-│          │ 32x gRPC conns                │ HTTP     │        │             │ gRPC ext_proc (:9002)         │ Direct Pod   │
-│          ▼                               ▼          │        │             ▼                               │ Routing      │
-│  ┌────────────────────┐         ┌────────────────┐  │        │  ┌───────────────────────────────────────┐  │              │
-│  │ 8x ate-api-server  │         │4x atenet-router│  │        │  │ gaie-pd-epp (v0.10.0 Endpoint Picker) │  │              │
-│  │ (512 PG pool conns)│         │4x atenet-egress│  │        │  │ • Precise Prefix-Cache Scorer (ZMQ)   │  │              │
-│  └─────────┬──────────┘         └────────┬───────┘  │        │  │ • KV-Cache Utilization & Queue Scorer │  │              │
-│            │                             │          │        │  │ • Header Affinity (x-target-pod)      │  │              │
-│            ▼                             │          │        │  │ • Flow Control (premium/std/shed)     │  │              │
-│  ┌────────────────────────────────────┐  │          │        │  └───────────────────▲───────────────────┘  │              │
-│  │ 1,000 gVisor Sandboxes (64/node)   │  │          │  VPC   │                      │ ZMQ KV Events        │              │
-│  │ agent-0001 .. agent-1000           ├──┼──────────┼───────►├──────────────────────┴──────────────────────▼───────────┐  │
-│  │ • Node-local PauseActor snapshots  │  │          │        │  ┌─────────────────────────┐ ┌─────────────────────────┐│  │
-│  │ • GCS SuspendActor snapshots       │  │          │        │  │ pod-1: Gemma 4 12B IT   │ │ pod-2: Gemma 4 12B IT   ││  │
-│  └────────────────────────────────────┘  │          │        │  │ vllm-torchtpu (v6e-4)   │ │ vllm-torchtpu (v6e-4)   ││  │
-│                                          │          │        │  └─────────────────────────┘ └─────────────────────────┘│  │
-└──────────────────────────────────────────┴──────────┘        └─────────────────────────────────────────────────────────┘
+| Button | What happens |
+|---|---|
+| **Wake Agents** | All 1,000 paused agents are resumed at once (`ResumeActor`). The clock stops when all 1,000 are RUNNING. No LLM calls are made yet. |
+| **Simulate Traffic** | Starts the duty cycle at 100 requests/s. Random agents wake, run a script inside their sandbox that asks the LLM for a short PyTorch joke, and pause again. About 90% of the fleet is paused at any moment ("fleet idle rate"). |
+| **Balanced / Steer 80/20 / Priority** | Changes how the agents' requests are labelled:<br>• Balanced: no routing header.<br>• Steer 80/20: `x-target-pod: pod-1` on 80% of requests and `pod-2` on 20%.<br>• Priority: 300 req/s, split 20% premium / 60% standard / 20% best-effort via `x-llm-d-inference-objective`. |
+| **Suspend all** | Pauses every running agent back to zero compute. |
+
+Each reply shown in the ticker came from inside an agent's sandbox. The agent's script POSTs to the llm-d gateway with `wget`, saves the reply to `/tmp/agent_memory.json` in the sandbox, and returns it.
+
+## 2. Results
+
+**How these were measured:** measured on the live clusters on 2026-09-26, with the configuration in this folder:
+- patched ate-api/atelet with `restoreSem` 12;
+- keynote driver v4;
+- rest mode `pause`.
+
+Every run was checked against **ground truth**, not only the dashboard's own counters:
+- actor states from ate-api (`kubectl ate get actors`);
+- real gVisor sandbox processes counted on the 25 nodes.
+
+### 2.1 Agent Substrate: wake, duty cycle, suspend
+
+| Run (driver v4, restoreSem 12) | Wake 1,000 → all RUNNING | Per-agent wake p50 | Then | Suspend all (from click) | After suspend (ate-api / nodes) |
+|---|---|---|---|---|---|
+| morning, Priority run | 2,984 ms | – | 60 s Priority traffic | 3,781 ms (waited on one failing agent, see §9) | 1,000 PAUSED / 0 sandboxes |
+| morning, warm-up after re-creating one agent | 3,111 ms | – | no traffic | 2,522 ms (all 1,000 up) | 1,000 PAUSED / 0 |
+| morning, Balanced run | 2,940 ms | – | 60 s Balanced traffic | 604 ms | 1,000 PAUSED / 0 |
+| morning, health check | 2,990 ms | – | no traffic | 2,505 ms (all 1,000 up) | 1,000 PAUSED / 0 |
+| afternoon r1 (first wake after an atelet restart) | 3,286 ms | 1,628 ms | 60 s Balanced | 741 ms | 1,000 PAUSED / 0 |
+| afternoon r2 | 2,902 ms | 1,571 ms | 60 s Balanced | 602 ms | 1,000 PAUSED / 0 |
+| afternoon r3 | 2,985 ms | 1,648 ms | 60 s Balanced | 683 ms | 1,000 PAUSED / 0 |
+| guide verification, health check (first wake after an atelet restart) | 3,089 ms | 1,660 ms | no traffic | 2,566 ms (all 1,000 up) | 1,000 PAUSED / 0 |
+| guide verification, full cycle | 2,958 ms | 1,578 ms | Balanced → 80/20 → Priority → Balanced, 150 s | 607 ms | 1,000 PAUSED / 0 |
+| guide verification, §7 commands run as written | 3,085 ms | 1,619 ms | no traffic | 2,440 ms (all 1,000 up) | 1,000 PAUSED / 0 |
+
+**Wake 1,000:**
+- Median 2,988 ms over these 10 wakes, range 2,902–3,286 ms.
+- 4 of 10 took longer than 3.0 s: the two first wakes after an atelet restart, the warm-up after re-creating an agent, and one ordinary health check (3,085 ms).
+- 0 wake failures in every run.
+- In the full-cycle verification run: 100 agents were running at 715 ms, 500 at 1,589 ms, 750 at 2,172 ms and all 1,000 at 2,958 ms. The fastest agent took 475 ms.
+
+**Why the tail is about 3 s:** an agent is pinned to the node that holds its local snapshot, and today's placement is uneven, at 32–47 agents per node.
+- Nodes with 40 or fewer agents finish by about 2.45 s.
+- The 2–3 nodes with 46–47 agents set the tail.
+
+**Simulate Traffic (60 s, Balanced):**
+- Fleet idle rate p50 is 90.9–91%.
+- 998–1,000 distinct agents complete a full wake → LLM call → pause cycle.
+- About 6,200 LLM requests with 0 failed.
+- Mid-traffic ground truth in the verification run: 934 PAUSED, 27 PAUSING and 39 RUNNING actors; 65 sandboxes on the nodes.
+
+**Suspend all:**
+- 0.60–0.74 s from the click in Balanced mode, when about 100 agents are up.
+- 2.4–2.6 s with all 1,000 up.
+- 1.3–3.8 s in Priority mode, because it waits for queued LLM calls.
+
+**`restoreSem` experiment:** atelet's per-node restore concurrency, 16 against the deployed 12. Same 60 s Balanced cycle, 0 failures in all runs. 16 was not faster, so 12 stays deployed.
+
+| restoreSem | Wake 1,000 (3 runs) | Per-agent p50 | Suspend all |
+|---|---|---|---|
+| 16 | 2,992 (first after restart) / 3,099 / 3,326 ms | 1,793–1,824 ms | 613–670 ms |
+| 12 | 3,286 (first after restart) / 2,902 / 2,985 ms | 1,571–1,648 ms | 602–741 ms |
+
+### 2.2 llm-d on TPU v6e (from the guide-verification run)
+
+**Setup:** medians over each phase, excluding the first 8 s after each switch.
+- Traffic comes from the agents' sandboxes, through the gateway, to the EPP and then vLLM.
+- Every request uses the same 286-token system prompt, a per-agent user prompt, and `max_tokens` 50.
+
+| Strategy (offered load) | Split pod-1 / pod-2 | Per-pod req/s | Output tok/s per pod | E2E latency per pod | Prefix-cache hit | Flow control |
+|---|---|---|---|---|---|---|
+| Balanced (100 req/s) | 53.4% / 46.6% | 56.7 / 49.5 | 1,309 / 1,135 | 172 / 165 ms | 89.5% | idle (saturation 0) |
+| Steer 80/20 (100 req/s) | **80.0% / 20.0%** | 83.7 / 21.0 | 1,928 / 483 | 196 / 149 ms | 89.5% | idle |
+| Priority (300 req/s) | 50.5% / 49.5% | 124.2 / 119.4 | 2,886 / 2,848 | 345 / 346 ms | 89.5% | saturation median 0.2, max 0.45; queues up to 31; wait ≤ 19 ms in every band |
+| Balanced again (100 req/s) | 53.6% / 46.4% | 56.9 / 49.3 | 1,318 / 1,146 | 170 / 165 ms | 89.5% | idle |
+
+**Traffic totals:** 21,681 LLM requests during the traffic phases of this run.
+- 0 failed.
+- 5 retries after an llm-d HTTP 503.
+- 8 requests abandoned because their agent was being paused.
+
+**What this shows:**
+- **80/20 steering takes effect within seconds.** The split reached 77–80.7% within the first sampled window after the click.
+- **The prefix cache is reused across all 1,000 agents.** About 90% of prompt tokens are served from the prefix cache.
+- **On the live pool, Priority mode does not produce visible queueing.** The saturation detector allows 256 in-flight requests per pod, so 300 req/s never saturates the pool, and every band waits about the same few milliseconds.
+  - An earlier llm-d-only test capped concurrency at 16 per pod to force saturation. There, the mean latency was premium 0.40 s, standard 0.68 s and best-effort 1.26 s, and the EPP queue wait was about 80 ms for premium against about 1.1 s for best-effort.
+  - The deployed values do **not** include that cap.
+  - The large premium-vs-free gap in the [Priority screenshot](./docs/images/05_priority.png) comes from the mock backend, not the live cluster.
+
+### 2.3 Dashboard screenshots
+
+These images were rendered against the **mock backend** (`dashboard/mock_server.py`), not the live cluster, so their numbers are simulated. The live dashboard has the same layout.
+
+| Idle | All 1,000 awake |
+|---|---|
+| ![Idle](./docs/images/01_idle.png) | ![All awake](./docs/images/02b_all_awake_ready_for_traffic.png) |
+
+| Balanced | Steer 80/20 |
+|---|---|
+| ![Balanced](./docs/images/03_all_running_balanced.png) | ![Steer 80/20](./docs/images/04_steer_8020.png) |
+
+| Priority (mock numbers) | Suspended |
+|---|---|
+| ![Priority](./docs/images/05_priority.png) | ![Suspended](./docs/images/06b_suspended.png) |
+
+More states, including errors, reconnect and 1440×900, are in [`docs/images/`](./docs/images/).
+
+---
+
+## 3. Architecture
+
+```mermaid
+flowchart LR
+  subgraph SUB["Substrate cluster"]
+    DRV["keynote-driver: dashboard + API on 8090"]
+    API["ate-api-server x1 (patched) + Postgres"]
+    NET["atenet-router x4"]
+    LET["atelet (patched) on 25 nodes"]
+    AG["1,000 agents: gVisor sandboxes"]
+  end
+  subgraph TPU["TPU cluster"]
+    GW["Envoy gateway, hostPort 8080"]
+    EPP["llm-d EPP v0.10.0"]
+    P1["pod-1: vLLM Gemma 4 12B, TPU v6e-4"]
+    P2["pod-2: vLLM Gemma 4 12B, TPU v6e-4"]
+  end
+  DRV -- "ResumeActor / PauseActor (gRPC, 32 connections)" --> API
+  API --> LET
+  LET -- "restore / checkpoint" --> AG
+  DRV -- "POST /process: run the agent script" --> NET
+  NET --> AG
+  AG -- "POST /v1/chat/completions + routing headers" --> GW
+  GW -- "ext_proc: pick a pod" --> EPP
+  GW --> P1
+  GW --> P2
+  DRV -. "scrape /metrics" .-> P1
+  DRV -. "scrape /metrics" .-> P2
+  DRV -. "scrape /metrics" .-> EPP
 ```
 
----
+**Wake path:** the driver calls `ResumeActor` for all 1,000 agents at once, over 32 gRPC connections. ate-api binds each actor to a pre-warmed worker pod on the node that holds its snapshot. That node's atelet restores the gVisor sandbox with `runsc restore`, through the `runsc_fast` wrapper. `ResumeActor` returns when the actor is RUNNING.
 
-## 2. Repository Directory Structure
+**LLM path:** the driver POSTs to `atenet-router` `/process`, addressed to the actor's DNS name. The agent's sandbox runs a shell script that calls the gateway with `wget`, adding:
+- `x-target-pod` in Steer mode;
+- `x-llm-d-inference-objective` in Priority mode.
+
+Envoy asks the EPP (`ext_proc`) which pod to use:
+- The EPP scores pods by prefix-cache match (from vLLM's KV-cache events over ZMQ), in-flight requests, KV-cache utilization and the `x-target-pod` header.
+- Flow control applies priority bands, but only when the pool is saturated.
+- Envoy then forwards the request to the chosen vLLM pod (`ORIGINAL_DST`).
+
+**Why an in-cluster Envoy instead of a GKE Gateway:** the Gateway's internal load balancer depends on health-check probes from Google's ranges (35.191.0.0/16, 130.211.0.0/22). In this project an automated firewall policy strips non-RFC1918 source ranges, and the load balancer returned intermittent 503s. A plain Envoy on the CPU node, with `hostPort` 8080, avoids load balancers entirely. The agents reach it at `<node IP>:8080` across the shared VPC.
+
+| | Substrate cluster (`ikwak-substrate-ane1`) | TPU cluster (`ikwak-tpu-v6e-ane1`) |
+|---|---|---|
+| Location, version | `asia-northeast1-b`, GKE 1.35.8-gke.1036000, REGULAR channel | `asia-northeast1-b`, GKE 1.35.8-gke.1036000 (created at 1.35.7 and auto-upgraded), REGULAR |
+| Node pools | `substrate-node-pool`: 25 × c3-standard-4, which runs atelet and 1,600 worker pods (64 per node).<br>`keynote-driver-pool`: 4 × n2-standard-8, label `pool=keynote-driver`, taint `dedicated=keynote-driver:NoSchedule`, which runs Postgres, 1 ate-api, 4 atenet-router, 4 atenet-egress and the keynote driver. | `default-pool`: 1 × e2-standard-4, which runs the EPP and Envoy.<br>`tpu-v6e-spot` and `tpu-v6e-spot-decode`: 1 × ct6e-standard-4t each (TPU v6e, 2x2 topology, Spot, hyperdisk-balanced 100 GB, taint `google.com/tpu=present:NoSchedule`). |
+| Networking | VPC-native. Pods `10.56.0.0/14` and services `34.118.224.0/20`, both auto-assigned. Dataplane V2. | Pods `172.28.0.0/14` and services `172.24.16.0/20`, from the subnet's secondary ranges `pods` and `services`. Gateway API standard channel. |
+| Other | Workload Identity; beta APIs `podcertificaterequests` + `clustertrustbundles`; managed OpenTelemetry (all set by `setup-gcp`) | – |
+
+**Software:**
+- **Agent Substrate:** [agent-substrate/substrate](https://github.com/agent-substrate/substrate) `v0.1.0` (`fa6d949`) with the GKE release images `v0.1.0-gke.1`. ate-api and atelet are replaced by patched builds (§4).
+- **vLLM:** [vllm-project/vllm-torchtpu](https://github.com/vllm-project/vllm-torchtpu) @ `3eb7abb5` with no code changes. The deployed image digest is `sha256:699c7ccf…`. It runs `google/gemma-4-12B-it` with TP=4, `--max-model-len 2048`, `--gpu-memory-utilization 0.90` and KV-cache events over ZMQ.
+- **llm-d:** EPP `ghcr.io/llm-d/llm-d-router-endpoint-picker:v0.10.0`, installed with the `inferencepool` Helm chart v1.2.0. Envoy is `envoyproxy/envoy:v1.39-latest`.
+
+## 4. Changes from stock
+
+| Where | Change | Why |
+|---|---|---|
+| ate-api ([patch](./patches/ateapi-atelet-fast-wake.patch)) | Caches: actor templates (2 s TTL), atepg templates, and JWT verification (20 s TTL, so a revoked token keeps working for up to 20 s).<br>`UpdateActorFast` finalizes RUNNING without a re-read.<br>Optimistic worker-cache `MarkFull` and asynchronous worker-binding bookkeeping.<br>Outbox poll interval cut from 50 to 5 ms.<br>Mutex in the atelet dialer.<br>Default log level `warn`. | Removes synchronous Postgres round trips from `ResumeActor`. **Requires exactly one ate-api replica**, because the caches are per process. |
+| atelet (same patch) | `restoreSem` = 12 (per-node restore concurrency).<br>Skips `resetActorDirs` when already clean.<br>`writeFileAtomic` replaced by plain `os.WriteFile` (no fsync).<br>Local checkpoints are hard-linked.<br>Image and volume setup runs sequentially.<br>Embeds the `runsc_fast` wrapper. | Faster restores |
+| [`runsc_fast_sync.c`](./patches/runsc_fast_sync.c) | Adds `--shared-root=/tmp/runsc-shared-root --gofer-network-namespace=host --host-settings=ignore --restore-spec-validation=ignore -log=/dev/null`.<br>Drops `--alsologtostderr` and `-direct`.<br>Sets `GOMAXPROCS=2`. | Faster `runsc restore`. **Weakens isolation, and gVisor logs are discarded.** |
+| Postgres ([`scale-control-plane.sh`](./manifests/substrate/scale-control-plane.sh)) | Settings: `max_connections 1000`, `shared_buffers 4GB`, `work_mem 32MB`, `synchronous_commit off`, **`fsync off`, `full_page_writes off`**, `autovacuum_naptime 5s`, and others.<br>Pinned to one keynote-driver-pool node with 2–16 CPU. | Database latency during 1,000 concurrent binds |
+| ate-api, atenet | ate-api has 1 replica, pinned next to Postgres, with a DB pool of 160 max / 64 min connections. atenet-router and atenet-egress have 4 replicas each on keynote-driver-pool. | Keeps the control plane off the busy worker nodes |
+| [WorkerPool](./manifests/substrate/sandbox-workerpool.yaml) | 1,600 pre-warmed workers, requests 10m CPU / 64 Mi, limits 1 CPU / 256 Mi | Each node keeps idle workers even with all 1,000 agents awake |
+| [ActorTemplate `sandbox-dense`](./manifests/substrate/sandbox-dense-template.yaml.tmpl) | The upstream sandbox demo app, sized to 1 CPU / 256 Mi | Matches the dense workers |
+| podcertificate-controller | `WORKERS_PER_SIGNER=16` | Signs the 1,600 worker certificates quickly |
+| [ate-node-tuner](./manifests/substrate/ate-node-tuner.yaml) | A privileged DaemonSet:<br>• remounts `/var` with `nobarrier,commit=600`;<br>• sets dirty-page sysctls, the THP setting and the performance CPU governor;<br>• runs a page-cache warmer that reads every local checkpoint every 20 s. | Faster restores. **Risks data loss on a node crash.** |
+| keynote driver ([main.go](./substrate-bench/keynote_driver/main.go)) | Rests agents with `PauseActor`, a node-local snapshot (`-rest-mode=pause`); uses 32 gRPC connections; runs a duty cycle of about 100 active agents; cross-checks against ate-api after Suspend all | The demo orchestrator |
+| llm-d ([values](./manifests/tpu/gaie-values-flowctl.yaml)) | Scorers: precise prefix-cache (weight 3); `active-request-scorer` instead of `queue-scorer` (2); kv-cache-utilization (2); `header-label-affinity-scorer` on `x-target-pod` (100).<br>Flow control with bands 100 / 0 / −10 and a concurrency detector at 256 per pod. | `queue-scorer` reads a lagging vLLM gauge; in a 1,000-request burst it sent about 750 requests in a row to one pod (86.5/13.5) |
+
+## 5. Repository layout
 
 ```text
 substrate/
-├── README.md                                       # Architecture, dashboard gallery, benchmarks & reproduction guide
+├── README.md                          this guide
+├── plan.md                            status, decisions and open items
+├── implementation.md                  engineering notes: patches, tuning, measurements, lessons
 ├── dashboard/
-│   ├── index.html                                  # Single-file interactive stage dashboard (served by keynote_driver & mock_server)
-│   ├── _parts/                                     # Modular source parts (a.html, b.js, c.js) that concatenate to index.html
-│   ├── mock_server.py                              # Zero-dependency Python rehearsal server (:8765) with identical API & realistic simulation
-│   └── shoot.mjs                                   # Headless Chromium screenshot verification suite
-├── docs/
-│   └── images/                                     # High-resolution stage dashboard screenshots across all demo states
+│   ├── index.html                     the stage dashboard (one file, served by the driver)
+│   ├── mock_server.py                 offline mock of the driver API for rehearsal (simulated numbers)
+│   └── shoot.mjs                      headless-Chrome screenshot script (drives the mock)
+├── docs/images/                       dashboard screenshots, rendered with the mock
 ├── manifests/
 │   ├── substrate/
-│   │   ├── keynote-driver.yaml                     # In-cluster keynote-driver Pod + Service manifest
-│   │   ├── scale-control-plane.sh                  # Phase A & B Postgres + ate-api-server + workerpool scaling script
-│   │   └── postgres-config.yaml                    # Tuned Postgres ConfigMap reference
+│   │   ├── scale-control-plane.sh     sizes and tunes the Substrate cluster (idempotent, DRY_RUN=1)
+│   │   ├── deploy-patched-binaries.sh runs the patched ate-api/atelet on the stock images (idempotent, DRY_RUN=1)
+│   │   ├── http_srv.go                the file server that script uses
+│   │   ├── sandbox-workerpool.yaml    1,600-worker WorkerPool
+│   │   ├── sandbox-dense-template.yaml.tmpl  ActorTemplate for the agents
+│   │   ├── ate-node-tuner.yaml        node tuning DaemonSet (see §9)
+│   │   └── keynote-driver.yaml        driver namespace, RBAC and pod
 │   └── tpu/
-│       ├── gemma4-12b-torchtpu-deployments.yaml    # 2x Gemma 4 12B IT vllm-torchtpu TPU v6e-4 Deployments (pod-1, pod-2)
-│       ├── gemma4-12b-render-svc.yaml              # ClusterIP Service for EPP tokenization/render calls
-│       ├── gaie-values-kvaware.yaml                # InferencePool Helm values (Phase 1: KV-cache & prefix-cache routing)
-│       ├── gaie-values-flowctl.yaml                # InferencePool Helm values (Phase 2: + Flow Control & 80/20 header steering)
-│       ├── inference-objectives.yaml               # InferenceObjective CRDs (premium-traffic, standard-traffic, best-effort-traffic)
-│       └── llmd-envoy-gateway.yaml                 # In-cluster Envoy proxy (ext_proc + ORIGINAL_DST, zero external LB 503 window)
+│       ├── prereqs.yaml               StorageClass, ServiceAccount and PVCs for the vLLM pods
+│       ├── gemma4-12b-torchtpu-deployments.yaml  vLLM pod-1 and pod-2
+│       ├── gemma4-12b-render-svc.yaml Service the EPP uses for tokenization
+│       ├── inference-objectives.yaml  priority bands (premium / standard / best-effort)
+│       ├── gaie-values-flowctl.yaml   llm-d EPP Helm values (deployed)
+│       ├── gaie-values-kvaware.yaml   earlier values, not deployed
+│       └── llmd-envoy-gateway.yaml    in-cluster Envoy gateway
+├── patches/
+│   ├── ateapi-atelet-fast-wake.patch  against agent-substrate/substrate@fa6d949 (v0.1.0)
+│   ├── runsc_fast_sync.c              runsc wrapper embedded in atelet (deployed)
+│   └── runsc_fast_async.c             DO NOT USE: failed experiment (see implementation.md)
 └── substrate-bench/
-    ├── keynote_driver/main.go                      # Live stage backend (:8090): 32-conn gRPC pool, PauseActor/SuspendActor, vLLM/EPP Prometheus scraper
-    ├── burst_bench/main.go                         # CLI benchmark: 0 -> 1,000 simultaneous burst + llm-d gateway call + state persistence check
-    ├── agent_bench/main.go                         # CLI benchmark: 1,000-agent binpacking & multiplexing across worker pods
-    └── poisson_wave/main.go                        # CLI benchmark: Poisson arrival wave & multi-turn stateful memory verification
+    ├── keynote_driver/main.go         the driver: dashboard backend + orchestrator
+    └── agent_bench/ burst_bench/ poisson_wave/   earlier CLI benchmarks; not used by the demo (they compile against v0.1.0 + the patch)
 ```
 
 ---
 
-## 3. Interactive Stage Dashboard Gallery
+## 6. Reproduce it
 
-The stage dashboard (`dashboard/index.html`) is a single-screen split UI (`AGENTS · Agent Substrate on GKE` on the left, `LLM-D · Gemma 4 12B on llm-d + vllm + TPUs` on the right) with a **draggable center divider** (`25%–75%` width split) so the presenter can dynamically widen the **Agent Substrate** side during the `0 → 1,000` wake burst and widen the **`llm-d`** side when walking through KV-cache efficiency, 80/20 steering, and Paid vs Free priority flow control.
+The measured setup used project `tpu-launchpad-playground`, VPC `ikwak-ane1-net` / subnet `ikwak-ane1-subnet`, and the cluster names in §3. Replace them with your own.
 
-### 3.1 Step 1: `Wake Agents` — 1,000 gVisor Sandboxes Awake Across 25 GKE Node Tiles (`40 / node · 10 / vCPU`)
-![All 1,000 Agents Awake — Ready for Simulate Traffic](./docs/images/02b_all_awake_ready_for_traffic.png)
-*Clicking **`Wake Agents`** wakes all 1,000 gVisor sandboxes (`0 → 1,000` running) without immediately sending LLM traffic. The `50×20` sandbox grid is visually organized into **`5×5 = 25` GKE Node Tiles** (`10×4 = 40` gVisor sandboxes per `c3-standard-4` 4-vCPU node = **`10 sandboxes / vCPU · 0 CPU at rest`**), while the **`Simulate Traffic`** button illuminates in green ready for the presenter.*
+### 6.0 Prerequisites and variables
 
-### 3.2 Step 2: `Simulate Traffic` + Click-to-Magnify & Freeze Joke Spotlight
-![Click-to-Magnify Joke Spotlight](./docs/images/03c_joke_magnified.png)
-*Clicking **`Simulate Traffic`** starts the 1,000-agent request wave and steady traffic (`100 req/s`). Clicking any scrolling joke in the **Replies** ticker opens the **Magnified & Frozen Spotlight** (`27px` pinned display with **`🎲 Next Joke`** and **`✕ Close`**) so the presenter can comfortably read a joke aloud on stage while live traffic continues in the background.*
+**Tools:**
+- `gcloud`, `kubectl`, `helm` 3, `git`, `python3`, `envsubst`, `gzip`, `curl`;
+- Go 1.21 or newer. The upstream `go.mod` requires Go 1.27.0, and with the default `GOTOOLCHAIN=auto` the `go` command downloads it (the demo builds ran on go1.27.0);
+- `gcc` with static glibc (the demo used gcc 15.2.0, Debian);
+- `docker`, to build the vLLM image;
+- for the mock screenshots only: Node 22 and Google Chrome.
 
-### 3.3 Balanced `50/50` View — All 1,000 Agents Running & KV Cache Highlights
-![All 1,000 Agents Running — Balanced 50/50 Split](./docs/images/03_all_running_balanced.png)
-*Default `50/50` split with prominent `32px` **KV Cache Usage %** and **KV Cache Hit (Prompt %)** (`~90.2%` across the shared 286-token system prompt) callout boxes inside each TPU vLLM pod card.*
+**Quota** in one zone:
+- 100 C3 vCPUs (25 × c3-standard-4);
+- 32 N2 vCPUs (4 × n2-standard-8);
+- 4 E2 vCPUs (1 × e2-standard-4);
+- 8 Spot TPU v6e chips (2 × ct6e-standard-4t).
 
-### 3.4 `Steer 80/20` & Draggable Center Split (`70/30` Agents Focus & `30/70` `llm-d` Focus)
-| `Steer 80/20` (`50/50` Split) | `llm-d` Focus (`30/70` Split + `Steer 80/20`) |
-|---|---|
-| ![Steer 80/20 — 50/50 Split](./docs/images/04_steer_8020.png) | ![Expanded llm-d View — 30/70 Split](./docs/images/04b_llmd_focus_30_70.png) |
-
-### 3.5 Viral App Scenario: Priority Flow Control (`💎 Paid Members` vs `🆓 Free Users` at `300 req/s`)
-![Priority Flow Control — Paid Members vs Free Users](./docs/images/05_priority.png)
-*Clicking **`Priority`** under **`llm-d: Flow Control Strategy`** simulates a viral traffic spike (`300 req/s`) using `InferenceObjective` priority bands (`💎 Paid Members (Pro)` `p100`, `🔹 Paid Standard` `p0`, and `🆓 Free Users (Viral)` `p−10`). When pool saturation reaches `89%`, `llm-d`'s Endpoint Picker queues best-effort free-tier bursts (`1,019 ms` wait) while fast-laning paid members (`67 ms` wait — **15× faster**) and tagging replies in the ticker (`💎 PAID PRO`, `🔹 PAID STD`, `🆓 FREE TIER`).*
-
-### 3.6 Lifecycle States: Idle (`0 / 1,000`), Mid-Burst, Suspending & Scale-to-Zero
-| Idle (`0 / 1,000` at rest) | Mid-Burst (`0 → 1,000` waking) |
-|---|---|
-| ![Idle State](./docs/images/01_idle.png) | ![Mid-Burst State](./docs/images/02_mid_burst.png) |
-
-| Suspending (`1,000 → 0` checkpointing) | All 1,000 Suspended / Paused (Scale to Zero) |
-|---|---|
-| ![Suspending State](./docs/images/06a_suspending.png) | ![Suspended State](./docs/images/06b_suspended.png) |
-
----
-
-## 4. Empirical Benchmark Results
-
-### 4.1 Agent Substrate `0 → 1,000` Wake & First-Joke Benchmark
-
-We diagnosed and eliminated three bottlenecks in simultaneous 1,000-sandbox wakes:
-1. **Single gRPC HTTP/2 connection pinning**: Replaced a single `ateclient.Client` with a **32-connection gRPC client pool (`-grpc-conns=32`)** in `keynote_driver` so `1,000` concurrent `ResumeActor` RPCs spread evenly across all `ate-api-server` replicas.
-2. **Postgres connection & WAL serialization bottleneck**: Tuned `postgres-0` (`max_connections = 1000`, `shared_buffers = 1GB`, `synchronous_commit = off`) and scaled `ate-api-server` from `2` replicas × `4` conns (`8` total) to **`8` replicas × `64` conns (`512` total DB connections)** across `4 × n2-standard-8` control-plane nodes.
-3. **Worker scheduling contention & node CPU/disk saturation**: Scaled `substrate-node-pool` from `11` to **`25 × c3-standard-4`** nodes (`40` active sandboxes/node during a 1,000-agent burst), scaled `WorkerPool/sandbox-workerpool` from `1,050` to **`1,600` workers** (`64/node`, providing a `60%` free worker buffer on every node), and switched resting checkpoints from remote GCS (`SuspendActor`) to **node-local disk snapshots (`PauseActor`, `-rest-mode=pause`)**.
-
-| Metric | Baseline (`11` nodes, `2` API servers, GCS `SUSPENDED`) | Burst 1 (`25` nodes, `8` API servers, Cold Wake from GCS `SUSPENDED`) | Burst 2 (`25` nodes, `8` API servers, Wake from Node-Local `PAUSED`) | Speedup vs Baseline |
-|---|---|---|---|---|
-| **Fastest Agent Wake (`min`)** | `1,840 ms` | `564 ms` | **`602 ms` (sub-second)** | **3.1× faster** |
-| **100 Agents Running** | `~5,200 ms` | `2,054 ms` | **`1,605 ms`** | **3.2× faster** |
-| **250 Agents Running** | `~9,800 ms` | `3,537 ms` | **`2,140 ms`** | **4.6× faster** |
-| **500 Agents Running (`p50`)** | `14,917 ms` | `6,546 ms` | **`3,154 ms`** | **4.7× faster** |
-| **750 Agents Running** | `~20,500 ms` | `7,179 ms` | **`3,761 ms`** | **5.5× faster** |
-| **900 Agents Running (`p90`)** | `25,688 ms` | `7,515 ms` | **`4,158 ms`** | **6.2× faster** |
-| **990 Agents Running (`p99`)** | `43,210 ms` | `7,910 ms` | **`4,813 ms`** | **9.0× faster** |
-| **All 1,000 Agents Running** | `44,536 ms` | `8,005 ms` | **`4,949 ms` (`4.95s`)** | **9.0× faster** |
-| **`ResumeActor` Retries / Errors** | `0 failed` | `0 failed / 0 retries` | **`0 failed / 0 retries`** | **100% clean** |
-| **First Joke Replies (`1,000/1,000`)** | `1,000 ok` | `1,000 ok / 0 failed` (`T+10.86s`) | **`1,000 ok / 0 failed` (`T+11.31s`)** | **Zero 503s** |
-
-#### Measured `1,000 ms` Step Ramp (Burst `b-tlxrnt-0002`, Waking from Node-Local `PAUSED`)
-```text
-=== Burst b-tlxrnt-0002 | 1000 agents | hold=true | rest-mode pause | model google/gemma-4-12B-it | max_tokens 50 | temperature 1.00 ===
-preflight: put 0 leftovers to rest (0 failed), re-created 0 (0 failed); at T0: 0 suspended, 1000 paused, 0 not at rest
-WAKE (ResumeActor, all fired at T+0): ok 1000 / failed 0 | needed retry 0 | peak simultaneously running 1000 (at T+4,949 ms)
-  per-agent wake latency: p50 3,154 ms | p90 4,158 ms | p99 4,813 ms | min 602 ms | max 4,941 ms
-  milestones: 100 running @ T+1,605 ms | 250 running @ T+2,140 ms | 500 running @ T+3,158 ms | 750 running @ T+3,761 ms | 1,000 running @ T+4,949 ms
-  ALL 1,000 RUNNING AT ONCE: T+4,949 ms
-FIRST JOKE REQUESTS: ok 1000 / failed 0 | agent-observed latency p50 1,634 ms | p90 7,806 ms | max 9,135 ms | finish=length 0
-  tokens: 286,000 prompt + 23,052 completion | unique replies 920 / 1000 | all first replies done at T+11,313 ms
-RAMP (1,000 ms steps; value at the end of each step):
-          T+ | running |    woke | replies |    tokens
-    1,000 ms |      11 |      11 |       0 |         0
-    2,000 ms |     219 |     219 |      40 |    12,327
-    3,000 ms |     465 |     465 |     160 |    49,358
-    4,000 ms |     852 |     852 |     308 |    95,055
-    5,000 ms |    1000 |    1000 |     438 |   135,229
-    6,000 ms |    1000 |    1000 |     577 |   178,128
-    7,000 ms |    1000 |    1000 |     710 |   219,381
-   11,000 ms |    1000 |    1000 |     965 |   298,120
-   12,000 ms |    1000 |    1000 |    1000 |   309,052
-```
-
----
-
-### 4.2 `llm-d` on Cloud TPU v6e (`vllm-torchtpu` Gemma 4 12B IT) Routing & Flow-Control Verification
-
-Tested against the 2-pod `google/gemma-4-12B-it` (`vllm-torchtpu` on `2 × v6e-4` TPU slices) pool behind `gaie-pd-epp` (`v0.10.0`):
-
-| Test Scenario | Configuration | `pod-1` Share | `pod-2` Share | Result Summary |
-|---|---|---|---|---|
-| **1. Prefix-Affinity Stickiness** | `gaie-values-kvaware.yaml` (shared 1,100-token prefix) | `100%` (or `0%`) | `0%` (or `100%`) | `prefix-cache-scorer` routes 100% of matching prefix requests to the warm pod (`>90%` KV cache hit rate) |
-| **2. Balanced Multi-Prefix Load** | `gaie-values-flowctl.yaml` (no `x-target-pod` header) | `50.0%` | `50.0%` | Evenly balances across `pod-1` and `pod-2` (`~2,600+ output tok/s` combined) |
-| **3. Live 80/20 Header Steering** | `x-target-pod: pod-1` (80%) / `pod-2` (20%) | **`80.0%`** | **`20.0%`** | `header-label-affinity-scorer` (`weight: 100`) enforces exact 80/20 split without restarting pods |
-| **4. Priority Flow Control under Saturation** | `x-llm-d-inference-objective: premium-traffic` (`+100`) vs `standard-traffic` (`0`) vs `best-effort-traffic` (`-10`) at high concurrency | `50.2%` | `49.8%` | `premium-traffic` jumps ahead of `standard` and `best-effort` in the EPP saturation queue (`p50` latency **2.9×–5.2× lower** for `premium` than `best-effort`) |
-
----
-
-## 5. Step-by-Step Deployment & Reproduction Guide
-
-### Prerequisites
-* `gcloud`, `kubectl`, `helm`, `docker`, `go` (`>= 1.23`), and `python3` installed.
-* A GCP project with Cloud TPU v6e (`ct6e-standard-4t`) and Compute Engine C3 (`c3-standard-4`) quota in `asia-northeast1-b`.
-* A Hugging Face token (`HF_TOKEN`) with access to `google/gemma-4-12B-it`.
+**Hugging Face:** a token with access to `google/gemma-4-12B-it`.
 
 ```bash
-export PROJECT_ID="tpu-launchpad-playground"
-export REGION="asia-northeast1"
-export ZONE="asia-northeast1-b"
-export VPC_NAME="ikwak-ane1-net"
-export SUBNET_NAME="ikwak-ane1-subnet"
-export SUBSTRATE_CLUSTER="ikwak-substrate-ane1"
-export TPU_CLUSTER="ikwak-tpu-v6e-ane1"
-export HF_TOKEN="<YOUR_HF_TOKEN>"
+git clone https://github.com/saltysoup/jetski-playground.git
+cd jetski-playground/substrate
+export REPO_DIR="$PWD"
+
+export PROJECT_ID="<your-project>"
+export PROJECT_NUMBER="$(gcloud projects describe "${PROJECT_ID}" --format='value(projectNumber)')"
+export REGION="asia-northeast1" ZONE="asia-northeast1-b"
+export VPC_NAME="<vpc>" SUBNET_NAME="<subnet>"
+export SUBSTRATE_CLUSTER="<substrate-cluster>" TPU_CLUSTER="<tpu-cluster>"
+export BUCKET_NAME="ate-snapshots-${PROJECT_ID}-${SUBSTRATE_CLUSTER}"   # Substrate snapshot bucket
+export SUBSTRATE_SRC="$HOME/src/substrate"    # upstream Agent Substrate checkout
+export BIN_DIR="$HOME/src/keynote-bin"        # build outputs
+export CTX_SUB="gke_${PROJECT_ID}_${ZONE}_${SUBSTRATE_CLUSTER}"
+export CTX_TPU="gke_${PROJECT_ID}_${ZONE}_${TPU_CLUSTER}"
+read -rsp "Hugging Face token: " HF_TOKEN && export HF_TOKEN && echo
+mkdir -p "${BIN_DIR}"
 ```
 
----
+### 6.1 Shared VPC
 
-### Step 1: Create Shared Regional VPC, Subnet & Internal Firewall Rule
-
-Both clusters share a regional VPC so the 1,000 agent sandboxes in `SUBSTRATE_CLUSTER` can send HTTP requests directly to the `llm-d` Envoy gateway in `TPU_CLUSTER` over RFC1918 internal IPs.
+Both clusters share one subnet, so the agents' sandboxes can reach the gateway's node IP directly.
 
 ```bash
-gcloud compute networks create "${VPC_NAME}" \
-  --project="${PROJECT_ID}" \
-  --subnet-mode=custom
-
-gcloud compute networks subnets create "${SUBNET_NAME}" \
-  --project="${PROJECT_ID}" \
-  --network="${VPC_NAME}" \
-  --region="${REGION}" \
-  --range="172.24.0.0/20" \
+gcloud compute networks create "${VPC_NAME}" --project="${PROJECT_ID}" --subnet-mode=custom
+gcloud compute networks subnets create "${SUBNET_NAME}" --project="${PROJECT_ID}" \
+  --network="${VPC_NAME}" --region="${REGION}" --range=172.24.0.0/20 \
+  --secondary-range=pods=172.28.0.0/14,services=172.24.16.0/20 \
   --enable-private-ip-google-access
-
-# Allow all internal RFC1918 pod/node/service traffic across both clusters
-gcloud compute firewall-rules create "${VPC_NAME}-allow-internal" \
-  --project="${PROJECT_ID}" \
-  --network="${VPC_NAME}" \
-  --action=ALLOW \
-  --rules=all \
-  --source-ranges="10.0.0.0/8,172.16.0.0/12,192.168.0.0/16"
+gcloud compute firewall-rules create "${VPC_NAME}-allow-internal" --project="${PROJECT_ID}" \
+  --network="${VPC_NAME}" --direction=INGRESS --action=ALLOW --rules=tcp,udp,icmp \
+  --source-ranges=10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,100.64.0.0/10
 ```
 
----
-
-### Step 2: Deploy & Tune Cluster 1 — Agent Substrate on GKE
-
-#### 2.1 Bootstrap the Agent Substrate Cluster
-Use `ate-setup` from the Agent Substrate repository to bootstrap the GKE cluster, GCS snapshot bucket, and `ate-system` control plane, then add the dedicated `keynote-driver-pool` (`4 × n2-standard-8`) and scale `substrate-node-pool` (`25 × c3-standard-4`):
+### 6.2 Substrate cluster and Agent Substrate v0.1.0
 
 ```bash
-gcloud container node-pools create keynote-driver-pool \
-  --project="${PROJECT_ID}" \
-  --zone="${ZONE}" \
-  --cluster="${SUBSTRATE_CLUSTER}" \
-  --machine-type=n2-standard-8 \
-  --num-nodes=4
+git clone https://github.com/agent-substrate/substrate.git "${SUBSTRATE_SRC}"
+cd "${SUBSTRATE_SRC}" && git checkout fa6d949685a6318940a9a0195c867c864009b820   # tag v0.1.0
 
-# Apply Phase A (Postgres + DB pool tuning) and Phase B (8x ate-api-server,
-# 4x atenet-router/egress, 25x c3-standard-4 nodes, 1,600 sandbox workers)
-chmod +x ./manifests/substrate/scale-control-plane.sh
+gcloud auth application-default login          # setup-gcp uses Application Default Credentials
+GCE_REGION="${REGION}" CLUSTER_LOCATION="${ZONE}" CLUSTER_NAME="${SUBSTRATE_CLUSTER}" \
+NETWORK="${VPC_NAME}" SUBNETWORK="${SUBNET_NAME}" GVISOR_NODE_MACHINE_TYPE=c3-standard-4 \
+  go run ./tools/setup-gcp bootstrap           # APIs, cluster (2 nodes), bucket, IAM, dashboards
+gcloud container clusters get-credentials "${SUBSTRATE_CLUSTER}" --zone="${ZONE}" --project="${PROJECT_ID}"
+
+export KUBECTL_CONTEXT="${CTX_SUB}"
+go run ./cmd/ate-setup deploy ate-system --no-dev-env \
+  --image-repo us-docker.pkg.dev/gke-substrate-release/substrate --image-tag v0.1.0-gke.1
+go run ./cmd/ate-setup deploy demo sandbox --no-dev-env \
+  --image-repo us-docker.pkg.dev/gke-substrate-release/substrate --image-tag v0.1.0-gke.1
+
+go build -o "${BIN_DIR}/kubectl-ate" ./cmd/kubectl-ate && export PATH="${BIN_DIR}:${PATH}"
+envsubst < "${REPO_DIR}/manifests/substrate/sandbox-dense-template.yaml.tmpl" \
+  | kubectl ate --context="${CTX_SUB}" create actor-template -f -
+```
+
+> [!CAUTION]
+> `setup-gcp create cluster` **deletes and recreates** an existing cluster whose network or subnet differs from `NETWORK` / `SUBNETWORK`. Never re-run it against a live cluster with different values.
+
+Upstream Agent Substrate also warns about worker node pools:
+- Turn node **auto-upgrade** off on the pools that run workers: `gcloud container node-pools update substrate-node-pool --cluster "${SUBSTRATE_CLUSTER}" --location "${ZONE}" --no-enable-autoupgrade`.
+- Don't use Spot nodes for workers.
+- An actor that is awake when its worker pod is killed ends up `CRASHED`.
+- Here, a paused actor also loses its node-local snapshot when its node is recreated.
+
+The demo clusters still have auto-upgrade on (see §9).
+
+### 6.3 Build the patched binaries and the driver
+
+These commands run in the upstream checkout.
+
+```bash
+cd "${SUBSTRATE_SRC}"
+git apply "${REPO_DIR}/patches/ateapi-atelet-fast-wake.patch"
+gcc -O3 -static -s -o cmd/atelet/runsc_fast "${REPO_DIR}/patches/runsc_fast_sync.c"   # embedded into atelet
+mkdir -p cmd/keynote_driver && cp "${REPO_DIR}/substrate-bench/keynote_driver/main.go" cmd/keynote_driver/
+
+export CGO_ENABLED=0
+go build -buildvcs=false -trimpath -ldflags="-s -w" -o "${BIN_DIR}/ateapi" ./cmd/ateapi
+go build -buildvcs=false -trimpath -ldflags="-s -w" -o "${BIN_DIR}/atelet" ./cmd/atelet
+go build -buildvcs=false -trimpath -o "${BIN_DIR}/keynote_driver" ./cmd/keynote_driver
+gzip -9n -c "${BIN_DIR}/ateapi" > "${BIN_DIR}/bin_ateapi.gz"
+gzip -9n -c "${BIN_DIR}/atelet" > "${BIN_DIR}/bin_atelet.gz"
+(cd "${REPO_DIR}/manifests/substrate" && go build -trimpath -ldflags="-s -w" -o "${BIN_DIR}/http_srv" http_srv.go)
+sha256sum cmd/atelet/runsc_fast "${BIN_DIR}/ateapi" "${BIN_DIR}/atelet" "${BIN_DIR}/keynote_driver"
+```
+
+With go1.27.0 (linux/amd64) and gcc 15.2.0 these builds are byte-for-byte reproducible, and match what runs in the demo cluster:
+
+| File | sha256 (prefix) |
+|---|---|
+| `runsc_fast` | `403b8d3d` |
+| `ateapi` | `c53a6b41` |
+| `atelet` | `c24d7425` |
+| `keynote_driver` | `fdef79b4` |
+
+Other toolchains produce different bytes but the same code.
+
+### 6.4 Size and tune the Substrate cluster
+
+```bash
+cd "${REPO_DIR}"
+PROJECT_ID="${PROJECT_ID}" ZONE="${ZONE}" SUBSTRATE_CLUSTER="${SUBSTRATE_CLUSTER}" \
+  DRY_RUN=1 ./manifests/substrate/scale-control-plane.sh     # shows what would change
 PROJECT_ID="${PROJECT_ID}" ZONE="${ZONE}" SUBSTRATE_CLUSTER="${SUBSTRATE_CLUSTER}" \
   ./manifests/substrate/scale-control-plane.sh
+kubectl --context="${CTX_SUB}" apply -f manifests/substrate/ate-node-tuner.yaml   # used for the measured results; see §9
 ```
 
----
+**What `scale-control-plane.sh` does:** every step is idempotent. It:
+1. resizes `substrate-node-pool` to 25 nodes;
+2. creates `keynote-driver-pool` (4 × n2-standard-8, label + taint);
+3. labels the worker nodes `ate.dev/substrate-version=v0.1.0-gke.1`;
+4. tunes and pins Postgres;
+5. sets 1 ate-api replica with DB pool 160/64;
+6. sets 4 + 4 atenet replicas;
+7. sets podcert `WORKERS_PER_SIGNER=16`;
+8. applies the 1,600-worker WorkerPool.
 
-### Step 3: Deploy Cluster 2 — `llm-d` + `vllm-torchtpu` on Cloud TPU v6e
+Run it **before** the next step. It may restart `postgres-0`, and the next step starts a file server inside that pod.
 
-#### 3.1 Create the TPU v6e GKE Cluster & Two `v6e-4` Node Pools
+### 6.5 Run the patched ate-api and atelet
+
 ```bash
-gcloud container clusters create "${TPU_CLUSTER}" \
-  --project="${PROJECT_ID}" \
-  --zone="${ZONE}" \
-  --network="${VPC_NAME}" \
-  --subnetwork="${SUBNET_NAME}" \
-  --machine-type=n2-standard-8 \
-  --num-nodes=1 \
-  --ip-range-pods="172.28.0.0/14" \
-  --ip-range-services="172.24.16.0/20" \
-  --addons=HttpLoadBalancing
+cd "${REPO_DIR}"
+BIN_DIR="${BIN_DIR}" CTX_SUB="${CTX_SUB}" DRY_RUN=1 ./manifests/substrate/deploy-patched-binaries.sh
+BIN_DIR="${BIN_DIR}" CTX_SUB="${CTX_SUB}" ./manifests/substrate/deploy-patched-binaries.sh
+```
 
-for pool in tpu-v6e-pool-1 tpu-v6e-pool-2; do
-  gcloud container node-pools create "${pool}" \
-    --project="${PROJECT_ID}" \
-    --zone="${ZONE}" \
-    --cluster="${TPU_CLUSTER}" \
-    --machine-type=ct6e-standard-4t \
-    --tpu-topology=2x2 \
-    --num-nodes=1 \
-    --spot
+**How it works:**
+1. The script starts `http_srv` inside `postgres-0`. It serves the Postgres data directory on `:18888`, which is a security problem (see §9).
+2. It uploads `bin_ateapi.gz` / `bin_atelet.gz`, verifying the sha256.
+3. It adds `fetch-bin` init containers that download them into ate-api (an emptyDir) and atelet (the node's `/var/lib/ateom-gvisor`).
+4. It restarts only what changed.
+
+After `postgres-0` restarts, re-run the script before any ate-api or atelet pod restarts. The download URL uses the pod IP.
+
+### 6.6 TPU cluster
+
+```bash
+gcloud container clusters create "${TPU_CLUSTER}" --project="${PROJECT_ID}" --zone="${ZONE}" \
+  --release-channel=regular --network="${VPC_NAME}" --subnetwork="${SUBNET_NAME}" \
+  --enable-ip-alias --cluster-secondary-range-name=pods --services-secondary-range-name=services \
+  --machine-type=e2-standard-4 --num-nodes=1 --gateway-api=standard
+for pool in tpu-v6e-spot tpu-v6e-spot-decode; do
+  gcloud container node-pools create "${pool}" --project="${PROJECT_ID}" --zone="${ZONE}" \
+    --cluster="${TPU_CLUSTER}" --machine-type=ct6e-standard-4t --tpu-topology=2x2 --num-nodes=1 \
+    --spot --disk-type=hyperdisk-balanced --disk-size=100
 done
+gcloud container clusters get-credentials "${TPU_CLUSTER}" --zone="${ZONE}" --project="${PROJECT_ID}"
 ```
 
-#### 3.2 Build the Upstream `vllm-torchtpu` Container Image
-Build the clean upstream [`vllm-project/vllm-torchtpu`](https://github.com/vllm-project/vllm-torchtpu) Docker image (no monkey-patches required):
+GKE adds the `google.com/tpu=present:NoSchedule` taint to TPU nodes by itself. The live TPU pools also show `transparentHugepageEnabled: ALWAYS` in their Linux node config. The commands above don't set it, and we didn't confirm whether it is a GKE default.
+
+### 6.7 vLLM image (upstream vllm-torchtpu, unmodified)
+
 ```bash
-git clone https://github.com/vllm-project/vllm-torchtpu.git /tmp/vllm-torchtpu
-cd /tmp/vllm-torchtpu
-bash docker/build_image.sh \
-  --tag "${REGION}-docker.pkg.dev/${PROJECT_ID}/vllm-tpu/vllm-torchtpu-upstream:gemma4"
-docker push "${REGION}-docker.pkg.dev/${PROJECT_ID}/vllm-tpu/vllm-torchtpu-upstream:gemma4"
+export VLLM_IMAGE="${REGION}-docker.pkg.dev/${PROJECT_ID}/<repo>/vllm-torchtpu:3eb7abb5"
+git clone https://github.com/vllm-project/vllm-torchtpu.git "$HOME/src/vllm-torchtpu"
+cd "$HOME/src/vllm-torchtpu" && git checkout 3eb7abb5cc6ff4bae816e988010cf7bee6e9225c
+./docker/build_image.sh -t "${VLLM_IMAGE}" --target prod
+docker push "${VLLM_IMAGE}"
 ```
 
-#### 3.3 Deploy the Two `google/gemma-4-12B-it` TPU Pods & Render Service
-Substitute your `<YOUR_HF_TOKEN>` in `manifests/tpu/gemma4-12b-torchtpu-deployments.yaml` and apply:
+### 6.8 vLLM pods
+
 ```bash
-export CTX_TPU="gke_${PROJECT_ID}_${ZONE}_${TPU_CLUSTER}"
-
-sed "s|<YOUR_HF_TOKEN>|${HF_TOKEN}|g" ./manifests/tpu/gemma4-12b-torchtpu-deployments.yaml \
-  | kubectl --context="${CTX_TPU}" apply -f -
-kubectl --context="${CTX_TPU}" apply -f ./manifests/tpu/gemma4-12b-render-svc.yaml
-
-kubectl --context="${CTX_TPU}" rollout status deploy/gemma4-12b-torchtpu-1 --timeout=900s
-kubectl --context="${CTX_TPU}" rollout status deploy/gemma4-12b-torchtpu-2 --timeout=900s
+cd "${REPO_DIR}"
+kubectl --context="${CTX_TPU}" create secret generic llm-d-hf-token --from-literal=HF_TOKEN="${HF_TOKEN}"
+kubectl --context="${CTX_TPU}" apply -f manifests/tpu/prereqs.yaml
+sed "s|asia-northeast1-docker.pkg.dev/tpu-launchpad-playground/ikwak-vllm-torchtpu/vllm-torchtpu:3eb7abb5@sha256:699c7ccfce3a007298675dd8991950004b137171dac4c5738408599eadfec846|${VLLM_IMAGE}|" \
+  manifests/tpu/gemma4-12b-torchtpu-deployments.yaml | kubectl --context="${CTX_TPU}" apply -f -
+kubectl --context="${CTX_TPU}" apply -f manifests/tpu/gemma4-12b-render-svc.yaml
+kubectl --context="${CTX_TPU}" rollout status deploy/gemma4-12b-torchtpu-1 --timeout=1800s
+kubectl --context="${CTX_TPU}" rollout status deploy/gemma4-12b-torchtpu-2 --timeout=1800s
 ```
 
-#### 3.4 Deploy `llm-d` `InferencePool` (`gaie-pd-epp`) & `InferenceObjective` Priorities
+The first start downloads the weights into the PVC and compiles, which takes several minutes. Later restarts reuse the cache.
+
+### 6.9 llm-d: CRDs, priorities, endpoint picker, gateway
+
 ```bash
-# Install Gateway API Inference Extension CRDs
+cd "${REPO_DIR}"
 kubectl --context="${CTX_TPU}" apply -f \
-  https://github.com/kubernetes-sigs/gateway-api-inference-extension/releases/download/v1.2.0/manifests.yaml
+  https://github.com/kubernetes-sigs/gateway-api-inference-extension/releases/download/v1.0.1/manifests.yaml
+kubectl --context="${CTX_TPU}" apply -f manifests/tpu/inference-objectives.yaml
+helm upgrade --install gaie-pd oci://registry.k8s.io/gateway-api-inference-extension/charts/inferencepool \
+  --version v1.2.0 --kube-context "${CTX_TPU}" -n default -f manifests/tpu/gaie-values-flowctl.yaml
+kubectl --context="${CTX_TPU}" rollout status deploy/gaie-pd-epp --timeout=300s
 
-# Deploy InferenceObjective priority bands (premium +100, standard 0, best-effort -10)
-kubectl --context="${CTX_TPU}" apply -f ./manifests/tpu/inference-objectives.yaml
-
-# Install/upgrade gaie-pd InferencePool with KV-cache routing, 80/20 header affinity & flow control
-helm upgrade --install gaie-pd \
-  oci://registry.k8s.io/gateway-api-inference-extension/charts/inferencepool \
-  --version v1.2.0 \
-  --kube-context "${CTX_TPU}" \
-  -f ./manifests/tpu/gaie-values-flowctl.yaml
-```
-
-#### 3.5 Deploy the In-Cluster Envoy Gateway (`llmd-envoy-gateway`)
-> **Why an in-cluster Envoy proxy?**  
-> External/Internal Google Cloud Load Balancers rely on health-check probes from `35.191.0.0/16` and `130.211.0.0/22`. In environments where automated firewall enforcers strip non-RFC1918 ingress ranges, the GKE Gateway ILB intermittently returns HTTP `503`. Running `llmd-envoy-gateway` directly on the CPU node (`hostPort: 8080`) with `envoy.filters.http.ext_proc` (`FULL_DUPLEX_STREAMED` to `gaie-pd-epp:9002`) and `ORIGINAL_DST` routing keeps 100% of traffic on RFC1918 internal IPs and permanently eliminates HTTP 503 windows.
-
-```bash
 EPP_SVC_IP=$(kubectl --context="${CTX_TPU}" get svc gaie-pd-epp -o jsonpath='{.spec.clusterIP}')
-sed "s|172.24.18.142|${EPP_SVC_IP}|g" ./manifests/tpu/llmd-envoy-gateway.yaml \
-  | kubectl --context="${CTX_TPU}" apply -f -
-kubectl --context="${CTX_TPU}" rollout status deploy/llmd-envoy-gateway --timeout=60s
-
-GATEWAY_NODE_IP=$(kubectl --context="${CTX_TPU}" get pod -l app=llmd-envoy-gateway -o jsonpath='{.items[0].status.hostIP}')
-echo "In-cluster llm-d Envoy Gateway ready at: http://${GATEWAY_NODE_IP}:8080/v1/chat/completions"
+sed "s|172.24.18.142|${EPP_SVC_IP}|g" manifests/tpu/llmd-envoy-gateway.yaml | kubectl --context="${CTX_TPU}" apply -f -
+kubectl --context="${CTX_TPU}" rollout status deploy/llmd-envoy-gateway --timeout=120s
 ```
 
----
+The demo cluster ran exactly these CRDs: GAIE **v1.0.1**. With the Gateway API enabled, GKE's addon manager also manages the v1 `InferencePool` CRD and upgraded it to its own newer revision (v1.4.0 here). Expect that one CRD to differ.
 
-### Step 4: Deploy `keynote-driver` & Launch the Stage Dashboard
+**Smoke test from any pod in the VPC:** `curl http://<gateway node IP>:8080/v1/chat/completions -H 'Content-Type: application/json' -d '{"model":"google/gemma-4-12B-it","messages":[{"role":"user","content":"hi"}],"max_tokens":8}'`. The gateway node IP is the `hostIP` of the `llmd-envoy-gateway` pod.
 
-#### 4.1 Deploy the `keynote-driver` Pod & Upload Binary + Dashboard UI
+### 6.10 Keynote driver and dashboard
+
 ```bash
-export CTX_SUB="gke_${PROJECT_ID}_${ZONE}_${SUBSTRATE_CLUSTER}"
+cd "${REPO_DIR}"
+kubectl --context="${CTX_SUB}" apply -f manifests/substrate/keynote-driver.yaml
+kubectl --context="${CTX_SUB}" -n keynote-demo wait --for=condition=Ready pod/keynote-driver --timeout=120s
 
-kubectl --context="${CTX_SUB}" apply -f ./manifests/substrate/keynote-driver.yaml
-kubectl --context="${CTX_SUB}" -n keynote-demo wait --for=condition=Ready pod/keynote-driver --timeout=90s
+GATEWAY_IP=$(kubectl --context="${CTX_TPU}" get pod -l app=llmd-envoy-gateway -o jsonpath='{.items[0].status.hostIP}')
+POD1_IP=$(kubectl --context="${CTX_TPU}" get pod -l app=gemma4-12b-torchtpu,llm-d.ai/replica=pod-1 -o jsonpath='{.items[0].status.podIP}')
+POD2_IP=$(kubectl --context="${CTX_TPU}" get pod -l app=gemma4-12b-torchtpu,llm-d.ai/replica=pod-2 -o jsonpath='{.items[0].status.podIP}')
+EPP_IP=$(kubectl --context="${CTX_TPU}" get pod -l inferencepool=gaie-pd-epp -o jsonpath='{.items[0].status.podIP}')
+echo "gateway=${GATEWAY_IP} pod-1=${POD1_IP} pod-2=${POD2_IP} epp=${EPP_IP}"
 
-# Build keynote_driver from your Agent Substrate checkout with substrate-bench/keynote_driver/main.go
-cp ./substrate-bench/keynote_driver/main.go /path/to/substrate/demos/sandbox/keynote_driver/main.go
-(cd /path/to/substrate && CGO_ENABLED=0 go build -ldflags="-s -w" -o /tmp/bin_keynote_driver ./demos/sandbox/keynote_driver)
-
-# Copy binary and single-file dashboard HTML into the keynote-driver pod
-kubectl --context="${CTX_SUB}" -n keynote-demo cp /tmp/bin_keynote_driver keynote-driver:/work/keynote_driver.new
-kubectl --context="${CTX_SUB}" -n keynote-demo cp ./dashboard/index.html keynote-driver:/work/static/index.html
-
-POD1_IP=$(kubectl --context="${CTX_TPU}" get pod -l app=gemma4-12b-torchtpu,pod-index=pod-1 -o jsonpath='{.items[0].status.podIP}')
-POD2_IP=$(kubectl --context="${CTX_TPU}" get pod -l app=gemma4-12b-torchtpu,pod-index=pod-2 -o jsonpath='{.items[0].status.podIP}')
-EPP_POD_IP=$(kubectl --context="${CTX_TPU}" get pod -l inferencepool=gaie-pd-epp -o jsonpath='{.items[0].status.podIP}')
-
-kubectl --context="${CTX_SUB}" -n keynote-demo exec keynote-driver -- sh -c "
-  chmod +x /work/keynote_driver.new &&
-  mv /work/keynote_driver.new /work/keynote_driver &&
-  echo '-listen=:8090 -static-dir=/work/static -runs-dir=/work/runs -ateapi=api.ate-system.svc:443 -atenet=atenet-router.ate-system.svc:80 -atespace=ate-demo-sandbox -agents=1000 -model=google/gemma-4-12B-it -gateway-url=http://${GATEWAY_NODE_IP}:8080/v1/chat/completions -vllm=pod-1=${POD1_IP}:8000,pod-2=${POD2_IP}:8000 -epp=${EPP_POD_IP}:9090 -max-tokens=50 -temperature=1.0 -rest-mode=pause -grpc-conns=32 -suspend-concurrency=200' > /work/args &&
-  kill \$(pidof keynote_driver) 2>/dev/null || true
-"
+D="kubectl --context=${CTX_SUB} -n keynote-demo"
+$D cp dashboard/index.html keynote-driver:/work/static/index.html
+$D cp "${BIN_DIR}/keynote_driver" keynote-driver:/work/keynote_driver.new
+# kubectl cp can report success on a truncated copy: compare checksums before switching.
+[ "$($D exec keynote-driver -- sha256sum /work/keynote_driver.new | cut -d' ' -f1)" = "$(sha256sum "${BIN_DIR}/keynote_driver" | cut -d' ' -f1)" ] || { echo "copy corrupted, re-run"; exit 1; }
+$D exec keynote-driver -- sh -c "
+  echo '-listen=:8090 -static-dir=/work/static -runs-dir=/work/runs -ateapi=api.ate-system.svc:443 -atenet=atenet-router.ate-system.svc:80 -atespace=ate-demo-sandbox -agents=1000 -model=google/gemma-4-12B-it -gateway-url=http://${GATEWAY_IP}:8080/v1/chat/completions -vllm=pod-1=${POD1_IP}:8000,pod-2=${POD2_IP}:8000 -epp=${EPP_IP}:9090 -max-tokens=50 -temperature=1.0 -rest-mode=pause -grpc-conns=32 -suspend-concurrency=200' > /work/args &&
+  chmod +x /work/keynote_driver.new && mv /work/keynote_driver.new /work/keynote_driver &&
+  { kill \$(pidof keynote_driver) 2>/dev/null || true; }"
+sleep 5 && $D exec keynote-driver -- tail -n 3 /work/driver.log
 ```
 
-#### 4.2 Open the Live Cluster Dashboard (`:8090`) or Rehearsal Mock Server (`:8765`)
+The pod's shell loop restarts `/work/keynote_driver` whenever it exits, so this sequence also upgrades a running driver. The pod IPs change when the vLLM or EPP pods restart; re-run the block after any restart.
+
+### 6.11 Create the 1,000 agents and warm them up
+
 ```bash
-# Live cluster dashboard (connected to the 1,000 real gVisor sandboxes & TPU v6e pods):
-kubectl --context="${CTX_SUB}" -n keynote-demo port-forward --address 0.0.0.0 pod/keynote-driver 8090:8090
-# Open http://localhost:8090/
-
-# Standalone rehearsal mock server (zero cluster dependencies, great for offline laptop rehearsal):
-python3 ./dashboard/mock_server.py 8765
-# Open http://localhost:8765/
+kubectl --context="${CTX_SUB}" -n keynote-demo port-forward pod/keynote-driver 8090:8090 &
+curl -s -X POST localhost:8090/api/reconcile -d '{}'            # creates agent-0001..1000 from sandbox-dense
+until curl -s localhost:8090/api/state | python3 -c 'import json,sys; sys.exit(json.load(sys.stdin)["phase"]!="idle")'; do sleep 5; done
+curl -s localhost:8090/api/state | python3 -c 'import json,sys; print(json.load(sys.stdin).get("note"))'
 ```
 
----
+Then do the [health check](#7-pre-show-health-check) once. A new actor's first wake restores from the template's golden snapshot in GCS, which is slower. Pausing it afterwards leaves a node-local snapshot, which is what makes later wakes fast.
 
-## 6. Stage Runbook (4-Minute Live Demo Flow)
+### 6.12 Open the dashboard, or rehearse offline
 
-1. **Start at `50/50` Idle (`0 / 1,000`)**: Show that all 1,000 gVisor agent sandboxes are paused (`0` active sandboxes, `0` CPU/memory consumed).
-2. **Slide View Split to `Agents 70/30` & Click `⚡ Burst 0 → 1,000`**:
-   * Watch the `50×20` sandbox grid light up green/blue as all 1,000 gVisor sandboxes wake from node-local snapshots in **`4.95s` (`p50 = 3.15s`, first wake `602 ms`)**.
-   * Point out the `1,000 ms` step ramp chart and the live PyTorch joke ticker streaming unique Gemma 4 12B responses from inside the sandboxes.
-3. **Slide View Split to `llm-d 30/70` (Balanced Mode)**:
-   * Highlight the **`32px` KV Cache Usage %** and **`>90%` KV Cache Hit (Prompt %)** hero boxes on `pod-1` and `pod-2` — showing how `llm-d` reuses the shared 286-token system prompt prefix across all 1,000 agents while generating `~2,600+ output tok/s`.
-4. **Click `Steer 80/20`**:
-   * Watch the top split bar and pod cards smoothly shift to **`80% pod-1 / 20% pod-2`** via `x-target-pod` header affinity, with `pod-1` KV cache utilization rising accordingly.
-5. **Click `Priority`**:
-   * Traffic automatically steps up to `300 req/s`, saturating the TPU pool and activating `llm-d` `InferenceObjective` flow control. Show how **`premium`** requests bypass **`standard`** and **`best-effort`** queues with a fraction of the queue wait time.
-6. **Click `⏸ Suspend All (1,000 → 0)`**:
-   * All 1,000 agents checkpoint their memory and filesystem state back to zero in `~3.4s–5.0s`.
+- **Live:** keep the port-forward running and open `http://localhost:8090/`.
+- **Offline rehearsal:** run `python3 dashboard/mock_server.py 8765` and open `http://localhost:8765/`. The mock simulates every number.
+- **Screenshots of the mock:** with the mock running, `node dashboard/shoot.mjs --out=./shots` clicks through the demo in headless Chrome and saves 13 PNGs in about a minute. It needs Node 22 and Google Chrome.
 
 ---
 
-## 7. Current Progress & Live Cluster Optimization Status (Sep 2026)
+## 7. Pre-show health check
 
-### 7.1 Completed: Dashboard & Simulation (`:8765`) + Live Orchestrator (`keynote_driver/main.go` on `:8090`)
-1. **`FLEET IDLE RATE` Metric & ~90% Idle Duty Cycle (`dashboard/` & `substrate-bench/keynote_driver/main.go`)**:
-   * Added **`FLEET IDLE RATE`** (`90%` during `Simulate Traffic`, `100%` when suspended, `0%` right after `Wake Agents`) to the top Agent Substrate hero metrics.
-   * **Fixed Live Cluster Random Agent Rotation (`keynote_driver/main.go`)**:
-     * Previously, `startDutyCycleLocked` left the initial `rank < 100` agents permanently in `stRunning` after `runFirstJoke`, and `trafficLoop` continuously toggled those same ~100 agents between `stRunning` and `stRequesting`.
-     * Updated `startDutyCycleLocked` so the initial 100 agents immediately call `dutyPauseOne` after their first joke; `dutyLoop` (`96` worker goroutines) now continuously wakes random `stSuspended` agents across all 1,000 slots, holds `stRunning` briefly (`70–140ms`), fires `askJoke` (`stRequesting`), and checkpoints back to rest (`dutyPauseOne`), while `trafficLoop` no longer pins running agents during `dutyCycle`.
-2. **Eliminated Pre-Burst `preflight` + Gate Dead Time (`keynote_driver/main.go`)**:
-   * Skips the `2 × ListActors` preflight RPCs (`~500ms`) when all 1,000 agents are already at rest (`stSuspended`) and reduces the pre-burst gate sleep from `300ms` to `20ms` (`~780ms` saved before `T+0`).
+Do this once before the show, with the port-forward from §6.11 running, and then don't touch the agents until the show. It makes sure the snapshots used on stage come from a clean, idle pause.
 
-### 7.2 Completed: Live Cluster `ateapi` + `atelet` Wake Speed Optimizations (`12.2s → 3.66s` Sync / `1.83s` Async)
-All control-plane and node-daemon patches are saved in [`patches/ateapi-atelet-fast-wake.patch`](./patches/ateapi-atelet-fast-wake.patch), [`patches/runsc_fast_sync.c`](./patches/runsc_fast_sync.c), and [`patches/runsc_fast_async.c`](./patches/runsc_fast_async.c):
-* **`ateapi` (`cmd/ateapi/`)**:
-  * In-memory worker cache (`workercache.TryClaimPrewarmed`) + actor/template cache on `ResumeActor` (eliminating 4 synchronous Postgres queries on the hot path).
-  * Batched outbox (`batchSize = 256`, `pollInterval = 5ms`), pre-warmed gRPC connection pool to all 25 `atelet` DaemonSet pods, and parallelized `PodAllocator.Reconcile` (`64` workers).
-* **`atelet` (`cmd/atelet/`) + `runsc_fast`**:
-  * In-memory OCI image metadata cache (`imagecache.memHit`), skipped redundant `ResetActorDirs` on `ResumeActor`, and per-node restore concurrency semaphore (`restoreSem = 8`).
-  * **Synchronous `runsc_fast_sync.c` (`--shared-root=/tmp/runsc-shared-root --gofer-network-namespace=host --host-settings=ignore --restore-spec-validation=ignore`)**:
-    * Achieved **`3,664 ms` (`p50 = 1,954 ms`, `min = 278 ms`, `0` failed)** for `0 → 1,000` real gVisor restores and **`3,376 ms`** for `1,000 → 0` `PauseActor` checkpoints.
-  * **Asynchronous `runsc_fast_async.c`**:
-    * Achieved **`1,832 ms` (`p50 = 945 ms`, `min = 123 ms`, `~545 agents/sec`)** for `0 → 1,000` wakes (`b-tlydoo-0001`).
+```bash
+post() { curl -s -X POST -H 'Content-Type: application/json' "localhost:8090/api/$1" -d "${2:-{\}}"; echo; }
+state() { curl -s localhost:8090/api/state | python3 -c 'import json,sys,collections; d=json.load(sys.stdin); b=d["burst"] or {}; print(d["phase"], dict(collections.Counter(d["agents"])), "all_running_ms", b.get("all_running_ms"), "wake_failed", b.get("wake_failed"), "all_suspended_ms", b.get("all_suspended_ms"))'; }
+post strategy '{"mode":"balanced"}'
+post burst '{"hold":true,"wake_only":true}'; sleep 8; state     # expect: running {'2': 1000} all_running_ms ~3000 wake_failed 0 ...
+kubectl ate --context="${CTX_SUB}" get actors -a ate-demo-sandbox -o json \
+  | python3 -c 'import json,sys,collections; d=json.load(sys.stdin); d=d if isinstance(d,list) else d.get("actors",[]); print(collections.Counter(a["status"]["state"] for a in d))'   # expect: Counter({'ACTOR_STATE_RUNNING': 1000})
+post suspend; sleep 6; state                                     # expect: idle {'0': 1000} ... all_suspended_ms ~2500
+kubectl ate --context="${CTX_SUB}" get actors -a ate-demo-sandbox -o json \
+  | python3 -c 'import json,sys,collections; d=json.load(sys.stdin); d=d if isinstance(d,list) else d.get("actors",[]); print(collections.Counter(a["status"]["state"] for a in d))'   # expect: Counter({'ACTOR_STATE_PAUSED': 1000})
+```
 
----
+**If an agent does not reach RUNNING:**
+1. Look for `inconsistent private memory files on restore` in the driver log: `kubectl --context="${CTX_SUB}" -n keynote-demo exec keynote-driver -- tail -n 200 /work/driver.log`.
+2. Delete that agent: `kubectl ate --context="${CTX_SUB}" delete actor --any-state agent-NNNN -a ate-demo-sandbox`.
+3. Re-create it: `post reconcile`, then wait until `state` prints `idle` again.
+4. Run this health check again.
 
-## 8. TODO (Next Steps)
+## 8. Stage runbook
 
-- [ ] **1. Finish `runsc_fast_async.c` `--overlay2=none` fix on the `atelet` DaemonSet (or revert to `runsc_fast_sync.c` + rootfs pre-unpack)**:
-  * **Root Cause Identified**: When `atelet` skips `SetupBundleRootfs` on the deployed `sandbox-workerpool` (`v0.1.0-gke.1`), `bundles/_pause/rootfs` and `bundles/sandbox/rootfs` share the `/var/lib/ateom-gvisor` mount source. Because `runsc` defaults to `--overlay2=root:self`, `runsc restore _pause` creates `.gvisor.filestore._pause` on the mount source and `runsc restore sandbox` aborts with `mount source already has a filestore file ".gvisor.filestore._pause"; repeated submounts are not supported with overlay optimizations`.
-  * **Fix**: `--overlay2=none` has been added to [`patches/runsc_fast_async.c`](./patches/runsc_fast_async.c) (or re-enable `SetupBundleRootfs` once per actor on `PrepareTask`). Compile into `cmd/atelet/runsc_fast`, rebuild `bin_atelet.gz`, roll out to the 25 `atelet` DaemonSet pods, and run `POST /api/reconcile` on `:8090` to return all 1,000 actors to `PAUSED`.
-- [ ] **2. End-to-End Live Cluster Verification on `:8090`**:
-  * Verify `Wake Agents` (`0 → 1,000`) completes in **`<= 3.0s`** (`~1.8s` with `runsc_fast_async.c`) with all 1,000 sandbox containers healthy.
-  * Verify `Simulate Traffic` on `:8090` visually matches the `:8765` simulation: **~90% Fleet Idle Rate** (`~100` active / `~900` suspended) with random agents across the entire `50×20` grid continuously waking (`waking` → `running`), sending a request (`requesting`), and suspending (`suspending` → `suspended`).
-  * Verify `Suspend All` cleanly checkpoints all active agents back to `0 / 1,000` (`100%` idle) with zero checkpoint errors.
+1. **Before walking on:** the health check passed; the dashboard shows 0 / 1,000 and Balanced.
+2. **Wake Agents:** the counter races to 1,000 in about 3 s. It sends no LLM calls.
+3. **Simulate Traffic:** agents cycle at about 90% idle and jokes scroll. Click a joke to magnify it.
+4. **Steer 80/20:** the split bar moves to 80/20 within seconds.
+5. **Priority:** raises the load to 300 req/s and tags requests by band. On the live pool, queues and waits stay near zero (§2.2), so talk to the bands rather than to a latency gap.
+6. **Balanced**, then **Suspend all:** suspend takes about 0.6 s from Balanced. From Priority it takes 1.3–3.8 s, because it waits for queued calls.
+7. After any reconcile or agent re-creation, do one warm-up wake + suspend (the health check) before the next show.
 
+## 9. Known issues and disclosures
+
+**Safety trade-offs (demo only):**
+- **Postgres:** `fsync=off` and `full_page_writes=off`. A node crash can corrupt the Substrate database.
+- **Node tuner:** privileged and hostPID. It remounts `/var` with `nobarrier,commit=600`, so up to 10 minutes of writes can be lost and the filesystem can be corrupted on a crash. It also changes sysctls, THP and the CPU governor, and runs a page-cache warmer. Its effects persist until the nodes are recreated.
+- **`runsc_fast` flags:** `--gofer-network-namespace=host`, `--host-settings=ignore` and `--restore-spec-validation=ignore` weaken gVisor isolation and checks. `-log=/dev/null` discards gVisor logs, which is why a sandbox crash could not be root-caused.
+- **`http_srv` in `postgres-0`:** serves the whole Postgres data directory, including raw database files, unauthenticated on the pod network.
+- **Patched ate-api:**
+  - It must run as a single replica, which is a single point of failure.
+  - A revoked token keeps working for up to 20 s because of the JWT cache.
+  - Worker binding is asynchronous. RUNNING is still only set after the restore completes; we checked this.
+- **Patched atelet:** writes files non-atomically and without fsync.
+
+**Honesty notes for the stage:**
+- **Wake Agents** makes no LLM calls; jokes start with Simulate Traffic.
+- Each duty-cycle agent is held "running" for 70–140 ms before its request so the grid is visible.
+- Numbers on the `:8765` mock and in `docs/images/` are simulated.
+- The page-cache warmer keeps checkpoints in RAM.
+- **Priority** does not show a latency gap on the live pool (§2.2).
+
+**Operational risks:**
+- **Unrestorable snapshot.** Once in about 13,000 pause/restore cycles, an agent's app died just before a pause. gVisor checkpointed it with no error, and every later restore failed (`inconsistent private memory files on restore`). "Wake 1,000" then stops at 999 until that agent is re-created (see the §7 repair steps).
+- **Node recreation destroys node-local snapshots.** This includes auto-upgrade, auto-repair and maintenance. Agents paused on the affected node can no longer be restored and must be re-created. Upstream also warns that actors awake when their worker dies go `CRASHED`.
+  - **Auto-upgrade is on for every pool in both demo clusters, and there is no maintenance exclusion.** The TPU cluster already moved from 1.35.7 to 1.35.8.
+  - Consider `--no-enable-autoupgrade` on the Substrate pools, and a maintenance exclusion, through the show.
+- **Spot TPU nodes can be preempted.** The vLLM pod then restarts on a new node, which takes minutes. The pod IPs change, so re-run §6.10.
+- **`postgres-0` restarts** stop `http_srv`. Re-run §6.5 before anything restarts ate-api or atelet.
+- **Wake-time margin is thin.** It depends on the per-node placement imbalance (§2.1).
+
+## 10. How this guide was verified
+
+Done on 2026-09-26 against the live clusters. The rule was: run every build, deploy and demo step for real; check cluster, VPC and TPU creation read-only; recreate nothing. "As written" means the command block was copied out of this README and run unchanged, with only the §6.0 variables set.
+
+| Step | How it was checked | Result |
+|---|---|---|
+| 6.1 VPC | `gcloud compute networks describe`, `subnets describe`, `firewall-rules list` | Custom-mode VPC. Subnet 172.24.0.0/20 with private Google access and secondary ranges `pods` 172.28.0.0/14 and `services` 172.24.16.0/20 (GKE added one more for the Substrate cluster's pods). The internal-allow rule has an auto-generated name but the same direction, priority, source ranges and protocols. |
+| 6.2 Substrate cluster | `gcloud container clusters describe`; the `setup-gcp` and `ate-setup` sources at `fa6d949` (subcommands and environment variables); the clone, checkout and `kubectl-ate` build lines as written; the template rendered with `envsubst` compared with `kubectl ate get actor-template`; the create line as written | Matches §3. The rendered template equals the live one field for field, and the create line returns `AlreadyExists` without changing it. `setup-gcp` and `ate-setup` were **not** run: they would modify or recreate the live cluster. |
+| 6.3 Build | As written, in a new directory with a fresh clone of upstream | The patch applies cleanly. `runsc_fast`, the three binaries, both `.gz` files and `http_srv` are byte-identical to what runs in the cluster. |
+| 6.4 `scale-control-plane.sh` + node tuner | As written: dry run, real run, node-tuner apply | Everything `unchanged`; no pod restarted |
+| 6.5 `deploy-patched-binaries.sh` | As written, with the §6.3 build | Both binaries `unchanged`, served correctly over HTTP, specs unchanged, nothing restarted. An earlier real run, with a byte-different build of the same code, uploaded the binaries and restarted ate-api and all 25 atelets in 46 s. |
+| 6.6 TPU cluster | `gcloud container clusters describe`, including its node pools | Matches §3 |
+| 6.7 vLLM image | `gcloud artifacts docker images describe` at the digest in the manifest | Present, and both vLLM pods run that digest. **Not rebuilt** (TPU side is read-only). |
+| 6.8 vLLM pods | `kubectl diff` of `prereqs.yaml`, the deployments and the render Service; a positive control confirmed `diff` catches changes | No differences |
+| 6.9 llm-d | `kubectl diff` of the objectives and the gateway; `helm template` with the repo values against `helm get manifest`; `kubectl diff` of the v1.0.1 CRDs | No differences. All 7 Helm objects are identical. The only CRD difference is the GKE-managed `InferencePool`. |
+| 6.10 driver | As written, including `kubectl apply` of `keynote-driver.yaml` | Same args as before. The driver restarted with the §6.3 build (`fdef79b4`) and saw 1,000 paused agents. The pod itself was not recreated. |
+| 6.11 reconcile | The `reconcile`, wait and `note` lines as written | Works: `re-created 0 … 1000 paused, 0 not at rest`. All 1,000 agents already existed, so the create path was not exercised. |
+| 6.12 mock | `mock_server.py`, `curl` of the API, `shoot.mjs` as written | All 13 screenshots, no console errors. This check found a stale wait in `shoot.mjs` that timed out at the suspend step; it is fixed. |
+| 7 health check | As written | 1,000 RUNNING in 3,085 ms with 0 failed; then 1,000 PAUSED in 2,440 ms, and 0 sandboxes on the 25 nodes |
+| Full demo cycle | Driver API plus ground truth (ate-api states, sandbox processes on the nodes) | See §2: Balanced → 80/20 → Priority → Balanced, 21,681 LLM requests with 0 failed, 1,000 PAUSED and 0 sandboxes after suspend |
+
+**Not run:**
+- cluster, VPC and node-pool creation;
+- the vLLM image build;
+- `setup-gcp` and `ate-setup`;
+- §6.11 creation of new agents (all 1,000 already existed);
+- §11.
+
+## 11. Cleanup and revert
+
+None of these were run during verification.
+
+```bash
+# Stop the node tuner (its mount/sysctl changes persist until the nodes are recreated)
+kubectl --context="${CTX_SUB}" -n ate-system delete ds ate-node-tuner
+# Stop the file server inside postgres-0 and remove the uploaded binaries
+kubectl --context="${CTX_SUB}" -n ate-system exec postgres-0 -c postgres -- sh -c \
+  'kill $(pidof http_srv); rm -f /var/lib/postgresql/data/bin_*.gz*'
+# Back to stock ate-api/atelet: the init containers were added by patch, so delete the objects and redeploy
+kubectl --context="${CTX_SUB}" -n ate-system delete deploy/ate-api-server ds/atelet-v0-1-0-gke-1
+(cd "${SUBSTRATE_SRC}" && git stash && KUBECTL_CONTEXT="${CTX_SUB}" go run ./cmd/ate-setup deploy ate-system \
+  --no-dev-env --image-repo us-docker.pkg.dev/gke-substrate-release/substrate --image-tag v0.1.0-gke.1)
+# Everything
+gcloud container clusters delete "${SUBSTRATE_CLUSTER}" --zone="${ZONE}" --project="${PROJECT_ID}"
+gcloud container clusters delete "${TPU_CLUSTER}" --zone="${ZONE}" --project="${PROJECT_ID}"
+gcloud storage rm --recursive "gs://${BUCKET_NAME}"
+```

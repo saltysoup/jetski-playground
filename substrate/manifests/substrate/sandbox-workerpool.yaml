@@ -1,0 +1,30 @@
+# WorkerPool for the 1,000 keynote agents (atespace/namespace ate-demo-sandbox).
+# Starts from the upstream sandbox demo's pool (demos/sandbox/sandbox.yaml.tmpl,
+# created by `ate-setup deploy demo sandbox`) with these changes:
+#   * 1,600 pre-warmed worker pods = 64 per c3-standard-4 node on 25 nodes, so every
+#     node keeps idle workers when all 1,000 agents are awake (an agent is pinned
+#     to the node that holds its local snapshot; today's placement is 32-47 per node).
+#   * requests cpu 10m / memory 64Mi so 64 workers fit on a 4-vCPU node. Each
+#     worker still advertises capacity cpu 1 / memory 256Mi (from the limits),
+#     which matches the sandbox-dense ActorTemplate.
+#   * GKE release worker image, and pinned to the labelled Substrate nodes.
+apiVersion: ate.dev/v1alpha1
+kind: WorkerPool
+metadata:
+  name: sandbox-workerpool
+  namespace: ate-demo-sandbox
+  labels:
+    workload: sandbox
+spec:
+  replicas: 1600
+  workerImage: us-docker.pkg.dev/gke-substrate-release/substrate/ateom-gvisor:v0.1.0-gke.1
+  template:
+    nodeSelector:
+      ate.dev/substrate-version: "v0.1.0-gke.1"
+    resources:
+      limits:
+        cpu: "1"
+        memory: 256Mi
+      requests:
+        cpu: 10m
+        memory: 64Mi

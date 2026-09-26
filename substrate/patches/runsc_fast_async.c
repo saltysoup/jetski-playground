@@ -1,3 +1,12 @@
+// DO NOT USE. A failed experiment, kept only as a record (see ../implementation.md, section 6).
+//
+// For `runsc restore` this wrapper appends the command to a per-actor queue file, forks a
+// background process to run it, and returns immediately. atelet therefore reports the restore
+// as done, and ate-api marks the actor RUNNING, before the sandbox exists. It made "wake 1,000"
+// look like 1.83 s, but it was not real, and it left 999 orphaned gVisor sandboxes with
+// corrupt runsc state that took manual cleanup to recover.
+//
+// The deployed wrapper is runsc_fast_sync.c.
 #define _GNU_SOURCE
 #include <errno.h>
 #include <fcntl.h>

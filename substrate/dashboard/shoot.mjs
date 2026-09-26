@@ -7,14 +7,14 @@
 //                  [--chrome=google-chrome] [--cdp=9333] [--mid=250  (page counter that triggers 02_mid_burst)]
 import {spawn} from 'node:child_process';
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 
 const args = Object.fromEntries(process.argv.slice(2).map((a) => { const [k, ...v] = a.replace(/^--/, '').split('='); return [k, v.join('=') || '1']; }));
 const BASE = args.base || 'http://127.0.0.1:8765/';
-const OUT = args.out || '/usr/local/google/home/ikwak/.gemini/jetski/brain/7bcd9e72-f51a-48fc-aa61-4d7812ec7679/dashboard_shots';
+const OUT = args.out || './shots';
 const PORT = +(args.cdp || 9333);
-const HERE = path.dirname(new URL(import.meta.url).pathname);
-const PROFILE = path.join(HERE, '.chrome-profile');
+const PROFILE = path.join(os.tmpdir(), `keynote-shoot-chrome-${PORT}`);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 fs.mkdirSync(OUT, {recursive: true});
 
@@ -162,7 +162,8 @@ async function mainScenario() {
   console.log('suspend:', await click('#btnSuspend'));
   await sleep(380);
   await shot('06_draining');
-  await waitFor((s) => s.phase === 'suspending' && s.burst.suspend_elapsed_ms >= 1600, 20000, 'mid suspend');
+  // From the duty cycle only ~100 agents are up, so the suspend clock can finish in well under a second.
+  await waitFor((s) => s.phase !== 'suspending' || s.burst.suspend_elapsed_ms >= 300, 20000, 'mid suspend');
   await shot('06a_suspending');
   await waitFor((s) => s.phase === 'idle', 30000, 'suspended');
   await sleep(900);

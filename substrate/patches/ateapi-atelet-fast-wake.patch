@@ -937,7 +937,7 @@ index e35af16..b01532d 100644
  			},
  		})
 diff --git a/cmd/atelet/main.go b/cmd/atelet/main.go
-index 0314faa..b485242 100644
+index 0314faa..e6d3302 100644
 --- a/cmd/atelet/main.go
 +++ b/cmd/atelet/main.go
 @@ -993,8 +993,10 @@ func (s *AteomHerder) Restore(ctx context.Context, req *ateletpb.RestoreRequest)
@@ -1056,7 +1056,7 @@ index 0314faa..b485242 100644
 -	if err := f.Chmod(perm); err != nil {
 -		f.Close()
 -		return err
-+var restoreSem = make(chan struct{}, 24)
++var restoreSem = make(chan struct{}, 12)
 +
 +func actorDirsAlreadyReset(actorUID string) bool {
 +	if _, err := os.Stat(filepath.Join(ateompath.OCIBundleDir(actorUID), ocispec.PauseContainer)); !errors.Is(err, os.ErrNotExist) {
