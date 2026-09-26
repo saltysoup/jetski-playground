@@ -384,4 +384,42 @@ python3 ./dashboard/mock_server.py 8765
 5. **Click `Priority`**:
    * Traffic automatically steps up to `300 req/s`, saturating the TPU pool and activating `llm-d` `InferenceObjective` flow control. Show how **`premium`** requests bypass **`standard`** and **`best-effort`** queues with a fraction of the queue wait time.
 6. **Click `⏸ Suspend All (1,000 → 0)`**:
-   * All 1,000 agents checkpoint their memory and filesystem state back to zero in `~5s`.
+   * All 1,000 agents checkpoint their memory and filesystem state back to zero in `~3.4s–5.0s`.
+
+---
+
+## 7. Current Progress & Live Cluster Optimization Status (Sep 2026)
+
+### 7.1 Completed: Dashboard & Simulation (`:8765`) + Live Orchestrator (`keynote_driver/main.go` on `:8090`)
+1. **`FLEET IDLE RATE` Metric & ~90% Idle Duty Cycle (`dashboard/` & `substrate-bench/keynote_driver/main.go`)**:
+   * Added **`FLEET IDLE RATE`** (`90%` during `Simulate Traffic`, `100%` when suspended, `0%` right after `Wake Agents`) to the top Agent Substrate hero metrics.
+   * **Fixed Live Cluster Random Agent Rotation (`keynote_driver/main.go`)**:
+     * Previously, `startDutyCycleLocked` left the initial `rank < 100` agents permanently in `stRunning` after `runFirstJoke`, and `trafficLoop` continuously toggled those same ~100 agents between `stRunning` and `stRequesting`.
+     * Updated `startDutyCycleLocked` so the initial 100 agents immediately call `dutyPauseOne` after their first joke; `dutyLoop` (`96` worker goroutines) now continuously wakes random `stSuspended` agents across all 1,000 slots, holds `stRunning` briefly (`70–140ms`), fires `askJoke` (`stRequesting`), and checkpoints back to rest (`dutyPauseOne`), while `trafficLoop` no longer pins running agents during `dutyCycle`.
+2. **Eliminated Pre-Burst `preflight` + Gate Dead Time (`keynote_driver/main.go`)**:
+   * Skips the `2 × ListActors` preflight RPCs (`~500ms`) when all 1,000 agents are already at rest (`stSuspended`) and reduces the pre-burst gate sleep from `300ms` to `20ms` (`~780ms` saved before `T+0`).
+
+### 7.2 Completed: Live Cluster `ateapi` + `atelet` Wake Speed Optimizations (`12.2s → 3.66s` Sync / `1.83s` Async)
+All control-plane and node-daemon patches are saved in [`patches/ateapi-atelet-fast-wake.patch`](./patches/ateapi-atelet-fast-wake.patch), [`patches/runsc_fast_sync.c`](./patches/runsc_fast_sync.c), and [`patches/runsc_fast_async.c`](./patches/runsc_fast_async.c):
+* **`ateapi` (`cmd/ateapi/`)**:
+  * In-memory worker cache (`workercache.TryClaimPrewarmed`) + actor/template cache on `ResumeActor` (eliminating 4 synchronous Postgres queries on the hot path).
+  * Batched outbox (`batchSize = 256`, `pollInterval = 5ms`), pre-warmed gRPC connection pool to all 25 `atelet` DaemonSet pods, and parallelized `PodAllocator.Reconcile` (`64` workers).
+* **`atelet` (`cmd/atelet/`) + `runsc_fast`**:
+  * In-memory OCI image metadata cache (`imagecache.memHit`), skipped redundant `ResetActorDirs` on `ResumeActor`, and per-node restore concurrency semaphore (`restoreSem = 8`).
+  * **Synchronous `runsc_fast_sync.c` (`--shared-root=/tmp/runsc-shared-root --gofer-network-namespace=host --host-settings=ignore --restore-spec-validation=ignore`)**:
+    * Achieved **`3,664 ms` (`p50 = 1,954 ms`, `min = 278 ms`, `0` failed)** for `0 → 1,000` real gVisor restores and **`3,376 ms`** for `1,000 → 0` `PauseActor` checkpoints.
+  * **Asynchronous `runsc_fast_async.c`**:
+    * Achieved **`1,832 ms` (`p50 = 945 ms`, `min = 123 ms`, `~545 agents/sec`)** for `0 → 1,000` wakes (`b-tlydoo-0001`).
+
+---
+
+## 8. TODO (Next Steps)
+
+- [ ] **1. Finish `runsc_fast_async.c` `--overlay2=none` fix on the `atelet` DaemonSet (or revert to `runsc_fast_sync.c` + rootfs pre-unpack)**:
+  * **Root Cause Identified**: When `atelet` skips `SetupBundleRootfs` on the deployed `sandbox-workerpool` (`v0.1.0-gke.1`), `bundles/_pause/rootfs` and `bundles/sandbox/rootfs` share the `/var/lib/ateom-gvisor` mount source. Because `runsc` defaults to `--overlay2=root:self`, `runsc restore _pause` creates `.gvisor.filestore._pause` on the mount source and `runsc restore sandbox` aborts with `mount source already has a filestore file ".gvisor.filestore._pause"; repeated submounts are not supported with overlay optimizations`.
+  * **Fix**: `--overlay2=none` has been added to [`patches/runsc_fast_async.c`](./patches/runsc_fast_async.c) (or re-enable `SetupBundleRootfs` once per actor on `PrepareTask`). Compile into `cmd/atelet/runsc_fast`, rebuild `bin_atelet.gz`, roll out to the 25 `atelet` DaemonSet pods, and run `POST /api/reconcile` on `:8090` to return all 1,000 actors to `PAUSED`.
+- [ ] **2. End-to-End Live Cluster Verification on `:8090`**:
+  * Verify `Wake Agents` (`0 → 1,000`) completes in **`<= 3.0s`** (`~1.8s` with `runsc_fast_async.c`) with all 1,000 sandbox containers healthy.
+  * Verify `Simulate Traffic` on `:8090` visually matches the `:8765` simulation: **~90% Fleet Idle Rate** (`~100` active / `~900` suspended) with random agents across the entire `50×20` grid continuously waking (`waking` → `running`), sending a request (`requesting`), and suspending (`suspending` → `suspended`).
+  * Verify `Suspend All` cleanly checkpoints all active agents back to `0 / 1,000` (`100%` idle) with zero checkpoint errors.
+

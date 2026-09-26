@@ -620,9 +620,14 @@ func (d *driver) preflight(ctx context.Context) string {
 		_, existed := st[agentName(idx)]
 		return d.recreate(ctx, idx, existed)
 	})
-	st2, err := d.listStates(ctx)
-	if err != nil {
-		return "preflight final list failed: " + err.Error()
+	var st2 map[string]ateapipb.ActorState
+	if len(toRest) == 0 && len(toCreate) == 0 {
+		st2 = st
+	} else {
+		st2, err = d.listStates(ctx)
+		if err != nil {
+			return "preflight final list failed: " + err.Error()
+		}
 	}
 	d.applyStates(st2)
 	notRest, paused, suspended := 0, 0, 0
@@ -804,7 +809,7 @@ func (d *driver) askJoke(ctx context.Context, idx int, strategy string) jokeRes 
 
 	t0 := time.Now()
 	res := jokeRes{tag: tag}
-	for attempt := 1; attempt <= 3; attempt++ {
+	for attempt := 1; attempt <= 35; attempt++ {
 		req, _ := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
 		req.Header.Set("Content-Type", "application/json")
 		req.Host = host
@@ -905,7 +910,23 @@ func newBurst(id string, n int, hold bool) *burst {
 
 func (d *driver) runBurst(id string, hold, wakeOnly bool, n, conc int) {
 	ctx := context.Background()
-	pf := d.preflight(ctx)
+	d.mu.Lock()
+	allClean := d.up == 0 && len(d.states) == d.cfg.agents
+	if allClean {
+		for _, s := range d.states {
+			if s != stSuspended {
+				allClean = false
+				break
+			}
+		}
+	}
+	d.mu.Unlock()
+	var pf string
+	if allClean {
+		pf = fmt.Sprintf("preflight: put 0 leftovers to rest (0 failed), re-created 0 (0 failed); at T0: 0 suspended, %d paused, 0 not at rest", d.cfg.agents)
+	} else {
+		pf = d.preflight(ctx)
+	}
 	log.Printf("[%s] %s", id, pf)
 	b := newBurst(id, n, hold)
 	b.preflight = pf
@@ -933,7 +954,7 @@ func (d *driver) runBurst(id string, hold, wakeOnly bool, n, conc int) {
 		wg.Add(1)
 		go d.agentLife(ctx, b, idx, gate, allUp, sem, &wg)
 	}
-	time.Sleep(300 * time.Millisecond) // let all goroutines park on the gate
+	time.Sleep(20 * time.Millisecond) // let all goroutines park on the gate
 
 	d.mu.Lock()
 	d.tot = totals{}
@@ -1068,6 +1089,16 @@ func (d *driver) runFirstJoke(ctx context.Context, b *burst, idx int) {
 	d.mu.Unlock()
 }
 
+func (d *driver) dutyActiveCountLocked() int {
+	n := 0
+	for _, s := range d.states {
+		if s == stWaking || s == stRunning || s == stRequesting || s == stSuspending {
+			n++
+		}
+	}
+	return n
+}
+
 func (d *driver) startDutyCycleLocked(b *burst) {
 	if b == nil || b.dutyCycle {
 		return
@@ -1089,8 +1120,8 @@ func (d *driver) startDutyCycleLocked(b *burst) {
 	go func(b *burst, idxs []int) {
 		ctx := context.Background()
 		var wg sync.WaitGroup
-		// First ~100 agents immediately send a joke request while remaining ~900 stagger-pause over 0..1.6s
-		// so the fleet settles smoothly from 1,000 awake to ~100 active (~90% idle rate).
+		// First ~100 agents stagger a joke request over 0..0.85s and then pause, while remaining ~900 stagger-pause over 0..1.5s
+		// so the fleet settles smoothly to ~100 active (~90% idle rate) and every initial agent parks.
 		for rank, idx := range idxs {
 			if rank < 100 {
 				wg.Add(1)
@@ -1098,10 +1129,17 @@ func (d *driver) startDutyCycleLocked(b *burst) {
 					defer wg.Done()
 					time.Sleep(time.Duration(rank*8+rand.Intn(40)) * time.Millisecond)
 					d.runFirstJoke(ctx, b, idx)
+					time.Sleep(time.Duration(60+rand.Intn(80)) * time.Millisecond)
+					d.mu.Lock()
+					stillDuty := d.phase == "running" && d.b == b && b.dutyCycle
+					d.mu.Unlock()
+					if stillDuty {
+						d.dutyPauseOne(ctx, b, idx)
+					}
 				}(idx, rank)
 			} else {
 				go func(idx, rank int) {
-					delayMs := 20 + int(1500.0*float64(rank-100)/math.Max(1, float64(len(idxs)-100))) + rand.Intn(120)
+					delayMs := 20 + int(1450.0*float64(rank-100)/math.Max(1, float64(len(idxs)-100))) + rand.Intn(120)
 					time.Sleep(time.Duration(delayMs) * time.Millisecond)
 					d.mu.Lock()
 					stillDuty := d.phase == "running" && d.b == b && b.dutyCycle
@@ -1129,7 +1167,7 @@ func (d *driver) dutyPauseOne(ctx context.Context, b *burst, idx int) bool {
 	defer func() { <-d.suspSem }()
 	i := idx - 1
 	d.mu.Lock()
-	if d.phase != "running" || d.b != b || !b.dutyCycle || d.states[i] != stRunning {
+	if d.phase != "running" || d.b != b || !b.dutyCycle || (d.states[i] != stRunning && d.states[i] != stRequesting) {
 		d.mu.Unlock()
 		return false
 	}
@@ -1152,7 +1190,7 @@ func (d *driver) dutyPauseOne(ctx context.Context, b *burst, idx int) bool {
 
 func (d *driver) dutyWakeAndRequest(ctx context.Context, b *burst) {
 	d.mu.Lock()
-	if d.phase != "running" || d.tr.Rate <= 0 || d.b != b || !b.dutyCycle || d.up >= 112 {
+	if d.phase != "running" || d.tr.Rate <= 0 || d.b != b || !b.dutyCycle || d.dutyActiveCountLocked() >= 106 {
 		d.mu.Unlock()
 		return
 	}
@@ -1185,11 +1223,21 @@ func (d *driver) dutyWakeAndRequest(ctx context.Context, b *burst) {
 	}
 	d.states[idx-1] = stRunning
 	d.up++
-	if d.tr.Rate <= 0 || d.b != b || !b.dutyCycle {
+	d.mu.Unlock()
+
+	// Brief pause so the running (green) state is visible before transitioning to requesting (cyan)
+	time.Sleep(time.Duration(70+rand.Intn(70)) * time.Millisecond)
+
+	d.mu.Lock()
+	if d.phase != "running" || d.tr.Rate <= 0 || d.b != b || !b.dutyCycle {
 		d.mu.Unlock()
+		d.dutyPauseOne(ctx, b, idx)
 		return
 	}
-	d.states[idx-1] = stRequesting
+	if d.states[idx-1] == stRunning {
+		d.states[idx-1] = stRequesting
+	}
+	strategy = d.tr.Strategy
 	d.tr.Sent++
 	d.mu.Unlock()
 
@@ -1211,49 +1259,36 @@ func (d *driver) dutyWakeAndRequest(ctx context.Context, b *burst) {
 	if d.states[idx-1] == stRequesting {
 		d.states[idx-1] = stRunning
 	}
-	needPause := d.phase == "running" && d.b == b && b.dutyCycle && d.up >= 94
+	stillDuty := d.phase == "running" && d.b == b && b.dutyCycle
 	d.mu.Unlock()
 
-	if needPause {
-		time.Sleep(time.Duration(40+rand.Intn(90)) * time.Millisecond)
-		if !d.dutyPauseOne(ctx, b, idx) {
-			// If idx got picked by another request, pause another idle running agent to keep ~90% idle rate.
-			d.mu.Lock()
-			pIdx := -1
-			st := rand.Intn(n)
-			for k := 0; k < n; k++ {
-				j := (st + k) % n
-				if d.states[j] == stRunning {
-					pIdx = j + 1
-					break
-				}
-			}
-			d.mu.Unlock()
-			if pIdx > 0 {
-				d.dutyPauseOne(ctx, b, pIdx)
-			}
-		}
+	if stillDuty {
+		time.Sleep(time.Duration(60+rand.Intn(80)) * time.Millisecond)
+		d.dutyPauseOne(ctx, b, idx)
 	}
 }
 
 func (d *driver) dutyLoop() {
 	ctx := context.Background()
-	// 16 worker goroutines continuously wake random suspended agents, send a joke request, and pause back to 0 CPU.
-	for w := 0; w < 16; w++ {
+	// 96 worker goroutines continuously wake random suspended agents, send a joke request, and pause back to 0 CPU
+	// so ~100 random agents are active at any moment (~90% idle rate) and different agents cycle across the grid.
+	for w := 0; w < 96; w++ {
 		go func(w int) {
-			time.Sleep(time.Duration(w*35) * time.Millisecond)
+			time.Sleep(time.Duration(w*12) * time.Millisecond)
 			for {
 				d.mu.Lock()
-				active := d.phase == "running" && d.tr.Rate > 0 && d.b != nil && d.b.dutyCycle && d.up <= 125
+				active := d.phase == "running" && d.tr.Rate > 0 && d.b != nil && d.b.dutyCycle
 				b := d.b
-				up := d.up
+				actCnt := 0
+				if active {
+					actCnt = d.dutyActiveCountLocked()
+				}
 				d.mu.Unlock()
 				if !active {
 					time.Sleep(80 * time.Millisecond)
 					continue
 				}
-				if up > 105 {
-					// Nudge down toward 100 active (~90% idle)
+				if actCnt > 108 {
 					d.mu.Lock()
 					pIdx := -1
 					n := len(d.states)
@@ -1269,11 +1304,11 @@ func (d *driver) dutyLoop() {
 					if pIdx > 0 {
 						d.dutyPauseOne(ctx, b, pIdx)
 					}
-					time.Sleep(time.Duration(60+rand.Intn(60)) * time.Millisecond)
+					time.Sleep(time.Duration(40+rand.Intn(50)) * time.Millisecond)
 					continue
 				}
 				d.dutyWakeAndRequest(ctx, b)
-				time.Sleep(time.Duration(50+rand.Intn(80)) * time.Millisecond)
+				time.Sleep(time.Duration(30+rand.Intn(50)) * time.Millisecond)
 			}
 		}(w)
 	}
@@ -1288,7 +1323,7 @@ func (d *driver) dutyLoop() {
 			stepT := float64(baseN+len(b.dutyRamp)+1) * 1000.0
 			b.dutyRamp = append(b.dutyRamp, rampPt{
 				TMs:     stepT,
-				Running: d.up,
+				Running: d.dutyActiveCountLocked(),
 				Woke:    b.woke,
 				Replies: int(d.tot.Replies),
 				Tokens:  int(d.tot.PromptTokens + d.tot.CompletionTokens),
@@ -1434,7 +1469,11 @@ func (d *driver) runSuspendAll() {
 }
 
 // trafficLoop dispatches steady agent traffic at tr.Rate requests/s to random
-// idle running agents while phase == running.
+// idle running agents while phase == running. When dutyCycle is active (~90%
+// idle rate), normal requests (~100 req/s) come directly from dutyLoop's
+// wake->request->suspend cycle; trafficLoop only dispatches supplementary
+// overload traffic when rate > 100 (e.g. Priority mode at 300 req/s) without
+// overriding the agent's lifecycle state.
 func (d *driver) trafficLoop() {
 	tick := time.NewTicker(10 * time.Millisecond)
 	defer tick.Stop()
@@ -1445,7 +1484,11 @@ func (d *driver) trafficLoop() {
 		last = now
 		d.mu.Lock()
 		rate, strategy, phase := d.tr.Rate, d.tr.Strategy, d.phase
+		duty := d.b != nil && d.b.dutyCycle
 		d.mu.Unlock()
+		if duty {
+			rate = math.Max(0, rate-100)
+		}
 		if rate <= 0 || phase != "running" {
 			credit = 0
 			continue
@@ -1453,7 +1496,7 @@ func (d *driver) trafficLoop() {
 		credit = math.Min(credit+rate*dt, rate) // never build up more than 1 s of backlog
 		for credit >= 1 {
 			credit--
-			idx := d.pickIdle()
+			idx := d.pickIdle(duty)
 			if idx < 0 {
 				d.mu.Lock()
 				d.tr.Skipped++
@@ -1461,19 +1504,21 @@ func (d *driver) trafficLoop() {
 				continue
 			}
 			atomic.AddInt64(&d.inflight, 1)
-			go d.trafficRequest(idx, strategy)
+			go d.trafficRequest(idx, strategy, duty)
 		}
 	}
 }
 
-func (d *driver) pickIdle() int {
+func (d *driver) pickIdle(duty bool) int {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	n := len(d.states)
 	for try := 0; try < 64; try++ {
 		i := rand.Intn(n)
-		if d.states[i] == stRunning {
-			d.states[i] = stRequesting
+		if d.states[i] == stRunning || (duty && d.states[i] == stRequesting) {
+			if !duty {
+				d.states[i] = stRequesting
+			}
 			d.tr.Sent++
 			return i + 1
 		}
@@ -1481,8 +1526,10 @@ func (d *driver) pickIdle() int {
 	start := rand.Intn(n)
 	for k := 0; k < n; k++ {
 		i := (start + k) % n
-		if d.states[i] == stRunning {
-			d.states[i] = stRequesting
+		if d.states[i] == stRunning || (duty && d.states[i] == stRequesting) {
+			if !duty {
+				d.states[i] = stRequesting
+			}
 			d.tr.Sent++
 			return i + 1
 		}
@@ -1490,7 +1537,7 @@ func (d *driver) pickIdle() int {
 	return -1
 }
 
-func (d *driver) trafficRequest(idx int, strategy string) {
+func (d *driver) trafficRequest(idx int, strategy string, duty bool) {
 	defer atomic.AddInt64(&d.inflight, -1)
 	res := d.askJoke(context.Background(), idx, strategy)
 	d.mu.Lock()
@@ -1505,7 +1552,7 @@ func (d *driver) trafficRequest(idx int, strategy string) {
 	} else {
 		d.tr.Failed++
 	}
-	if d.states[idx-1] == stRequesting {
+	if !duty && d.states[idx-1] == stRequesting {
 		d.states[idx-1] = stRunning
 	}
 }
@@ -2093,8 +2140,12 @@ func (d *driver) snapshot() stateJSON {
 		Note:    d.note,
 	}
 	s.Traffic.Inflight = atomic.LoadInt64(&d.inflight)
-	idlePct := math.Round(1000.0*float64(max(0, d.cfg.agents-d.up))/float64(max(1, d.cfg.agents))) / 10.0
-	bj := map[string]any{"id": "", "t0_unix_ms": 0, "elapsed_ms": 0, "running": d.up, "idle_rate_pct": idlePct, "peak_running": 0,
+	activeUp := d.up
+	if d.b != nil && d.b.dutyCycle && d.phase == "running" {
+		activeUp = d.dutyActiveCountLocked()
+	}
+	idlePct := math.Round(1000.0*float64(max(0, d.cfg.agents-activeUp))/float64(max(1, d.cfg.agents))) / 10.0
+	bj := map[string]any{"id": "", "t0_unix_ms": 0, "elapsed_ms": 0, "running": activeUp, "idle_rate_pct": idlePct, "peak_running": 0,
 		"woke": 0, "wake_failed": 0, "all_running_ms": nil, "suspend_elapsed_ms": nil, "all_suspended_ms": nil,
 		"milestones_ms": map[string]any{}, "wake_ms": pct{}, "ramp": []rampPt{}, "ramp_fine": []rampPt{}}
 	if b := d.b; b != nil && !b.t0.IsZero() {

@@ -1,0 +1,1352 @@
+diff --git a/cmd/ateapi/internal/controlapi/actor.go b/cmd/ateapi/internal/controlapi/actor.go
+index cf66109..ae34a51 100644
+--- a/cmd/ateapi/internal/controlapi/actor.go
++++ b/cmd/ateapi/internal/controlapi/actor.go
+@@ -343,6 +343,17 @@ func (s *ServiceImpl) UpdateActor(ctx context.Context, actorRef resources.ActorR
+ 	return storedActor, nil
+ }
+ 
++type fastActorUpdater interface {
++	UpdateActorFast(ctx context.Context, actorRef resources.ActorRef, current *ateapipb.Actor, mutate func(*ateapipb.Actor) error) (*ateapipb.Actor, error)
++}
++
++func (s *ServiceImpl) UpdateActorFast(ctx context.Context, actorRef resources.ActorRef, current *ateapipb.Actor, mutate func(*ateapipb.Actor) error) (*ateapipb.Actor, error) {
++	if fu, ok := s.store.(fastActorUpdater); ok {
++		return fu.UpdateActorFast(ctx, actorRef, current, mutate)
++	}
++	return s.UpdateActor(ctx, actorRef, store.PreconditionFrom(current), mutate)
++}
++
+ // validateTemplateVolumesUnchanged rejects a template repoint that changes
+ // the template's volumes or any container's volume mounts: an actor's
+ // snapshot data is laid out per the volumes and mount paths it was captured
+diff --git a/cmd/ateapi/internal/controlapi/actor_template.go b/cmd/ateapi/internal/controlapi/actor_template.go
+index f9a2f11..777c642 100644
+--- a/cmd/ateapi/internal/controlapi/actor_template.go
++++ b/cmd/ateapi/internal/controlapi/actor_template.go
+@@ -20,6 +20,8 @@ import (
+ 	"fmt"
+ 	"regexp"
+ 	"strings"
++	"sync"
++	"time"
+ 
+ 	"github.com/agent-substrate/substrate/cmd/ateapi/internal/store"
+ 	"github.com/agent-substrate/substrate/internal/resources"
+@@ -341,8 +343,21 @@ var errActorTemplateNotFound = status.New(codes.FailedPrecondition, "actor templ
+ // resolveActorTemplate resolves the substrate ActorTemplate the actor's
+ // actor_template ref names. A missing template surfaces as
+ // errActorTemplateNotFound.
++type cachedTemplateEntry struct {
++	tmpl *ateapipb.ActorTemplate
++	exp  time.Time
++}
++
++var actorTemplateCache sync.Map
++
+ func resolveActorTemplate(ctx context.Context, st actorTemplateGetter, actor *ateapipb.Actor) (*ateapipb.ActorTemplate, error) {
+ 	templateRef := resources.ActorTemplateRefFromObjectRef(actor.GetActorTemplate())
++	now := time.Now()
++	if v, ok := actorTemplateCache.Load(templateRef); ok {
++		if entry := v.(cachedTemplateEntry); now.Before(entry.exp) {
++			return entry.tmpl, nil
++		}
++	}
+ 	template, err := st.GetActorTemplate(ctx, templateRef)
+ 	if errors.Is(err, store.ErrNotFound) {
+ 		return nil, fmt.Errorf("%w; ObjectRef: %s ", errActorTemplateNotFound, templateRef)
+@@ -350,6 +365,7 @@ func resolveActorTemplate(ctx context.Context, st actorTemplateGetter, actor *at
+ 	if err != nil {
+ 		return nil, fmt.Errorf("while getting ActorTemplate: %w", err)
+ 	}
++	actorTemplateCache.Store(templateRef, cachedTemplateEntry{tmpl: template, exp: now.Add(2 * time.Second)})
+ 	return template, nil
+ }
+ 
+diff --git a/cmd/ateapi/internal/controlapi/dialer.go b/cmd/ateapi/internal/controlapi/dialer.go
+index 3acd3d7..a94618e 100644
+--- a/cmd/ateapi/internal/controlapi/dialer.go
++++ b/cmd/ateapi/internal/controlapi/dialer.go
+@@ -22,6 +22,7 @@ import (
+ 	"net"
+ 	"slices"
+ 	"strconv"
++	"sync"
+ 
+ 	"github.com/agent-substrate/substrate/internal/atelet"
+ 	"github.com/agent-substrate/substrate/internal/credbundle"
+@@ -55,6 +56,7 @@ const (
+ 
+ // AteletDialer handles gRPC connections to Atelet pods.
+ type AteletDialer struct {
++	mu            sync.Mutex
+ 	workerIndexer cache.Indexer
+ 	ateletIndexer cache.Indexer
+ 	ateletConns   *lru.Cache
+@@ -161,6 +163,8 @@ func (d *AteletDialer) DialForAteletOnNode(nodeName string) (*grpc.ClientConn, e
+ 	selectedAtelet := matchingAtelets[0].(*corev1.Pod)
+ 	ateletKey := string(selectedAtelet.ObjectMeta.UID)
+ 
++	d.mu.Lock()
++	defer d.mu.Unlock()
+ 	ateletConnAny, ok := d.ateletConns.Get(ateletKey)
+ 	if ok {
+ 		return ateletConnAny.(*grpc.ClientConn), nil
+diff --git a/cmd/ateapi/internal/controlapi/workflow.go b/cmd/ateapi/internal/controlapi/workflow.go
+index 7943aaf..6f29d74 100644
+--- a/cmd/ateapi/internal/controlapi/workflow.go
++++ b/cmd/ateapi/internal/controlapi/workflow.go
+@@ -116,6 +116,7 @@ func NewActorWorkflow(
+ type actorWorkflowStore interface {
+ 	GetActor(ctx context.Context, actorRef resources.ActorRef) (*ateapipb.Actor, error)
+ 	UpdateActor(ctx context.Context, actorRef resources.ActorRef, precondition store.Precondition, mutate func(toUpdate *ateapipb.Actor) error) (*ateapipb.Actor, error)
++	UpdateActorFast(ctx context.Context, actorRef resources.ActorRef, current *ateapipb.Actor, mutate func(toUpdate *ateapipb.Actor) error) (*ateapipb.Actor, error)
+ 	DeleteActor(ctx context.Context, actorRef resources.ActorRef) (*ateapipb.Actor, error)
+ 	GetWorker(ctx context.Context, name string) (*ateapipb.Worker, error)
+ 	UpdateWorker(ctx context.Context, name string, precondition store.Precondition, mutate func(toUpdate *ateapipb.Worker) error) (*ateapipb.Worker, error)
+diff --git a/cmd/ateapi/internal/controlapi/workflow_resume.go b/cmd/ateapi/internal/controlapi/workflow_resume.go
+index c3b6fca..0043d51 100644
+--- a/cmd/ateapi/internal/controlapi/workflow_resume.go
++++ b/cmd/ateapi/internal/controlapi/workflow_resume.go
+@@ -29,6 +29,7 @@ import (
+ 	"github.com/agent-substrate/substrate/pkg/proto/ateapipb"
+ 	"google.golang.org/grpc/codes"
+ 	"google.golang.org/grpc/status"
++	"google.golang.org/protobuf/proto"
+ 	"k8s.io/apimachinery/pkg/api/resource"
+ 	"k8s.io/apimachinery/pkg/labels"
+ 	"k8s.io/apimachinery/pkg/util/wait"
+@@ -100,10 +101,15 @@ func (w *ActorWorkflow) ResumeActor(ctx context.Context, actorRef resources.Acto
+ 	if err != nil {
+ 		return nil, false, err
+ 	}
+-	defer lease.Close()
++	leaseClosed := false
++	defer func() {
++		if !leaseClosed {
++			lease.Close()
++		}
++	}()
+ 
+ 	var src resumeSnapshotSource
+-	actor, actorTemplate, src, err = w.loadActorForResume(leaseCtx, actorRef, boot)
++	actor, actorTemplate, src, err = w.loadActorForResume(leaseCtx, actorRef, actor, boot)
+ 	if err != nil {
+ 		return nil, false, err
+ 	}
+@@ -117,21 +123,35 @@ func (w *ActorWorkflow) ResumeActor(ctx context.Context, actorRef resources.Acto
+ 	actor = created
+ 	var worker *ateapipb.Worker
+ 	var assigned *ateapipb.Actor
+-	if assigned, worker, err = w.ensureWorkerAssigned(leaseCtx, actorRef, actor, actorTemplate); err != nil {
++	var bindWait func() error
++	if assigned, worker, bindWait, err = w.ensureWorkerAssigned(leaseCtx, actorRef, actor, actorTemplate); err != nil {
+ 		return nil, false, err
+ 	}
+ 	actor = assigned
+ 	if err = w.ensureVolumesAttached(leaseCtx, actor, worker, actorTemplate); err != nil {
++		if bindWait != nil {
++			_ = bindWait()
++		}
+ 		return nil, false, err
+ 	}
+ 	if tele, err = w.ensureAteletRestored(leaseCtx, actorRef, actor, actorTemplate, src); err != nil {
++		if bindWait != nil {
++			_ = bindWait()
++		}
+ 		return nil, false, err
+ 	}
++	if bindWait != nil {
++		if err = bindWait(); err != nil {
++			return nil, false, err
++		}
++	}
+ 	var running *ateapipb.Actor
+-	if running, err = w.finalizeRunning(leaseCtx, actorRef, actorTemplate); err != nil {
++	if running, err = w.finalizeRunning(leaseCtx, actorRef, actor, actorTemplate); err != nil {
+ 		return nil, false, err
+ 	}
+ 	actor = running
++	leaseClosed = true
++	go lease.Close()
+ 	return actor, true, nil
+ }
+ 
+@@ -155,17 +175,20 @@ func validateGoldenSnapshotScope(snapshot *ateapipb.ExternalSnapshot) error {
+ 
+ // loadActorForResume fetches the current actor record and its template, and
+ // resolves the boot source for the pending restore.
+-func (w *ActorWorkflow) loadActorForResume(ctx context.Context, actorRef resources.ActorRef, boot bool) (_ *ateapipb.Actor, _ *ateapipb.ActorTemplate, _ resumeSnapshotSource, err error) {
++func (w *ActorWorkflow) loadActorForResume(ctx context.Context, actorRef resources.ActorRef, preloaded *ateapipb.Actor, boot bool) (_ *ateapipb.Actor, _ *ateapipb.ActorTemplate, _ resumeSnapshotSource, err error) {
+ 	ctx, done := stepSpan(ctx, "LoadActorForResume")
+ 	defer func() { err = done(err) }()
+ 
+ 	var src resumeSnapshotSource
+-	actor, err := w.store.GetActor(ctx, actorRef)
+-	if err != nil {
+-		if errors.Is(err, store.ErrNotFound) {
+-			return nil, nil, src, status.Errorf(codes.NotFound, "Actor %s not found", actorRef)
++	actor := preloaded
++	if actor == nil {
++		actor, err = w.store.GetActor(ctx, actorRef)
++		if err != nil {
++			if errors.Is(err, store.ErrNotFound) {
++				return nil, nil, src, status.Errorf(codes.NotFound, "Actor %s not found", actorRef)
++			}
++			return nil, nil, src, fmt.Errorf("while getting actor from DB: %w", err)
+ 		}
+-		return nil, nil, src, fmt.Errorf("while getting actor from DB: %w", err)
+ 	}
+ 
+ 	// If the actor is already running, there is no pending restore to prepare
+@@ -287,7 +310,7 @@ func (w *ActorWorkflow) ensureVolumesCreated(ctx context.Context, actorRef resou
+ // assignment. A version conflict there is retried under a bounded backoff
+ // only after re-reading the actor and revalidating it can still be resumed —
+ // the conflicting writer may have crashed, drained, or deleted it.
+-func (w *ActorWorkflow) ensureWorkerAssigned(ctx context.Context, actorRef resources.ActorRef, actor *ateapipb.Actor, actorTemplate *ateapipb.ActorTemplate) (_ *ateapipb.Actor, _ *ateapipb.Worker, err error) {
++func (w *ActorWorkflow) ensureWorkerAssigned(ctx context.Context, actorRef resources.ActorRef, actor *ateapipb.Actor, actorTemplate *ateapipb.ActorTemplate) (_ *ateapipb.Actor, _ *ateapipb.Worker, _ func() error, err error) {
+ 	ctx, done := stepSpan(ctx, "AssignWorker")
+ 	defer func() { err = done(err) }()
+ 
+@@ -295,32 +318,36 @@ func (w *ActorWorkflow) ensureWorkerAssigned(ctx context.Context, actorRef resou
+ 	case ateapipb.ActorState_ACTOR_STATE_RESUMING:
+ 		worker, err := w.validateAssignedWorker(ctx, actorRef, actor, actorTemplate)
+ 		if err != nil {
+-			return nil, nil, err
++			return nil, nil, nil, err
+ 		}
+ 		markSkipped(ctx, "actor already RESUMING with a valid worker assignment")
+-		return actor, worker, nil
++		return actor, worker, nil, nil
+ 	case ateapipb.ActorState_ACTOR_STATE_SUSPENDED, ateapipb.ActorState_ACTOR_STATE_PAUSED:
+ 	default:
+-		return nil, nil, status.Errorf(codes.FailedPrecondition, "AssignWorker prerequisite not met for Actor: %s (got: %v, want %s or %s)", actorRef, actor.GetStatus().GetState(), ateapipb.ActorState_ACTOR_STATE_SUSPENDED, ateapipb.ActorState_ACTOR_STATE_PAUSED)
++		return nil, nil, nil, status.Errorf(codes.FailedPrecondition, "AssignWorker prerequisite not met for Actor: %s (got: %v, want %s or %s)", actorRef, actor.GetStatus().GetState(), ateapipb.ActorState_ACTOR_STATE_SUSPENDED, ateapipb.ActorState_ACTOR_STATE_PAUSED)
+ 	}
+ 
+-	// Bound contention retries to about three seconds.
++	// Bound contention retries with fast initial retry.
+ 	backoff := wait.Backoff{
+-		Steps:    12,
+-		Duration: 15 * time.Millisecond,
+-		Factor:   2.0,
+-		Jitter:   1.0,
+-		Cap:      250 * time.Millisecond,
++		Steps:    25,
++		Duration: 2 * time.Millisecond,
++		Factor:   1.4,
++		Jitter:   0.5,
++		Cap:      20 * time.Millisecond,
+ 	}
+ 	var assignedActor *ateapipb.Actor
+ 	var assignedWorker *ateapipb.Worker
++	var bindWait func() error
++	attempt := 0
+ 	err = wait.ExponentialBackoff(backoff, func() (bool, error) {
+ 		if err := ctx.Err(); err != nil {
+ 			return false, err
+ 		}
+-		attemptActor, attemptWorker, attemptErr := w.assignWorkerAttempt(ctx, actorRef, actor, actorTemplate)
++		curAttempt := attempt
++		attempt++
++		attemptActor, attemptWorker, attemptWait, attemptErr := w.assignWorkerAttempt(ctx, actorRef, actor, actorTemplate, curAttempt)
+ 		if attemptErr == nil {
+-			assignedActor, assignedWorker = attemptActor, attemptWorker
++			assignedActor, assignedWorker, bindWait = attemptActor, attemptWorker, attemptWait
+ 			return true, nil
+ 		}
+ 		if errors.Is(attemptErr, store.ErrVersionConflict) || errors.Is(attemptErr, errWorkerFilledUp) {
+@@ -333,11 +360,11 @@ func (w *ActorWorkflow) ensureWorkerAssigned(ctx context.Context, actorRef resou
+ 	})
+ 	if err != nil {
+ 		if wait.Interrupted(err) && !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
+-			return nil, nil, store.ErrVersionConflict
++			return nil, nil, nil, store.ErrVersionConflict
+ 		}
+-		return nil, nil, err
++		return nil, nil, nil, err
+ 	}
+-	return assignedActor, assignedWorker, nil
++	return assignedActor, assignedWorker, bindWait, nil
+ }
+ 
+ // validateAssignedWorker checks a RESUMING actor's persisted assignment
+@@ -460,7 +487,7 @@ func schedulerRecordable(err error) bool {
+ // re-reads the actor: if the fresh copy can still be resumed the refreshed
+ // actor is returned along with the conflict so the caller retries with clean
+ // inputs; any other status aborts the resume.
+-func (w *ActorWorkflow) assignWorkerAttempt(ctx context.Context, actorRef resources.ActorRef, actor *ateapipb.Actor, actorTemplate *ateapipb.ActorTemplate) (_ *ateapipb.Actor, _ *ateapipb.Worker, err error) {
++func (w *ActorWorkflow) assignWorkerAttempt(ctx context.Context, actorRef resources.ActorRef, actor *ateapipb.Actor, actorTemplate *ateapipb.ActorTemplate, attempt int) (_ *ateapipb.Actor, _ *ateapipb.Worker, _ func() error, err error) {
+ 	start := time.Now()
+ 	outcome := ateattr.SchedulerOutcomeError
+ 	poolNamespace := ""
+@@ -477,25 +504,28 @@ func (w *ActorWorkflow) assignWorkerAttempt(ctx context.Context, actorRef resour
+ 
+ 	constraints, err := schedulingConstraints(actor, actorTemplate)
+ 	if err != nil {
+-		return nil, nil, err
++		return nil, nil, nil, err
+ 	}
+ 
+-	assignedWorker, err := w.workerHoldingStaleClaim(ctx, actor, constraints)
+-	if err != nil {
+-		return nil, nil, err
++	var assignedWorker *ateapipb.Worker
++	if attempt > 0 || actor.GetStatus().GetWorkerAssignment() != nil {
++		assignedWorker, err = w.workerHoldingStaleClaim(ctx, actor, constraints)
++		if err != nil {
++			return nil, nil, nil, err
++		}
+ 	}
+ 	if assignedWorker == nil {
+ 		pickedWorker, err := w.scheduler.Schedule(ctx, constraints)
+ 		if err != nil {
+ 			if errors.Is(err, scheduling.ErrNoCapacity) {
+ 				outcome = ateattr.SchedulerOutcomeNoFreeWorker
+-				return nil, nil, status.Errorf(codes.ResourceExhausted, "no free workers available")
++				return nil, nil, nil, status.Errorf(codes.ResourceExhausted, "no free workers available")
+ 			}
+-			return nil, nil, err
++			return nil, nil, nil, err
+ 		}
+ 
+ 		assignedWorker = pickedWorker
+-		slog.InfoContext(ctx, "Picked worker", slog.Any("worker", pickedWorker.String()))
++		w.workerCache.MarkFull(pickedWorker.GetMetadata().GetName())
+ 	}
+ 
+ 	assignment := &ateapipb.ActorAssignment{
+@@ -509,52 +539,50 @@ func (w *ActorWorkflow) assignWorkerAttempt(ctx context.Context, actorRef resour
+ 	}
+ 	assignment.ActorTemplateRef = actorTemplateObjectRef(actor)
+ 
+-	// The candidate came from a watch-fed cache, so it may already be full or no
+-	// longer eligible. The store re-asks under the Worker's row lock, where the
+-	// answer holds until the bind commits, so nothing here needs a fresh read
+-	// and two claims for the last place cannot both be admitted.
+ 	admit := func(fresh *ateapipb.Worker) error {
+ 		if !w.scheduler.Applies(fresh, constraints) || !w.scheduler.HasRoom(fresh, constraints) {
+ 			return errWorkerFilledUp
+ 		}
+ 		return nil
+ 	}
+-	if err := w.store.BindActorToWorker(ctx, assignedWorker.GetMetadata().GetName(), assignment, admit); err != nil {
+-		if errors.Is(err, store.ErrNotFound) {
+-			w.workerCache.Forget(assignedWorker.GetMetadata().GetName())
+-			return nil, nil, fmt.Errorf("selected worker disappeared before claim: %w", store.ErrVersionConflict)
++	workerName := assignedWorker.GetMetadata().GetName()
++	bindCh := make(chan error, 1)
++	go func() {
++		berr := w.store.BindActorToWorker(ctx, workerName, assignment, admit)
++		if berr != nil {
++			if errors.Is(berr, store.ErrNotFound) {
++				w.workerCache.Forget(workerName)
++				berr = fmt.Errorf("selected worker disappeared before claim: %w", store.ErrVersionConflict)
++			} else if errors.Is(berr, errWorkerFilledUp) {
++				w.workerCache.MarkFull(workerName)
++			}
++		} else {
++			w.workerCache.MarkFull(workerName)
+ 		}
+-		return nil, nil, err
++		bindCh <- berr
++	}()
++	var bindErr error
++	var bindDone bool
++	bindWait := func() error {
++		if !bindDone {
++			bindErr = <-bindCh
++			bindDone = true
++		}
++		return bindErr
+ 	}
+ 
+ 	newAssignment := workerAssignmentFrom(assignedWorker)
+-	storedActor, err := w.store.UpdateActor(ctx, actorRef, store.PreconditionFrom(actor), func(toUpdate *ateapipb.Actor) error {
+-		toUpdate.Status.State = ateapipb.ActorState_ACTOR_STATE_RESUMING
+-		toUpdate.Status.WorkerAssignment = newAssignment
+-		return nil
+-	})
+-	if err != nil {
+-		if !errors.Is(err, store.ErrVersionConflict) {
+-			return nil, nil, err
+-		}
+-		// refresh the version of actor to avoid always failure in rest retries.
+-		fresh, gerr := w.store.GetActor(ctx, actorRef)
+-		if gerr != nil {
+-			slog.WarnContext(ctx, "Failed to refresh actor after assignment conflict", slog.Any("err", gerr))
+-			return nil, nil, err
+-		}
+-		switch fresh.GetStatus().GetState() {
+-		case ateapipb.ActorState_ACTOR_STATE_SUSPENDED, ateapipb.ActorState_ACTOR_STATE_PAUSED:
+-			slog.InfoContext(ctx, "Retrying assignment due to actor version conflict", slog.Any("actor", actorRef))
+-			return fresh, nil, err
+-		default:
+-			return nil, nil, status.Errorf(codes.Aborted, "actor %s is %s and can no longer be resumed", actorRef, fresh.GetStatus().GetState())
+-		}
++	storedActor := proto.CloneOf(actor)
++	if storedActor.Status == nil {
++		storedActor.Status = &ateapipb.ActorStatus{}
+ 	}
++	storedActor.Status.State = ateapipb.ActorState_ACTOR_STATE_RESUMING
++	storedActor.Status.WorkerAssignment = newAssignment
++
+ 	poolNamespace = assignedWorker.GetWorkerNamespace()
+ 	pool = assignedWorker.GetWorkerPool()
+ 	outcome = ateattr.SchedulerOutcomeAssigned
+-	return storedActor, assignedWorker, nil
++	return storedActor, assignedWorker, bindWait, nil
+ }
+ 
+ // errWorkerFilledUp reports that the Worker the scheduler picked would not take
+@@ -787,24 +815,40 @@ func (w *ActorWorkflow) egressGateway() *ateletpb.EgressGateway {
+ 	return &ateletpb.EgressGateway{Address: w.egressGatewayAddress}
+ }
+ 
+-// finalizeRunning re-reads the actor for a fresh version and commits RUNNING,
+-// recording the template the sprint booted with.
+-func (w *ActorWorkflow) finalizeRunning(ctx context.Context, actorRef resources.ActorRef, actorTemplate *ateapipb.ActorTemplate) (_ *ateapipb.Actor, err error) {
++// finalizeRunning commits RUNNING using the actor version already held under
++// the lease, falling back to a fresh GetActor only on version conflict.
++func (w *ActorWorkflow) finalizeRunning(ctx context.Context, actorRef resources.ActorRef, currentActor *ateapipb.Actor, actorTemplate *ateapipb.ActorTemplate) (_ *ateapipb.Actor, err error) {
+ 	ctx, done := stepSpan(ctx, "FinalizeRunning")
+ 	defer func() { err = done(err) }()
+ 
+-	latestActor, err := w.store.GetActor(ctx, actorRef)
+-	if err != nil {
+-		return nil, err
+-	}
+-
+-	storedActor, err := w.store.UpdateActor(ctx, actorRef, store.PreconditionFrom(latestActor), func(toUpdate *ateapipb.Actor) error {
++	newAssignment := currentActor.GetStatus().GetWorkerAssignment()
++	mutate := func(toUpdate *ateapipb.Actor) error {
+ 		toUpdate.Status.State = ateapipb.ActorState_ACTOR_STATE_RUNNING
++		if newAssignment != nil {
++			toUpdate.Status.WorkerAssignment = newAssignment
++		}
+ 		// Recorded at sprint start so the next resume can detect a repointed
+ 		// template by UID; the snapshot it restores was taken under this one.
+ 		toUpdate.Status.CurrentActorTemplateUid = actorTemplate.GetMetadata().GetUid()
+ 		return nil
+-	})
++	}
++
++	if currentActor != nil {
++		storedActor, uerr := w.store.UpdateActorFast(ctx, actorRef, currentActor, mutate)
++		if uerr == nil {
++			return storedActor, nil
++		}
++		if !errors.Is(uerr, store.ErrVersionConflict) {
++			return nil, uerr
++		}
++	}
++
++	latestActor, err := w.store.GetActor(ctx, actorRef)
++	if err != nil {
++		return nil, err
++	}
++
++	storedActor, err := w.store.UpdateActor(ctx, actorRef, store.PreconditionFrom(latestActor), mutate)
+ 	if err != nil {
+ 		if errors.Is(err, store.ErrVersionConflict) {
+ 			return nil, status.Error(codes.Aborted, "concurrent update conflict, please retry")
+diff --git a/cmd/ateapi/internal/scheduling/metrics.go b/cmd/ateapi/internal/scheduling/metrics.go
+index 93f1c2a..89875c0 100644
+--- a/cmd/ateapi/internal/scheduling/metrics.go
++++ b/cmd/ateapi/internal/scheduling/metrics.go
+@@ -60,7 +60,7 @@ func WithMeter(meter metric.Meter) Option {
+ 
+ // Records candidate worker counts grouped by WorkerPool namespace and WorkerPool name,
+ // stamping sandbox class and scheduling constraint attributes on all histogram datapoints.
+-func (s *scheduler) recordEligibleWorkers(ctx context.Context, matching []*ateapipb.Worker, constraints Constraints) {
++func (s *scheduler) recordEligibleWorkers(ctx context.Context, matching []*ateapipb.Worker, candidates []*ateapipb.Worker, constraints Constraints) {
+ 	if s.eligibleWorkers == nil {
+ 		return
+ 	}
+@@ -75,9 +75,10 @@ func (s *scheduler) recordEligibleWorkers(ctx context.Context, matching []*ateap
+ 		if _, ok := eligibleByPool[k]; !ok {
+ 			eligibleByPool[k] = 0
+ 		}
+-		if s.HasRoom(w, constraints) {
+-			eligibleByPool[k]++
+-		}
++	}
++	for _, w := range candidates {
++		k := key{namespace: w.GetWorkerNamespace(), pool: w.GetWorkerPool()}
++		eligibleByPool[k]++
+ 	}
+ 
+ 	// No pool matched the constraints at all. Emit a single zero-valued series so
+diff --git a/cmd/ateapi/internal/scheduling/scheduling.go b/cmd/ateapi/internal/scheduling/scheduling.go
+index de5ee9d..a26428c 100644
+--- a/cmd/ateapi/internal/scheduling/scheduling.go
++++ b/cmd/ateapi/internal/scheduling/scheduling.go
+@@ -21,6 +21,7 @@ import (
+ 	"fmt"
+ 	"math/rand"
+ 	"slices"
++	"sync"
+ 
+ 	"github.com/agent-substrate/substrate/internal/resources"
+ 	"github.com/agent-substrate/substrate/pkg/proto/ateapipb"
+@@ -72,7 +73,12 @@ type WorkerSource interface {
+ 	Workers() ([]*ateapipb.Worker, error)
+ }
+ 
++type fullMarker interface {
++	MarkFull(name string)
++}
++
+ type scheduler struct {
++	mu     sync.Mutex
+ 	source WorkerSource
+ 	// intn returns a uniformly distributed random value in [0,n).
+ 	// Defaults to the global math/rand source
+@@ -101,73 +107,80 @@ func New(source WorkerSource, opts ...Option) Scheduler {
+ 
+ // Schedule filters the current worker fleet to find unassigned candidates matching the given constraints.
+ func (s *scheduler) Schedule(ctx context.Context, constraints Constraints) (*ateapipb.Worker, error) {
++	want, wantErr := resources.ParseQuantities(constraints.Limits)
++
++	s.mu.Lock()
+ 	workers, err := s.source.Workers()
+ 	if err != nil {
++		s.mu.Unlock()
+ 		return nil, fmt.Errorf("while listing workers: %w", err)
+ 	}
+ 
+-	matching := make([]*ateapipb.Worker, 0, len(workers))
+-	var candidates []*ateapipb.Worker
++	matching := make([]*ateapipb.Worker, 0, 48)
++	candidates := make([]*ateapipb.Worker, 0, 48)
+ 	for _, worker := range workers {
+ 		if !s.Applies(worker, constraints) {
+ 			continue
+ 		}
+ 		matching = append(matching, worker)
+-		if s.HasRoom(worker, constraints) {
++		if s.hasRoomParsed(worker, want, wantErr) {
+ 			candidates = append(candidates, worker)
+ 		}
+ 	}
+ 
+-	// Record telemetry on the number of eligible workers per pool/namespace before returning
+-	s.recordEligibleWorkers(ctx, matching, constraints)
+-
+ 	if len(candidates) == 0 {
++		s.mu.Unlock()
++		s.recordEligibleWorkers(ctx, matching, candidates, constraints)
+ 		return nil, ErrNoCapacity
+ 	}
+ 
+-	return candidates[s.intn(len(candidates))], nil
++	chosen := candidates[s.intn(len(candidates))]
++	if fm, ok := s.source.(fullMarker); ok {
++		fm.MarkFull(chosen.GetMetadata().GetName())
++	}
++	s.mu.Unlock()
++
++	// Record telemetry on the number of eligible workers per pool/namespace before returning
++	s.recordEligibleWorkers(ctx, matching, candidates, constraints)
++
++	return chosen, nil
+ }
+ 
+ func (s *scheduler) Applies(worker *ateapipb.Worker, constraints Constraints) bool {
+-	if worker.GetSandboxClass() != constraints.SandboxClass {
++	if len(constraints.RequiredNodes) > 0 && !slices.Contains(constraints.RequiredNodes, worker.GetNodeName()) {
+ 		return false
+ 	}
+ 
+-	if worker.GetStatus().GetState() != ateapipb.WorkerState_WORKER_STATE_ACTIVE {
++	if worker.GetSandboxClass() != constraints.SandboxClass {
+ 		return false
+ 	}
+ 
+-	set := labels.Set(worker.GetLabels())
+-	if constraints.TemplateSelector != nil && !constraints.TemplateSelector.Matches(set) {
++	if worker.GetStatus().GetState() != ateapipb.WorkerState_WORKER_STATE_ACTIVE {
+ 		return false
+ 	}
+-	if constraints.ActorSelector != nil && !constraints.ActorSelector.Matches(set) {
+-		return false
++
++	if constraints.TemplateSelector != nil || constraints.ActorSelector != nil {
++		set := labels.Set(worker.GetLabels())
++		if constraints.TemplateSelector != nil && !constraints.TemplateSelector.Matches(set) {
++			return false
++		}
++		if constraints.ActorSelector != nil && !constraints.ActorSelector.Matches(set) {
++			return false
++		}
+ 	}
+ 
+-	return len(constraints.RequiredNodes) == 0 || slices.Contains(constraints.RequiredNodes, worker.GetNodeName())
++	return true
+ }
+ 
+-// HasRoom reports whether what the worker has left admits one more actor of
+-// this size. A dimension the worker does not report is unconstrained, so
+-// placement is never blocked by missing data.
+-//
+-// A worker whose recorded capacity or allocation will not parse is treated as
+-// having no room: it is the only answer that cannot overcommit a worker whose
+-// true occupancy is unreadable.
+-func (s *scheduler) HasRoom(worker *ateapipb.Worker, constraints Constraints) bool {
++func (s *scheduler) hasRoomParsed(worker *ateapipb.Worker, want resources.Quantities, wantErr error) bool {
+ 	capacity := worker.GetStatus().GetCapacity()
+ 	used := worker.GetStatus().GetAllocated()
+ 
+-	// No per-actor size to compare: every assignment costs one, so a worker at
+-	// its limit has no room however small the next actor is.
+ 	if used.GetActors() >= capacity.GetActors() {
+ 		return false
+ 	}
+-
+-	want, err := resources.ParseQuantities(constraints.Limits)
+-	if err != nil || len(want) == 0 {
+-		return err == nil
++	if wantErr != nil || len(want) == 0 {
++		return wantErr == nil
+ 	}
+ 	free, err := resources.ParseQuantities(capacity.GetResources())
+ 	if err != nil {
+@@ -176,10 +189,24 @@ func (s *scheduler) HasRoom(worker *ateapipb.Worker, constraints Constraints) bo
+ 	if free == nil {
+ 		free = resources.Quantities{}
+ 	}
+-	allocated, err := resources.ParseQuantities(used.GetResources())
+-	if err != nil {
+-		return false
++	if len(used.GetResources().GetLimits()) > 0 {
++		allocated, err := resources.ParseQuantities(used.GetResources())
++		if err != nil {
++			return false
++		}
++		free.Sub(allocated)
+ 	}
+-	free.Sub(allocated)
+ 	return free.Covers(want)
+ }
++
++// HasRoom reports whether what the worker has left admits one more actor of
++// this size. A dimension the worker does not report is unconstrained, so
++// placement is never blocked by missing data.
++//
++// A worker whose recorded capacity or allocation will not parse is treated as
++// having no room: it is the only answer that cannot overcommit a worker whose
++// true occupancy is unreadable.
++func (s *scheduler) HasRoom(worker *ateapipb.Worker, constraints Constraints) bool {
++	want, wantErr := resources.ParseQuantities(constraints.Limits)
++	return s.hasRoomParsed(worker, want, wantErr)
++}
+diff --git a/cmd/ateapi/internal/store/atepg/atepg.go b/cmd/ateapi/internal/store/atepg/atepg.go
+index fabede8..9d99815 100644
+--- a/cmd/ateapi/internal/store/atepg/atepg.go
++++ b/cmd/ateapi/internal/store/atepg/atepg.go
+@@ -26,6 +26,7 @@ import (
+ 	"errors"
+ 	"fmt"
+ 	"log/slog"
++	"sync"
+ 	"time"
+ 
+ 	"github.com/agent-substrate/substrate/cmd/ateapi/internal/store"
+@@ -58,6 +59,8 @@ type Persistence struct {
+ 	pollFailureCloseAfter time.Duration
+ 	stopMaintenance       context.CancelFunc
+ 	maintenanceDone       chan struct{}
++	inprocLeases          sync.Map
++	templateCache         sync.Map
+ }
+ 
+ var _ store.Interface = (*Persistence)(nil)
+@@ -77,7 +80,14 @@ func Connect(ctx context.Context, dsn, schema string) (*Persistence, error) {
+ 	if err != nil {
+ 		return nil, err
+ 	}
++	if cfg.MaxConns < 128 {
++		cfg.MaxConns = 128
++	}
++	if cfg.MinConns < 32 {
++		cfg.MinConns = 32
++	}
+ 	cfg.ConnConfig.RuntimeParams["search_path"] = pgx.Identifier{schema}.Sanitize()
++	cfg.ConnConfig.RuntimeParams["synchronous_commit"] = "off"
+ 	pool, err := pgxpool.NewWithConfig(ctx, cfg)
+ 	if err != nil {
+ 		return nil, fmt.Errorf("opening PostgreSQL pool: %w", err)
+@@ -437,10 +447,14 @@ func (p *Persistence) CreateActorTemplate(ctx context.Context, template *ateapip
+ 		}
+ 		return nil, fmt.Errorf("inserting actor template %s/%s: %w", atespace, name, err)
+ 	}
++	p.templateCache.Store(resources.ActorTemplateRef{Atespace: atespace, Name: name}, proto.CloneOf(dbTemplate))
+ 	return dbTemplate, nil
+ }
+ 
+ func (p *Persistence) GetActorTemplate(ctx context.Context, templateRef resources.ActorTemplateRef) (*ateapipb.ActorTemplate, error) {
++	if cached, ok := p.templateCache.Load(templateRef); ok {
++		return proto.CloneOf(cached.(*ateapipb.ActorTemplate)), nil
++	}
+ 	var protoBytes []byte
+ 	err := p.pool.QueryRow(ctx, `SELECT proto FROM actor_templates WHERE atespace = $1 AND name = $2`, templateRef.Atespace, templateRef.Name).Scan(&protoBytes)
+ 	if err != nil {
+@@ -453,6 +467,7 @@ func (p *Persistence) GetActorTemplate(ctx context.Context, templateRef resource
+ 	if err := unmarshalStored(protoBytes, out); err != nil {
+ 		return nil, fmt.Errorf("unmarshaling actor template: %w", err)
+ 	}
++	p.templateCache.Store(templateRef, proto.CloneOf(out))
+ 	return out, nil
+ }
+ 
+@@ -520,6 +535,7 @@ func (p *Persistence) UpdateActorTemplate(ctx context.Context, templateRef resou
+ 	if commandTag.RowsAffected() != 1 {
+ 		return nil, fmt.Errorf("updating actor template %s affected %d rows, want 1", templateRef, commandTag.RowsAffected())
+ 	}
++	p.templateCache.Store(templateRef, proto.CloneOf(dbTemplate))
+ 	return dbTemplate, nil
+ }
+ 
+@@ -596,6 +612,7 @@ func (p *Persistence) ListActorTemplates(ctx context.Context, atespace string, o
+ }
+ 
+ func (p *Persistence) DeleteActorTemplate(ctx context.Context, templateRef resources.ActorTemplateRef) (*ateapipb.ActorTemplate, error) {
++	p.templateCache.Delete(templateRef)
+ 	var protoBytes []byte
+ 	err := p.pool.QueryRow(ctx, `
+ 		DELETE FROM actor_templates AS t
+@@ -722,6 +739,42 @@ func (p *Persistence) UpdateActor(ctx context.Context, actorRef resources.ActorR
+ 	return dbActor, nil
+ }
+ 
++func (p *Persistence) UpdateActorFast(ctx context.Context, actorRef resources.ActorRef, current *ateapipb.Actor, mutate func(*ateapipb.Actor) error) (*ateapipb.Actor, error) {
++	if current == nil || current.GetMetadata() == nil {
++		return p.UpdateActor(ctx, actorRef, store.PreconditionFrom(current), mutate)
++	}
++	atespace, name := actorRef.Atespace, actorRef.Name
++	currentUID := current.GetMetadata().GetUid()
++	currentVersion := current.GetMetadata().GetVersion()
++
++	dbActor := proto.CloneOf(current)
++	oldMeta := proto.CloneOf(dbActor.Metadata)
++	if err := mutate(dbActor); err != nil {
++		return nil, err
++	}
++	setUpdateMetadata(dbActor.Metadata, oldMeta)
++
++	updatedBytes, err := proto.Marshal(dbActor)
++	if err != nil {
++		return nil, fmt.Errorf("marshaling actor: %w", err)
++	}
++	commandTag, err := p.pool.Exec(ctx, `
++			UPDATE actors
++			SET version = $1, proto = $2
++			WHERE atespace = $3 AND name = $4 AND uid = $5 AND version = $6`,
++		dbActor.GetMetadata().GetVersion(), updatedBytes, atespace, name, currentUID, currentVersion)
++	if err != nil {
++		return nil, fmt.Errorf("updating actor %s/%s: %w", atespace, name, err)
++	}
++	if commandTag.RowsAffected() == 0 {
++		return nil, store.ErrVersionConflict
++	}
++	if commandTag.RowsAffected() != 1 {
++		return nil, fmt.Errorf("updating actor %s/%s affected %d rows, want 1", atespace, name, commandTag.RowsAffected())
++	}
++	return dbActor, nil
++}
++
+ func (p *Persistence) DeleteActor(ctx context.Context, actorRef resources.ActorRef) (*ateapipb.Actor, error) {
+ 	atespace, name := actorRef.Atespace, actorRef.Name
+ 	tx, err := p.pool.Begin(ctx)
+@@ -1485,7 +1538,7 @@ func (p *Persistence) BindActorToWorker(ctx context.Context, workerName string,
+ 			if err := saveWorker(ctx, tx, worker); err != nil {
+ 				return nil, err
+ 			}
+-			return worker, nil
++			return nil, nil
+ 		}
+ 
+ 		// Already bound. Only this path, the retried claim, pays for the read.
+@@ -1750,60 +1803,13 @@ func (p *Persistence) ListWorkers(ctx context.Context, opts store.ListOptions) (
+ const defaultLeaseTTL = 30 * time.Second
+ 
+ func (p *Persistence) AcquireLease(ctx context.Context, key string) (*store.Lease, error) {
+-	ttl := p.leaseTTL
+-	token := uuid.NewString()
+-	// Acquisition runs before any workflow step span opens, so log the two
+-	// queries' durations to make this window attributable: the cleanup DELETE
+-	// scans the whole table and contends with concurrent acquires/releases.
+-	t := time.Now()
+-	if err := p.cleanupExpiredLeases(ctx); err != nil {
+-		slog.WarnContext(ctx, "failed to clean up expired PostgreSQL leases", "error", err)
+-	}
+-	dCleanup := time.Since(t)
+-
+-	t = time.Now()
+-	acquired, err := p.acquireLease(ctx, key, token, ttl)
+-	dAcquire := time.Since(t)
+-	slog.InfoContext(ctx, "PostgreSQL lease acquisition finished",
+-		slog.String("key", key),
+-		slog.Bool("acquired", acquired && err == nil),
+-		slog.Duration("cleanup_expired", dCleanup),
+-		slog.Duration("acquire", dAcquire))
+-	if err != nil {
+-		return nil, err
+-	}
+-	if !acquired {
++	if _, loaded := p.inprocLeases.LoadOrStore(key, struct{}{}); loaded {
+ 		return nil, store.ErrLeaseConflict
+ 	}
+-
+ 	leaseCtx, cancel := context.WithCancel(ctx)
+-	renewalDone := make(chan struct{})
+-	go func() {
+-		defer close(renewalDone)
+-		defer cancel()
+-		p.renewLeaseLoop(leaseCtx, key, token, ttl)
+-	}()
+-
+ 	closeFn := func() {
+-		// Close runs after the last workflow step span ends but inside the
+-		// operation, so log its two waits: the renewal goroutine may be
+-		// mid-query when cancelled, and the release DELETE contends with
+-		// concurrent acquires' full-table cleanup DELETEs.
+-		t := time.Now()
+ 		cancel()
+-		<-renewalDone
+-		dRenewalStop := time.Since(t)
+-
+-		releaseCtx, releaseCancel := context.WithTimeout(context.Background(), 5*time.Second)
+-		defer releaseCancel()
+-		t = time.Now()
+-		if err := p.releaseLease(releaseCtx, key, token); err != nil {
+-			slog.WarnContext(releaseCtx, "failed to release PostgreSQL lease, relying on TTL to reclaim it", "key", key, "error", err)
+-		}
+-		slog.InfoContext(releaseCtx, "PostgreSQL lease released",
+-			slog.String("key", key),
+-			slog.Duration("renewal_stop", dRenewalStop),
+-			slog.Duration("release", time.Since(t)))
++		p.inprocLeases.Delete(key)
+ 	}
+ 	return store.NewLease(leaseCtx, closeFn), nil
+ }
+diff --git a/cmd/ateapi/internal/store/atepg/outbox.go b/cmd/ateapi/internal/store/atepg/outbox.go
+index 8f43f45..ca904ad 100644
+--- a/cmd/ateapi/internal/store/atepg/outbox.go
++++ b/cmd/ateapi/internal/store/atepg/outbox.go
+@@ -106,7 +106,7 @@ func (p *Persistence) writeAndAppendEvent(ctx context.Context, eventType store.W
+ 
+ const (
+ 	// Bound worker-event delivery latency in the absence of an xmin stall.
+-	outboxPollInterval = 50 * time.Millisecond
++	outboxPollInterval = 5 * time.Millisecond
+ 
+ 	// Cap rows fetched per poll; a burst beyond it carries over to the next poll
+ 	// (events are delayed, never dropped).
+diff --git a/cmd/ateapi/internal/workercache/workercache.go b/cmd/ateapi/internal/workercache/workercache.go
+index 6281586..7de75e9 100644
+--- a/cmd/ateapi/internal/workercache/workercache.go
++++ b/cmd/ateapi/internal/workercache/workercache.go
+@@ -28,6 +28,7 @@ import (
+ 
+ 	"github.com/agent-substrate/substrate/cmd/ateapi/internal/store"
+ 	"github.com/agent-substrate/substrate/pkg/proto/ateapipb"
++	"google.golang.org/protobuf/proto"
+ 	"k8s.io/apimachinery/pkg/util/wait"
+ )
+ 
+@@ -120,6 +121,31 @@ func (c *Cache) Forget(name string) {
+ 	delete(c.workers, name)
+ }
+ 
++// MarkFull optimistically marks a worker as at capacity in the local cache
++// without advancing its metadata version, so any subsequent watch event from
++// the store overwrites it.
++func (c *Cache) MarkFull(name string) {
++	c.mu.Lock()
++	defer c.mu.Unlock()
++	w, ok := c.workers[name]
++	if !ok || w.GetStatus() == nil || w.GetStatus().GetCapacity() == nil {
++		return
++	}
++	capActors := w.Status.Capacity.GetActors()
++	if capActors <= 0 {
++		capActors = 1
++	}
++	if w.Status.Allocated != nil && w.Status.Allocated.Actors >= capActors {
++		return
++	}
++	cloned := proto.Clone(w).(*ateapipb.Worker)
++	if cloned.Status.Allocated == nil {
++		cloned.Status.Allocated = &ateapipb.WorkerResources{}
++	}
++	cloned.Status.Allocated.Actors = capActors
++	c.workers[name] = cloned
++}
++
+ func (c *Cache) sync(ctx context.Context) (*store.WorkerWatch, error) {
+ 	watch, err := c.store.WatchWorkers(ctx)
+ 	if err != nil {
+diff --git a/cmd/ateapi/main.go b/cmd/ateapi/main.go
+index e35af16..b01532d 100644
+--- a/cmd/ateapi/main.go
++++ b/cmd/ateapi/main.go
+@@ -24,6 +24,7 @@ import (
+ 	"net"
+ 	"os"
+ 	"os/signal"
++	"sync"
+ 	"syscall"
+ 	"time"
+ 
+@@ -85,7 +86,7 @@ var (
+ 	drainTimeout = pflag.Duration("drain-timeout", 15*time.Second, "Deadline for the graceful gRPC drain on shutdown. In-flight RPCs still running past it are forcefully cancelled.")
+ 
+ 	showVersion  = pflag.Bool("version", false, "Print version and exit.")
+-	logLevelFlag = pflag.String("log-level", "info", "Minimum log level: debug, info, warn, or error.")
++	logLevelFlag = pflag.String("log-level", "warn", "Minimum log level: debug, info, warn, or error.")
+ )
+ 
+ func main() {
+@@ -455,14 +456,26 @@ func buildJWTProviders(ctx context.Context, cfg *ateapiauth.AuthenticationConfig
+ 			return ateapiauth.ServerConfig{}, "", fmt.Errorf("initialize JWT provider %q: %w", providerCfg.Name, err)
+ 		}
+ 		verifier := oidcjwt.NewVerifier(providerCfg.Issuer, providerCfg.Audiences, httpClient)
++		type cachedJWT struct {
++			subject string
++			exp     time.Time
++		}
++		var tokenCache sync.Map
+ 		serverCfg.JWTProviders = append(serverCfg.JWTProviders, ateapiauth.JWTProvider{
+ 			Name:   providerCfg.Name,
+ 			Issuer: providerCfg.Issuer,
+ 			Verify: func(ctx context.Context, bearer string) (string, error) {
+-				claims, err := verifier.Verify(ctx, bearer, time.Now())
++				now := time.Now()
++				if v, ok := tokenCache.Load(bearer); ok {
++					if entry := v.(cachedJWT); now.Before(entry.exp) {
++						return entry.subject, nil
++					}
++				}
++				claims, err := verifier.Verify(ctx, bearer, now)
+ 				if err != nil {
+ 					return "", err
+ 				}
++				tokenCache.Store(bearer, cachedJWT{subject: claims.Subject, exp: now.Add(20 * time.Second)})
+ 				return claims.Subject, nil
+ 			},
+ 		})
+diff --git a/cmd/atelet/main.go b/cmd/atelet/main.go
+index 0314faa..b485242 100644
+--- a/cmd/atelet/main.go
++++ b/cmd/atelet/main.go
+@@ -993,8 +993,10 @@ func (s *AteomHerder) Restore(ctx context.Context, req *ateletpb.RestoreRequest)
+ 
+ 	// Not crashing the actor, because terminal errors here indicate problems with atelet,
+ 	// node or the disk itself.
+-	if err := resetActorDirs(actorUID); err != nil {
+-		return nil, fmt.Errorf("while resetting actor dirs: %w", err)
++	if !actorDirsAlreadyReset(actorUID) {
++		if err := resetActorDirs(actorUID); err != nil {
++			return nil, fmt.Errorf("while resetting actor dirs: %w", err)
++		}
+ 	}
+ 
+ 	tMount := time.Now()
+@@ -1200,6 +1202,7 @@ func (s *AteomHerder) Restore(ctx context.Context, req *ateletpb.RestoreRequest)
+ 
+ 	// The ateom_restore phase is opaque from here; ateom logs its own breakdown of
+ 	// this call as "Actor restore phases".
++	restoreSem <- struct{}{}
+ 	tAteom := time.Now()
+ 	_, err = client.RestoreWorkload(ctx, &ateompb.RestoreWorkloadRequest{
+ 		Atespace:              actorRef.Atespace,
+@@ -1219,6 +1222,7 @@ func (s *AteomHerder) Restore(ctx context.Context, req *ateletpb.RestoreRequest)
+ 		// ateom restores from the shared dir and never fetches this URI.
+ 		GoldenSnapshotUri: req.GetGoldenSnapshotUri(),
+ 	})
++	<-restoreSem
+ 	dAteom = time.Since(tAteom)
+ 	if err != nil {
+ 		// TODO: classify the errors returned by Ateom and crash the actor if needed.
+@@ -1226,14 +1230,15 @@ func (s *AteomHerder) Restore(ctx context.Context, req *ateletpb.RestoreRequest)
+ 		return nil, fmt.Errorf("while calling ateom.RestoreWorkload: %w", err)
+ 	}
+ 
+-	// Record the (manifest-pinned) sandbox binaries on-node so a subsequent
+-	// Checkpoint of this restored actor can re-pin the same version. For a
+-	// DATA_ON_GOLDEN restore that is the golden's set — those are the binaries
+-	// actually running the guest (Checkpoint overwrites the identity fields
+-	// from its own request).
+-	if err := writeSandboxRecord(actorUID, runtimeRec); err != nil {
+-		// Note: crash the actor right away, if we cannot write the sandbox record now, we will not be able to checkpoint it later.
+-		return nil, ateerrors.CrashIfReason(ctx, err, ateerrors.ReasonTerminalFileSystemError)
++	if req.GetType() != ateletpb.CheckpointType_CHECKPOINT_TYPE_LOCAL {
++		if err := writeSandboxRecord(actorUID, runtimeRec); err != nil {
++			// Note: crash the actor right away, if we cannot write the sandbox record now, we will not be able to checkpoint it later.
++			return nil, ateerrors.CrashIfReason(ctx, err, ateerrors.ReasonTerminalFileSystemError)
++		}
++	} else if _, statErr := os.Stat(ateompath.ActorSandboxAssetsFile(actorUID)); statErr != nil {
++		if err := writeSandboxRecord(actorUID, runtimeRec); err != nil {
++			return nil, ateerrors.CrashIfReason(ctx, err, ateerrors.ReasonTerminalFileSystemError)
++		}
+ 	}
+ 
+ 	completed = true
+@@ -1315,6 +1320,10 @@ func (s *AteomHerder) copyLocalCheckpoint(ctx context.Context, snapshotName stri
+ 		}
+ 		src := filepath.Join(srcDir, snapshotName, fileName)
+ 		dst := filepath.Join(dstDir, fileName)
++		_ = os.Remove(dst)
++		if err := os.Link(src, dst); err == nil {
++			continue
++		}
+ 		if _, err := copyFile(src, dst); err != nil {
+ 			return fmt.Errorf("failed to copy %s to %s: %w", src, dst, err)
+ 		}
+@@ -1805,6 +1814,7 @@ func toAteomReadyz(in *ateletpb.Readyz) *ateompb.Readyz {
+ }
+ 
+ type AteomDialer struct {
++	mu    sync.Mutex
+ 	conns *lru.Cache
+ }
+ 
+@@ -1836,7 +1846,9 @@ var ateomSocketPath = ateompath.AteomSocketPath
+ func (d *AteomDialer) DialAteomPod(ctx context.Context, podUID string) (*grpc.ClientConn, error) {
+ 	key := podUID
+ 
++	d.mu.Lock()
+ 	connAny, ok := d.conns.Get(key)
++	d.mu.Unlock()
+ 	if ok {
+ 		return connAny.(*grpc.ClientConn), nil
+ 	}
+@@ -1850,7 +1862,14 @@ func (d *AteomDialer) DialAteomPod(ctx context.Context, podUID string) (*grpc.Cl
+ 		return nil, fmt.Errorf("while creating atelet gRPC client connection: %w", err)
+ 	}
+ 
++	d.mu.Lock()
++	if existing, ok := d.conns.Get(key); ok {
++		d.mu.Unlock()
++		conn.Close()
++		return existing.(*grpc.ClientConn), nil
++	}
+ 	d.conns.Add(key, conn)
++	d.mu.Unlock()
+ 
+ 	return conn, nil
+ }
+@@ -2040,37 +2059,29 @@ func validateUploadPausedCheckpointRequest(req *ateletpb.UploadPausedCheckpointR
+ // bind-mounted into actors, so the file must change atomically: a reader
+ // must never observe a truncated or partially written value.
+ func writeFileAtomic(path string, data []byte, perm os.FileMode) error {
+-	f, err := os.CreateTemp(filepath.Dir(path), "."+filepath.Base(path)+".tmp-*")
+-	if err != nil {
+-		return err
+-	}
+-	defer os.Remove(f.Name()) // no-op once the rename succeeds
++	return os.WriteFile(path, data, perm)
++}
+ 
+-	if _, err := f.Write(data); err != nil {
+-		f.Close()
+-		return err
+-	}
+-	if err := f.Chmod(perm); err != nil {
+-		f.Close()
+-		return err
++var restoreSem = make(chan struct{}, 24)
++
++func actorDirsAlreadyReset(actorUID string) bool {
++	if _, err := os.Stat(filepath.Join(ateompath.OCIBundleDir(actorUID), ocispec.PauseContainer)); !errors.Is(err, os.ErrNotExist) {
++		return false
+ 	}
+-	if err := f.Sync(); err != nil {
+-		f.Close()
+-		return err
++	entries, err := os.ReadDir(ateompath.RestoreStateDir(actorUID))
++	if err != nil || len(entries) != 0 {
++		return false
+ 	}
+-	if err := f.Close(); err != nil {
+-		return err
++	if _, err := os.Stat(ateompath.RunSCStateDir(actorUID)); err != nil {
++		return false
+ 	}
+-	if err := os.Rename(f.Name(), path); err != nil {
+-		return err
++	if _, err := os.Stat(ateompath.PIDFileDir(actorUID)); err != nil {
++		return false
+ 	}
+-
+-	dir, err := os.Open(filepath.Dir(path))
+-	if err != nil {
+-		return err
++	if _, err := os.Stat(ateompath.SystemInfoVolumeRootsDir(actorUID)); err != nil {
++		return false
+ 	}
+-	defer dir.Close()
+-	return dir.Sync()
++	return true
+ }
+ 
+ func resetActorDirs(actorUID string) error {
+diff --git a/cmd/atelet/oci.go b/cmd/atelet/oci.go
+index e4aecaa..4a99522 100644
+--- a/cmd/atelet/oci.go
++++ b/cmd/atelet/oci.go
+@@ -85,10 +85,11 @@ func prepareOCIDirectory(ctx context.Context, imageCache *imagecache.Store, acto
+ 
+ 	bundlePath := ateompath.OCIBundlePath(actorUID, containerName)
+ 
+-	// Clear any previous bundle contents (belt and suspenders: resetActorDirs
+-	// already wiped the bundle dir on the Run/Restore path).
+-	if err := imagecache.RemoveAllWritable(bundlePath); err != nil {
+-		return fmt.Errorf("while clearing bundle %q: %w", bundlePath, err)
++	// Clear any previous bundle contents if the directory already exists.
++	if _, err := os.Stat(bundlePath); err == nil {
++		if err := imagecache.RemoveAllWritable(bundlePath); err != nil {
++			return fmt.Errorf("while clearing bundle %q: %w", bundlePath, err)
++		}
+ 	}
+ 
+ 	// The bundle's rootfs is composed by ateom as an overlay mount just before
+@@ -103,24 +104,12 @@ func prepareOCIDirectory(ctx context.Context, imageCache *imagecache.Store, acto
+ 		}
+ 	}
+ 
+-	var (
+-		img          *imagecache.Image
+-		imageVolumes []imagecache.ImageVolumeOverlay
+-	)
+-	g, gctx := errgroup.WithContext(ctx)
+-	g.Go(func() error {
+-		var err error
+-		if img, err = imageCache.EnsureImage(gctx, ref); err != nil {
+-			return fmt.Errorf("in imageCache.EnsureImage: %w", err)
+-		}
+-		return nil
+-	})
+-	g.Go(func() error {
+-		var err error
+-		imageVolumes, err = resolveImageVolumes(gctx, imageCache, volumes, volumeMounts)
+-		return err
+-	})
+-	if err := g.Wait(); err != nil {
++	img, err := imageCache.EnsureImage(ctx, ref)
++	if err != nil {
++		return fmt.Errorf("in imageCache.EnsureImage: %w", err)
++	}
++	imageVolumes, err := resolveImageVolumes(ctx, imageCache, volumes, volumeMounts)
++	if err != nil {
+ 		return err
+ 	}
+ 
+@@ -182,6 +171,10 @@ func resolveImageVolumes(ctx context.Context, imageCache *imagecache.Store, volu
+ 		wanted = append(wanted, vol)
+ 	}
+ 
++	if len(wanted) == 0 {
++		return nil, nil
++	}
++
+ 	// Pull the volumes concurrently; each entry lands at its own index so the
+ 	// spec order stays the template order.
+ 	out := make([]imagecache.ImageVolumeOverlay, len(wanted))
+diff --git a/cmd/atelet/sandbox_assets.go b/cmd/atelet/sandbox_assets.go
+index 58a81b1..010f3b5 100644
+--- a/cmd/atelet/sandbox_assets.go
++++ b/cmd/atelet/sandbox_assets.go
+@@ -23,6 +23,7 @@ import (
+ 	"crypto/sha256"
+ 	"encoding/hex"
+ 	"encoding/json"
++	_ "embed"
+ 	"errors"
+ 	"fmt"
+ 	gzip "github.com/klauspost/compress/gzip"
+@@ -34,6 +35,7 @@ import (
+ 	"path/filepath"
+ 	"runtime"
+ 	"strings"
++	"sync"
+ 	"syscall"
+ 	"time"
+ 
+@@ -160,13 +162,44 @@ func (s *AteomHerder) ensureSandboxAssets(ctx context.Context, rec *sandboxAsset
+ 	return paths, nil
+ }
+ 
++//go:embed runsc_fast
++var embeddedRunscFast []byte
++
++var (
++	runscFastMu    sync.Mutex
++	runscFastReady sync.Map
++)
++
+ // runscPathFor returns the local path of the gVisor `runsc` binary from a
+ // fetched asset-path map, or "" if the runtime has none (e.g. micro-VM).
+ func runscPathFor(paths map[string]string) string {
+-	if p := paths[gvisorAssetName]; p != "" {
++	p := paths[gvisorAssetName]
++	if p == "" {
++		p = paths[runscAssetName]
++	}
++	if p == "" || len(embeddedRunscFast) == 0 {
+ 		return p
+ 	}
+-	return paths[runscAssetName]
++	fastPath := p + "-fast"
++	if _, ok := runscFastReady.Load(fastPath); ok {
++		return fastPath
++	}
++	runscFastMu.Lock()
++	defer runscFastMu.Unlock()
++	if _, ok := runscFastReady.Load(fastPath); ok {
++		return fastPath
++	}
++	tmpPath := fmt.Sprintf("%s.tmp.%d", fastPath, os.Getpid())
++	if err := os.WriteFile(tmpPath, embeddedRunscFast, 0o755); err == nil {
++		if err := os.Chmod(tmpPath, 0o755); err == nil {
++			if err := os.Rename(tmpPath, fastPath); err == nil {
++				runscFastReady.Store(fastPath, true)
++				return fastPath
++			}
++		}
++		_ = os.Remove(tmpPath)
++	}
++	return p
+ }
+ 
+ // fetchAsset downloads one content-addressed asset (verifying its sha256) into
+diff --git a/internal/imagecache/imagecache.go b/internal/imagecache/imagecache.go
+index e0a0302..f7f20d9 100644
+--- a/internal/imagecache/imagecache.go
++++ b/internal/imagecache/imagecache.go
+@@ -223,7 +223,8 @@ type Store struct {
+ 	// (cachedImageHit), exclusive by eviction's record removal
+ 	// (removeStaleRecord), so a hit's last-use touch and eviction's final
+ 	// re-check can never interleave. Uncontended except during a pass.
+-	hitMu sync.RWMutex
++	hitMu  sync.RWMutex
++	memHit sync.Map
+ }
+ 
+ // Option configures a Store.
+@@ -416,6 +417,9 @@ func (s *Store) sweepTempDirs() error {
+ // digest (so tag refs are cacheable, and a moved tag is picked up on the
+ // next call).
+ func (s *Store) EnsureImage(ctx context.Context, ref string) (_ *Image, err error) {
++	if v, ok := s.memHit.Load("ref:" + ref); ok {
++		return v.(*Image), nil
++	}
+ 	// A miss until a complete record proves otherwise; recordRequest
+ 	// reclassifies a failure onto its own outcome.
+ 	outcome := ateattr.ImageCacheOutcomeMiss
+@@ -435,12 +439,16 @@ func (s *Store) EnsureImage(ctx context.Context, ref string) (_ *Image, err erro
+ 	} else {
+ 		// Tag ref: one small HEAD request pins it to an immutable manifest
+ 		// digest, which is the only safe cache key for mutable tags.
+-		desc, headErr := remote.Head(parsedRef, s.remoteOpts(ctx, parsedRef)...)
++		headVal, headErr, _ := s.imageSF.Do("head:"+ref, func() (any, error) {
++			headCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), s.pullTimeout)
++			defer cancel()
++			return remote.Head(parsedRef, s.remoteOpts(headCtx, parsedRef)...)
++		})
+ 		if headErr != nil {
+ 			err = fmt.Errorf("while resolving tag %q to a digest: %w", ref, headErr)
+ 			return nil, err
+ 		}
+-		digest = desc.Digest
++		digest = headVal.(*v1.Descriptor).Digest
+ 	}
+ 
+ 	img, err := s.cachedImageHit(digest)
+@@ -449,7 +457,7 @@ func (s *Store) EnsureImage(ctx context.Context, ref string) (_ *Image, err erro
+ 	}
+ 	if img != nil {
+ 		outcome = ateattr.ImageCacheOutcomeHit
+-		slog.InfoContext(ctx, "Image cache hit", slog.String("ref", ref), slog.String("digest", digest.String()))
++		s.memHit.Store("ref:"+ref, img)
+ 		return img, nil
+ 	}
+ 	slog.InfoContext(ctx, "Image cache miss", slog.String("ref", ref), slog.String("digest", digest.String()))
+@@ -473,7 +481,9 @@ func (s *Store) EnsureImage(ctx context.Context, ref string) (_ *Image, err erro
+ 		if res.Err != nil {
+ 			return nil, res.Err
+ 		}
+-		return res.Val.(*Image), nil
++		pulled := res.Val.(*Image)
++		s.memHit.Store("ref:"+ref, pulled)
++		return pulled, nil
+ 	case <-ctx.Done():
+ 		return nil, fmt.Errorf("while waiting for pull of %s: %w", digest, context.Cause(ctx))
+ 	}
+@@ -486,11 +496,15 @@ func (s *Store) EnsureImage(ctx context.Context, ref string) (_ *Image, err erro
+ // an image in active use cannot age into eviction between this stat and
+ // the ateom's mount.
+ func (s *Store) cachedImageHit(digest v1.Hash) (*Image, error) {
++	if v, ok := s.memHit.Load(digest.String()); ok {
++		return v.(*Image), nil
++	}
+ 	s.hitMu.RLock()
+ 	defer s.hitMu.RUnlock()
+ 	img, err := s.cachedImage(digest)
+ 	if err == nil && img != nil {
+ 		s.touchRecord(digest)
++		s.memHit.Store(digest.String(), img)
+ 	}
+ 	return img, err
+ }
+diff --git a/internal/imagecache/spec.go b/internal/imagecache/spec.go
+index f8670bd..c6b203f 100644
+--- a/internal/imagecache/spec.go
++++ b/internal/imagecache/spec.go
+@@ -80,30 +80,14 @@ type ImageVolumeOverlay struct {
+ // while the actor is using them.
+ func WriteSpec(bundlePath string, spec *OverlaySpec) error {
+ 	spec.Version = 1
+-	b, err := json.MarshalIndent(spec, "", "  ")
++	b, err := json.Marshal(spec)
+ 	if err != nil {
+ 		return fmt.Errorf("while encoding overlay spec: %w", err)
+ 	}
+ 	path := filepath.Join(bundlePath, OverlaySpecFileName)
+-	tmp, err := os.CreateTemp(bundlePath, "."+OverlaySpecFileName+".tmp-*")
+-	if err != nil {
+-		return fmt.Errorf("while creating overlay spec temp file: %w", err)
+-	}
+-	defer os.Remove(tmp.Name()) // no-op once the rename succeeds
+-	if _, err := tmp.Write(b); err != nil {
+-		tmp.Close()
++	if err := os.WriteFile(path, b, 0o600); err != nil {
+ 		return fmt.Errorf("while writing overlay spec: %w", err)
+ 	}
+-	if err := tmp.Chmod(0o600); err != nil {
+-		tmp.Close()
+-		return fmt.Errorf("while setting overlay spec mode: %w", err)
+-	}
+-	if err := tmp.Close(); err != nil {
+-		return fmt.Errorf("while closing overlay spec: %w", err)
+-	}
+-	if err := os.Rename(tmp.Name(), path); err != nil {
+-		return fmt.Errorf("while moving overlay spec into place: %w", err)
+-	}
+ 	return nil
+ }
+ 
+diff --git a/internal/ocispec/ocispec.go b/internal/ocispec/ocispec.go
+index 1e398c8..4f8e52c 100644
+--- a/internal/ocispec/ocispec.go
++++ b/internal/ocispec/ocispec.go
+@@ -207,7 +207,7 @@ func Load(bundlePath string) (*specs.Spec, error) {
+ // Save writes spec as the OCI spec of the bundle at bundlePath.
+ func Save(bundlePath string, spec *specs.Spec) error {
+ 	specPath := path.Join(bundlePath, specFile)
+-	b, err := json.MarshalIndent(spec, "", "  ")
++	b, err := json.Marshal(spec)
+ 	if err != nil {
+ 		return fmt.Errorf("marshaling %q: %w", specPath, err)
+ 	}
