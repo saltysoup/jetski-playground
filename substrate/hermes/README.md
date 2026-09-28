@@ -85,7 +85,17 @@ gcloud container node-pools create hermes-c4d-pool \
 ```
 
 - **The taint** keeps the light demo's workers off these nodes. atelet and the ate-node-tuner already tolerate it; check that both DaemonSets have a pod on every new node.
-- **Sizing.** Wake time is set by the node with the most agents, at about 46 ms per agent on c4d-standard-16. 18 nodes gives ~56 agents per node and ~2.6–2.9 s wakes.
+- **Sizing.** Wake time is set by the node with the most agents. 18 nodes gives ~56 agents per node and ~2.4–2.9 s wakes. A scaling test sampled CPU and pressure stall information (PSI) on all 18 nodes during two back-to-back wakes (2026-09-28):
+
+  | Wake | Agents per node (max) | All running | Node CPU busy during restore | CPU PSI (some) | IO PSI (full), peak |
+  |---|---|---|---|---|---|
+  | first 500 agents | ~28 (36) | 1,820 ms | 92–98% | 71–87% | 3–7% (one node 24%) |
+  | all 1,000 agents | ~56 (59) | 3,287 ms | 90–95% | 65–83% | ~100% on 16 of 18 nodes |
+
+  - Restores are **CPU-bound**: every node is saturated at both densities. At ~56 agents per node the 100 GB hyperdisk-balanced boot disk also stalls on reads. The slowest node in the 1,000 run sat at 50–60% CPU and 98% iowait for about 2 s.
+  - This 1,000-agent run was slower than the rehearsal wakes (2,444–2,854 ms). It came right after the 500-agent cycle had rewritten half of the snapshots.
+  - **Vertical or horizontal matters less than the resources per agent**: vCPUs, and disk throughput on the busiest node. At the same total vCPU, more and smaller nodes add disks (and so disk throughput), but each node also runs its own system pods, and random placement gets less even.
+  - Levers, biggest first: more total vCPU (for example a second pool on another machine family's quota), which halves agents per node (500 agents at ~28 per node took 1,820 ms; 1,000 agents on twice the nodes should land near that, but this is not measured); higher provisioned hyperdisk throughput and IOPS; an even placement.
 - **Disk.** Each paused Hermes agent keeps a ~150 MB snapshot on its node's disk, against ~4 MiB for a light agent. That is about 8.3 GB per node.
 
 ### 4.3 Actor image
