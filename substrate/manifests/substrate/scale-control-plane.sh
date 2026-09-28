@@ -8,13 +8,15 @@
 #   DRY_RUN=1   print what would change, change nothing.
 #
 # What it does (in order):
-#   1. Node pools: substrate-node-pool = 25 x c3-standard-4 (created by
-#      setup-gcp bootstrap); keynote-driver-pool = 4 x n2-standard-8 with label
-#      pool=keynote-driver and taint dedicated=keynote-driver:NoSchedule
-#      (created here if missing). The control plane (Postgres, ate-api,
-#      atenet) and the keynote driver run on keynote-driver-pool so they never
-#      compete with the 1,600 sandbox workers for CPU.
-#   2. Labels the substrate-node-pool nodes ate.dev/substrate-version=v0.1.0-gke.1
+#   1. Node pools: substrate-c4-pool = 25 x c4-standard-4 (Hyperdisk boot disk,
+#      label ate.dev/substrate-version=v0.1.0-gke.1); keynote-driver-pool =
+#      4 x n2-standard-8 with label pool=keynote-driver and taint
+#      dedicated=keynote-driver:NoSchedule. Both are created here if missing.
+#      The control plane (Postgres, ate-api, atenet) and the keynote driver run
+#      on keynote-driver-pool so they never compete with the 1,600 sandbox
+#      workers for CPU. It stays on N2 because C4 can't attach the pd-balanced
+#      Postgres volume. The bootstrap pool from setup-gcp is cordoned here.
+#   2. Labels the substrate-c4-pool nodes ate.dev/substrate-version=v0.1.0-gke.1
 #      (the atelet DaemonSet, WorkerPool and ate-node-tuner select on it).
 #   3. Postgres: settings below, pinned to one keynote-driver-pool node, 2-16 CPU.
 #      WARNING: fsync=off and full_page_writes=off trade crash safety for speed —
@@ -26,6 +28,7 @@
 #   6. podcertificate-controller: WORKERS_PER_SIGNER=16 (signs the 1,600 worker
 #      pod certificates quickly when the WorkerPool scales).
 #   7. WorkerPool/sandbox-workerpool: see sandbox-workerpool.yaml (applied here).
+#   8. Deletes the bootstrap pool (substrate-node-pool, 2 x c3-standard-4).
 #
 # Usage:
 #   PROJECT_ID=my-project ZONE=asia-northeast1-b SUBSTRATE_CLUSTER=my-substrate \
@@ -50,6 +53,9 @@ patch_if_needed() {  # $1=ns $2=kind/name $3=type $4=patch
 }
 
 WORKER_NODES=25
+WORKER_POOL=substrate-c4-pool
+WORKER_MACHINE_TYPE=c4-standard-4
+BOOTSTRAP_POOL=substrate-node-pool   # created by setup-gcp bootstrap (2 x c3-standard-4); removed in step 8
 CP_NODES=4
 PG_SETTINGS=(
   "max_connections = 1000"
@@ -69,10 +75,16 @@ CP_AFFINITY='{"nodeAffinity":{"preferredDuringSchedulingIgnoredDuringExecution":
 
 say "1. Node pools"
 nodes_in() { K get nodes -l "cloud.google.com/gke-nodepool=$1" --no-headers 2>/dev/null | wc -l; }
-cur=$(nodes_in substrate-node-pool)
-if [ "$cur" -eq "$WORKER_NODES" ]; then echo "    substrate-node-pool: ${cur} nodes (ok)"; else
-  echo "    substrate-node-pool: ${cur} -> ${WORKER_NODES} nodes"
-  act gcloud container clusters resize "${SUBSTRATE_CLUSTER}" --project="${PROJECT_ID}" --zone="${ZONE}" --node-pool=substrate-node-pool --num-nodes="${WORKER_NODES}" --quiet
+cur=$(nodes_in "${WORKER_POOL}")
+if [ "$cur" -eq 0 ]; then
+  echo "    ${WORKER_POOL}: creating ${WORKER_NODES} x ${WORKER_MACHINE_TYPE}"
+  # C4 supports only Hyperdisk boot disks.
+  act gcloud container node-pools create "${WORKER_POOL}" --project="${PROJECT_ID}" --zone="${ZONE}" --cluster="${SUBSTRATE_CLUSTER}" \
+    --machine-type="${WORKER_MACHINE_TYPE}" --num-nodes="${WORKER_NODES}" --disk-type=hyperdisk-balanced --disk-size=100 \
+    --node-labels=ate.dev/substrate-version=v0.1.0-gke.1,pool=light --workload-metadata=GKE_METADATA
+elif [ "$cur" -eq "$WORKER_NODES" ]; then echo "    ${WORKER_POOL}: ${cur} nodes (ok)"; else
+  echo "    ${WORKER_POOL}: ${cur} -> ${WORKER_NODES} nodes"
+  act gcloud container clusters resize "${SUBSTRATE_CLUSTER}" --project="${PROJECT_ID}" --zone="${ZONE}" --node-pool="${WORKER_POOL}" --num-nodes="${WORKER_NODES}" --quiet
 fi
 cur=$(nodes_in keynote-driver-pool)
 if [ "$cur" -eq 0 ]; then
@@ -84,9 +96,13 @@ elif [ "$cur" -eq "$CP_NODES" ]; then echo "    keynote-driver-pool: ${cur} node
   echo "    keynote-driver-pool: ${cur} -> ${CP_NODES} nodes"
   act gcloud container clusters resize "${SUBSTRATE_CLUSTER}" --project="${PROJECT_ID}" --zone="${ZONE}" --node-pool=keynote-driver-pool --num-nodes="${CP_NODES}" --quiet
 fi
+# Keep new pods off the bootstrap pool; step 8 deletes it once Postgres is pinned.
+for node in $(K get nodes -l "cloud.google.com/gke-nodepool=${BOOTSTRAP_POOL}" -o jsonpath='{.items[*].metadata.name}' 2>/dev/null); do
+  [ "$(K get node "$node" -o jsonpath='{.spec.unschedulable}')" = true ] || act K cordon "$node"
+done
 
 say "2. Substrate node labels"
-for node in $(K get nodes -l cloud.google.com/gke-nodepool=substrate-node-pool -o jsonpath='{.items[*].metadata.name}'); do
+for node in $(K get nodes -l "cloud.google.com/gke-nodepool=${WORKER_POOL}" -o jsonpath='{.items[*].metadata.name}'); do
   v=$(K get node "$node" -o jsonpath='{.metadata.labels.ate\.dev/substrate-version}')
   [ "$v" = "v0.1.0-gke.1" ] || act K label node "$node" ate.dev/substrate-version=v0.1.0-gke.1 --overwrite
 done
@@ -174,5 +190,13 @@ if [ "${DRY_RUN}" != 1 ]; then
   K -n ate-system rollout status deploy/atenet-router --timeout=300s
   K -n ate-system rollout status deploy/atenet-egress --timeout=300s
   K -n ate-demo-sandbox rollout status deploy/sandbox-workerpool --timeout=900s
+fi
+
+say "8. Remove the bootstrap pool (${BOOTSTRAP_POOL})"
+if [ "$(nodes_in "${BOOTSTRAP_POOL}")" -gt 0 ] || gcloud container node-pools describe "${BOOTSTRAP_POOL}" --project="${PROJECT_ID}" --zone="${ZONE}" --cluster="${SUBSTRATE_CLUSTER}" >/dev/null 2>&1; then
+  # GKE drains the nodes first; their pods (ate-controller, dns, ...) move to ${WORKER_POOL}.
+  act gcloud container node-pools delete "${BOOTSTRAP_POOL}" --project="${PROJECT_ID}" --zone="${ZONE}" --cluster="${SUBSTRATE_CLUSTER}" --quiet
+else
+  echo "    already gone"
 fi
 say "done"

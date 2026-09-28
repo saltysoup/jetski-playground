@@ -104,6 +104,8 @@ metadata:
   namespace: default
 spec:
   replicas: 1
+  strategy:
+    type: Recreate   # hostPort 8080 on one node: a surge pod could never schedule
   selector:
     matchLabels:
       app: llmd-envoy-gateway
@@ -113,7 +115,7 @@ spec:
         app: llmd-envoy-gateway
     spec:
       nodeSelector:
-        cloud.google.com/gke-nodepool: default-pool
+        cloud.google.com/machine-family: c4   # the C4 CPU node; TPU nodes are tainted
       containers:
         - name: envoy
           image: envoyproxy/envoy:v1.39-latest@sha256:57e14a549d7bd43c8d3f6d03e8cfa653e037d4b38e133acd9b54f38c524401b4

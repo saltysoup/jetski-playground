@@ -46,7 +46,7 @@ Routes match by suffix, so the page also works behind a path prefix,
 e.g. http://127.0.0.1:8765/some/prefix/ .
 
 Usage:  python3 mock_server.py [port] [--harness sandbox|hermes] [--no-cluster]     (default 8765, sandbox)
-        config.cluster: sandbox 25 x c3-standard-4 (4 vCPU), hermes 18 x c4d-standard-16 (16 vCPU);
+        config.cluster: sandbox 25 x c4-standard-4 (4 vCPU), hermes 18 x c4d-standard-16 (16 vCPU);
         --no-cluster omits it, like an older backend.
 """
 
@@ -144,7 +144,7 @@ CLOSERS = ("", "", "", " \U0001F604", " \U0001F525", " \U0001F916", " \U0001F602
 # ---- Hermes Agent mode (--harness hermes)
 HARNESS = "sandbox"          # set from argv in main()
 # config.cluster per harness; --no-cluster omits it (emulates an older backend without the field)
-CLUSTERS = {"sandbox": {"nodes": 25, "node_type": "c3-standard-4", "vcpus_per_node": 4},
+CLUSTERS = {"sandbox": {"nodes": 25, "node_type": "c4-standard-4", "vcpus_per_node": 4},
             "hermes": {"nodes": 18, "node_type": "c4d-standard-16", "vcpus_per_node": 16}}
 SEND_CLUSTER = True
 CODE_ADJ = ("tensor", "gradient", "sparse", "fused", "quantized", "latent", "eager", "sharded", "cached", "vector",

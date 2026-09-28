@@ -1,7 +1,7 @@
 # Agent Substrate × llm-d: 1,000 agents on GKE calling Gemma 4 12B on Cloud TPU v6e
 
 A keynote demo:
-- **Agent Substrate** wakes 1,000 sandboxed agents from zero in about 3 seconds on GKE.
+- **Agent Substrate** wakes 1,000 sandboxed agents from zero in about 2 seconds on GKE (C4 nodes; about 3 s on the original C3 nodes).
 - The agents call **Gemma 4 12B**, served by vLLM on **Cloud TPU v6e** behind the **llm-d** router.
 - The stage dashboard shows both sides live, and lets the presenter switch llm-d's routing (balanced, header-steered 80/20, priority flow control).
 
@@ -47,6 +47,16 @@ The dashboard is one 1920×1080 page with a draggable divider.
 Each reply shown in the ticker came from inside an agent's sandbox. The agent's script POSTs to the llm-d gateway with `wget`, saves the reply to `/tmp/agent_memory.json` in the sandbox, and returns it.
 
 ## 2. Results
+
+> [!NOTE]
+> **C4 update (2026-09-28).** The workers moved from 25 × c3-standard-4 to 25 × c4-standard-4, and the TPU cluster's CPU node from e2-standard-4 to c4-standard-4. The 1,000 light agents were re-created on the new nodes.
+> - Wake 1,000 (dashboard's Wake, no LLM calls): **1,907–1,953 ms** over 4 warm wakes, 0 failures; per-agent p50 1,045–1,084 ms. On C3 the median was 2,988 ms (below).
+> - Suspend all from idle: 1,623–1,734 ms.
+> - Simulate Traffic, 40 s: 6,993 LLM requests, 0 failed.
+> - The first wake after re-creating the agents restores from the golden snapshot in GCS and took 33.6 s, as §6.11 warns.
+> - The Hermes variant, already on C4D, was re-checked after the move: wakes 2,500–2,923 ms, 60 s of traffic with 1,702 replies and 0 failures, and every recall correct, so agent memory survived the move of the CPU node and gateway.
+>
+> The tables below are the original C3 measurements.
 
 **How these were measured:** measured on the live clusters on 2026-09-26, with the configuration in this folder:
 - patched ate-api/atelet with `restoreSem` 12;
@@ -193,7 +203,7 @@ Envoy asks the EPP (`ext_proc`) which pod to use:
 | | Substrate cluster (`ikwak-substrate-ane1`) | TPU cluster (`ikwak-tpu-v6e-ane1`) |
 |---|---|---|
 | Location, version | `asia-northeast1-b`, GKE 1.35.8-gke.1036000, REGULAR channel | `asia-northeast1-b`, GKE 1.35.8-gke.1036000 (created at 1.35.7 and auto-upgraded), REGULAR |
-| Node pools | `substrate-node-pool`: 25 × c3-standard-4, which runs atelet and 1,600 worker pods (64 per node).<br>`keynote-driver-pool`: 4 × n2-standard-8, label `pool=keynote-driver`, taint `dedicated=keynote-driver:NoSchedule`, which runs Postgres, 1 ate-api, 4 atenet-router, 4 atenet-egress and the keynote driver. | `default-pool`: 1 × e2-standard-4, which runs the EPP and Envoy.<br>`tpu-v6e-spot` and `tpu-v6e-spot-decode`: 1 × ct6e-standard-4t each (TPU v6e, 2x2 topology, Spot, hyperdisk-balanced 100 GB, taint `google.com/tpu=present:NoSchedule`). |
+| Node pools | `substrate-c4-pool`: 25 × c4-standard-4 (hyperdisk-balanced 100 GB), which runs atelet and 1,600 worker pods (64 per node).<br>`keynote-driver-pool`: 4 × n2-standard-8, label `pool=keynote-driver`, taint `dedicated=keynote-driver:NoSchedule`, which runs Postgres, 1 ate-api, 4 atenet-router, 4 atenet-egress and the keynote driver. It stays on N2: C4 can't attach Postgres's pd-balanced volume.<br>The [Hermes variant](./hermes/README.md) adds `hermes-c4d-pool` (18 × c4d-standard-16). | 1 × c4-standard-4 CPU node (hyperdisk-balanced), which runs the EPP and Envoy. In the demo cluster this pool is `cpu-c4-pool`; §6.6 creates it as `default-pool`. Both manifests select it by `cloud.google.com/machine-family: c4`.<br>`tpu-v6e-spot` and `tpu-v6e-spot-decode`: 1 × ct6e-standard-4t each (TPU v6e, 2x2 topology, Spot, hyperdisk-balanced 100 GB, taint `google.com/tpu=present:NoSchedule`). |
 | Networking | VPC-native. Pods `10.56.0.0/14` and services `34.118.224.0/20`, both auto-assigned. Dataplane V2. | Pods `172.28.0.0/14` and services `172.24.16.0/20`, from the subnet's secondary ranges `pods` and `services`. Gateway API standard channel. |
 | Other | Workload Identity; beta APIs `podcertificaterequests` + `clustertrustbundles`; managed OpenTelemetry (all set by `setup-gcp`) | – |
 
@@ -277,10 +287,11 @@ The measured setup used project `tpu-launchpad-playground`, VPC `ikwak-ane1-net`
 - for the mock screenshots only: Node 22 and Google Chrome.
 
 **Quota** in one zone:
-- 100 C3 vCPUs (25 × c3-standard-4);
+- 104 C4 vCPUs (25 × c4-standard-4 for workers, 1 × c4-standard-4 in the TPU cluster);
+- 8 C3 vCPUs, only while §6.2–§6.4 run (`setup-gcp` creates 2 × c3-standard-4, and §6.4 deletes them);
 - 32 N2 vCPUs (4 × n2-standard-8);
-- 4 E2 vCPUs (1 × e2-standard-4);
-- 8 Spot TPU v6e chips (2 × ct6e-standard-4t).
+- 8 Spot TPU v6e chips (2 × ct6e-standard-4t);
+- Hermes variant only: 288 C4D vCPUs (18 × c4d-standard-16).
 
 **Hugging Face:** a token with access to `google/gemma-4-12B-it`.
 
@@ -328,6 +339,8 @@ gcloud auth application-default login          # setup-gcp uses Application Defa
 GCE_REGION="${REGION}" CLUSTER_LOCATION="${ZONE}" CLUSTER_NAME="${SUBSTRATE_CLUSTER}" \
 NETWORK="${VPC_NAME}" SUBNETWORK="${SUBNET_NAME}" GVISOR_NODE_MACHINE_TYPE=c3-standard-4 \
   go run ./tools/setup-gcp bootstrap           # APIs, cluster (2 nodes), bucket, IAM, dashboards
+# The 2 x c3-standard-4 bootstrap pool is temporary: §6.4 moves the workers to 25 x c4-standard-4 and deletes it.
+# setup-gcp doesn't set a boot disk type, so it keeps its default (C3) machine type here.
 gcloud container clusters get-credentials "${SUBSTRATE_CLUSTER}" --zone="${ZONE}" --project="${PROJECT_ID}"
 
 export KUBECTL_CONTEXT="${CTX_SUB}"
@@ -345,7 +358,7 @@ envsubst < "${REPO_DIR}/manifests/substrate/sandbox-dense-template.yaml.tmpl" \
 > `setup-gcp create cluster` **deletes and recreates** an existing cluster whose network or subnet differs from `NETWORK` / `SUBNETWORK`. Never re-run it against a live cluster with different values.
 
 Upstream Agent Substrate also warns about worker node pools:
-- Turn node **auto-upgrade** off on the pools that run workers: `gcloud container node-pools update substrate-node-pool --cluster "${SUBSTRATE_CLUSTER}" --location "${ZONE}" --no-enable-autoupgrade`.
+- Turn node **auto-upgrade** off on the pools that run workers: `gcloud container node-pools update substrate-c4-pool --cluster "${SUBSTRATE_CLUSTER}" --location "${ZONE}" --no-enable-autoupgrade`.
 - Don't use Spot nodes for workers.
 - An actor that is awake when its worker pod is killed ends up `CRASHED`.
 - Here, a paused actor also loses its node-local snapshot when its node is recreated.
@@ -379,7 +392,7 @@ With go1.27.0 (linux/amd64) and gcc 15.2.0 these builds are byte-for-byte reprod
 | `runsc_fast` | `403b8d3d` |
 | `ateapi` | `c53a6b41` |
 | `atelet` | `c24d7425` |
-| `keynote_driver` | `466e8e5d` (source as of the Hermes variant, 2026-09-28) |
+| `keynote_driver` | `a709458a` (source as of the C4 move, 2026-09-28) |
 
 Other toolchains produce different bytes but the same code. The driver row changed with the Hermes variant: the light driver in the cluster still runs the earlier build `fdef79b4`, and the Hermes driver there was built from the current source without `-trimpath`, so its bytes differ.
 
@@ -395,14 +408,14 @@ kubectl --context="${CTX_SUB}" apply -f manifests/substrate/ate-node-tuner.yaml 
 ```
 
 **What `scale-control-plane.sh` does:** every step is idempotent. It:
-1. resizes `substrate-node-pool` to 25 nodes;
-2. creates `keynote-driver-pool` (4 × n2-standard-8, label + taint);
+1. creates `substrate-c4-pool` (25 × c4-standard-4, hyperdisk-balanced, worker label) and `keynote-driver-pool` (4 × n2-standard-8, label + taint), and cordons the bootstrap `substrate-node-pool`;
+2. keeps `keynote-driver-pool` on N2, because C4 can't attach Postgres's pd-balanced volume;
 3. labels the worker nodes `ate.dev/substrate-version=v0.1.0-gke.1`;
 4. tunes and pins Postgres;
 5. sets 1 ate-api replica with DB pool 160/64;
 6. sets 4 + 4 atenet replicas;
 7. sets podcert `WORKERS_PER_SIGNER=16`;
-8. applies the 1,600-worker WorkerPool.
+8. applies the 1,600-worker WorkerPool, then deletes the bootstrap `substrate-node-pool`.
 
 Run it **before** the next step. It may restart `postgres-0`, and the next step starts a file server inside that pod.
 
@@ -428,7 +441,7 @@ After `postgres-0` restarts, re-run the script before any ate-api or atelet pod 
 gcloud container clusters create "${TPU_CLUSTER}" --project="${PROJECT_ID}" --zone="${ZONE}" \
   --release-channel=regular --network="${VPC_NAME}" --subnetwork="${SUBNET_NAME}" \
   --enable-ip-alias --cluster-secondary-range-name=pods --services-secondary-range-name=services \
-  --machine-type=e2-standard-4 --num-nodes=1 --gateway-api=standard
+  --machine-type=c4-standard-4 --disk-type=hyperdisk-balanced --num-nodes=1 --gateway-api=standard
 for pool in tpu-v6e-spot tpu-v6e-spot-decode; do
   gcloud container node-pools create "${pool}" --project="${PROJECT_ID}" --zone="${ZONE}" \
     --cluster="${TPU_CLUSTER}" --machine-type=ct6e-standard-4t --tpu-topology=2x2 --num-nodes=1 \
@@ -538,7 +551,7 @@ Do this once before the show, with the port-forward from §6.11 running, and the
 post() { curl -s -X POST -H 'Content-Type: application/json' "localhost:8090/api/$1" -d "${2:-{\}}"; echo; }
 state() { curl -s localhost:8090/api/state | python3 -c 'import json,sys,collections; d=json.load(sys.stdin); b=d["burst"] or {}; print(d["phase"], dict(collections.Counter(d["agents"])), "all_running_ms", b.get("all_running_ms"), "wake_failed", b.get("wake_failed"), "all_suspended_ms", b.get("all_suspended_ms"))'; }
 post strategy '{"mode":"balanced"}'
-post burst '{"hold":true,"wake_only":true}'; sleep 8; state     # expect: running {'2': 1000} all_running_ms ~3000 wake_failed 0 ...
+post burst '{"hold":true,"wake_only":true}'; sleep 8; state     # expect: running {'2': 1000} all_running_ms ~2000 wake_failed 0 ...
 kubectl ate --context="${CTX_SUB}" get actors -a ate-demo-sandbox -o json \
   | python3 -c 'import json,sys,collections; d=json.load(sys.stdin); d=d if isinstance(d,list) else d.get("actors",[]); print(collections.Counter(a["status"]["state"] for a in d))'   # expect: Counter({'ACTOR_STATE_RUNNING': 1000})
 post suspend; sleep 6; state                                     # expect: idle {'0': 1000} ... all_suspended_ms ~2500
@@ -555,7 +568,7 @@ kubectl ate --context="${CTX_SUB}" get actors -a ate-demo-sandbox -o json \
 ## 8. Stage runbook
 
 1. **Before walking on:** the health check passed; the dashboard shows 0 / 1,000 and Balanced.
-2. **Wake Agents:** the counter races to 1,000 in about 3 s. It sends no LLM calls.
+2. **Wake Agents:** the counter races to 1,000 in about 2 s. It sends no LLM calls.
 3. **Simulate Traffic:** agents cycle at about 90% idle and jokes scroll. Click a joke to magnify it.
 4. **Steer 80/20:** the split bar moves to 80/20 within seconds.
 5. **Priority:** raises the load to 300 req/s and tags requests by band. On the live pool, queues and waits stay near zero (§2.2), so talk to the bands rather than to a latency gap.

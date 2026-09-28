@@ -1,6 +1,6 @@
 # Status, decisions and open items
 
-Last updated 2026-09-28 (Hermes variant added). The [README](./README.md) has the guide and the measured results. The engineering details are in [implementation.md](./implementation.md).
+Last updated 2026-09-28 (Hermes variant added; workers moved to C4). The [README](./README.md) has the guide and the measured results. The engineering details are in [implementation.md](./implementation.md).
 
 ## Status
 
@@ -13,6 +13,7 @@ The demo works end to end on the live clusters, and the guide was re-verified st
 | Suspend all | 0.60–0.74 s from Balanced; 2.4–2.6 s with all 1,000 up; 1.3–3.8 s from Priority. Always ends at 1,000 PAUSED and 0 sandboxes. |
 | llm-d | Balanced about 53/47. Steer 80/20 reaches 80/20 within seconds. About 90% of prompt tokens come from the prefix cache. |
 | Hermes Agent variant (2026-09-28, [hermes/](./hermes/README.md)) | 1,000 Hermes agents on 18 × c4d-standard-16:<br>• wake in 2,444–2,854 ms;<br>• Simulate Traffic at 90.4–91.0% idle, 14,681 turns with 0 failed;<br>• 14,679 of 14,681 codename recalls correct after up to 28 suspends;<br>• Suspend all in 1,441 ms. |
+| Move to C4 (2026-09-28) | Light workers: 25 × c3-standard-4 → 25 × c4-standard-4. TPU cluster CPU node: e2-standard-4 → c4-standard-4. Control-plane pool stays on N2 (C4 can't attach the pd-balanced Postgres volume).<br>• Light wake 1,907–1,953 ms (was median 2,988 ms on C3), 0 failures;<br>• 40 s of traffic: 6,993 requests, 0 failed;<br>• Hermes re-check: wakes 2,500–2,923 ms, 1,702 replies with 0 failed, all recalls correct. |
 
 **Hermes open item:** the first suspend and the first wake after a teach are slow (13–29 s and 6.3–6.7 s). The pre-show steps include one warm-up cycle to absorb this ([hermes §5](./hermes/README.md#5-before-the-show)). The root cause was not found: it is not dirty-page writeback, and one slow-suspend node showed 40% IO stall.
 

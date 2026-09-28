@@ -19,7 +19,7 @@ inferenceExtension:
         enabled: false
       enabled: false
   nodeSelector:
-    cloud.google.com/gke-nodepool: default-pool
+    cloud.google.com/machine-family: c4   # the C4 CPU node; TPU nodes are tainted
   replicas: 1
   pluginsConfigFile: kv-aware-config.yaml
   pluginsCustomConfig:

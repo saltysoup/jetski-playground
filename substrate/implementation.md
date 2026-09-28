@@ -11,16 +11,17 @@ How the demo reaches a ~3 s wake of 1,000 agents, what was changed in Agent Subs
 3. **atelet.** It prepares the actor's directories, then has the worker's ateom run `runsc restore` through the `runsc_fast` wrapper. At most `restoreSem` restores run at once on a node.
 4. **ate-api** marks the actor RUNNING only when the restore has returned.
 
-**How the wake time came down.** 25 × c3-standard-4 nodes, about 40 agents per node.
+**How the wake time came down.** 25 worker nodes, about 40 agents per node: c3-standard-4 for every row but the last, c4-standard-4 for the last.
 
 | Configuration | Wake 1,000 | Source |
 |---|---|---|
 | Stock v0.1.0 | 12.2 s | earlier project notes, not re-run |
 | + control-plane sizing (Postgres, ate-api, atenet) | 4.95 s | earlier project notes, not re-run |
 | + the patch below, synchronous `runsc_fast`, `restoreSem` 8 | 3.66 s (per-agent p50 1.95 s) | earlier project notes, not re-run |
-| + `restoreSem` 12, driver v4 (**deployed**) | median 2.99 s, 2.90–3.29 s over 10 wakes | measured 2026-09-26 (README §2) |
+| + `restoreSem` 12, driver v4 | median 2.99 s, 2.90–3.29 s over 10 wakes | measured 2026-09-26 (README §2) |
+| + workers moved to 25 × c4-standard-4 (**deployed**) | 1.91–1.95 s over 4 warm wakes (per-agent p50 1.05–1.08 s) | measured 2026-09-28 (README §2 note) |
 
-**What sets the ~3 s tail now: placement.**
+**What set the ~3 s tail on C3: placement.** (Measured on C3; not re-analysed on C4.)
 - An agent that rests with `PauseActor` keeps its snapshot on its node's local disk, so it can only wake on that node.
 - Today's placement is uneven, at 32–47 agents per node.
 - Nodes with 40 or fewer agents finish by about 2.45 s. The 2–3 nodes with 46–47 agents take 2.8–3.2 s.

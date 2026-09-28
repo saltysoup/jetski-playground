@@ -447,7 +447,7 @@ func main() {
 	flag.StringVar(&c.restMode, "rest-mode", "suspend", "How agents go to zero compute: suspend (snapshot to object storage) or pause (node-local snapshot)")
 	flag.StringVar(&c.tokenPath, "token-path", "/tmp/ate-client.token", "Where the refreshed ate-client bearer token is kept")
 	flag.IntVar(&c.nodes, "nodes", 25, "Display only: worker nodes the agents run on (the dashboard draws one grid tile per node)")
-	flag.StringVar(&c.nodeType, "node-type", "c3-standard-4", "Display only: machine type of the worker nodes")
+	flag.StringVar(&c.nodeType, "node-type", "c4-standard-4", "Display only: machine type of the worker nodes")
 	flag.IntVar(&c.nodeVCPUs, "node-vcpus", 4, "Display only: vCPUs per worker node")
 	flag.StringVar(&c.harness, "harness", "sandbox", "What runs in each agent: sandbox (shell script calls the LLM) or hermes (Hermes Agent; use with -atespace keynote-hermes -template hermes-dense)")
 	flag.StringVar(&c.hermesKeyFile, "hermes-key-file", "/work/hermes_api_key", "-harness hermes: file with the agents' API_SERVER_KEY")

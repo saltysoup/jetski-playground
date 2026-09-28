@@ -31,7 +31,8 @@ jetski-playground/
 ## Sections
 
 * **[`substrate/`](./substrate/README.md):** **Agent Substrate on GKE × `llm-d` on Cloud TPU v6e (Trillium)**:
-  * 1,000 gVisor agent sandboxes wake from zero in about 3 s (median 2,988 ms over 10 measured wakes). About 90% of the fleet sits idle at zero CPU during traffic, and suspend-all takes about 0.6 s.
+  * 1,000 gVisor agent sandboxes wake from zero in about 2 s on 25 × c4-standard-4 (1,907–1,953 ms over 4 warm wakes; median 2,988 ms on the original C3 nodes). About 90% of the fleet sits idle at zero CPU during traffic.
+  * A [Hermes Agent variant](./substrate/hermes/README.md) runs 1,000 Hermes agents on C4D whose conversation memory survives suspend and resume.
   * The agents call 2 × `google/gemma-4-12B-it` (`vllm-torchtpu`) pods behind `llm-d`: about 90% prefix-cache hit rate, live 80/20 header steering, and `InferenceObjective` priority bands.
   * Includes the interactive stage dashboard and a verified end-to-end reproduction guide.
 * **[`robotics/unitree-r1/`](./robotics/unitree-r1/README.md):** Complete offline deployment guide for Unitree R1 (Jetson Orin) running native CUDA `NeMo-Speech.cpp` (Nemotron ASR + Magpie TTS) with `google/gemma-4-E2B-it` VLM, hardware I/O audio testing, and multimodal vision streaming.
