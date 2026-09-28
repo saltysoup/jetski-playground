@@ -26,6 +26,18 @@ Behaviour mirrors keynote_driver/main.go where it matters to the page:
   * errors are HTTP 409 {"ok": false, "error": "..."}; success is {"ok": true, "result": ...}
 Not mocked: burst.ramp_fine, api/summary, api/events.
 
+Hermes Agent mode (--harness hermes; default --harness sandbox keeps the old payload, plus config.harness):
+  * config.harness = "hermes" and a state.memory object: enabled, gen, taught, recall_ok, recall_fail,
+    agents_recalled, max_survived, mean_survived, awake_pct, proxy_calls, proxy_failures
+  * every agent has a codename (adjective-noun). Its first reply is tagged memory "taught"; later replies
+    start with the codename and are tagged "recalled" (~1 % "forgot"), with survived = suspends since taught.
+    Memory lives in the (mock) Hermes session, so it survives duty-cycle suspends, Suspend all and new bursts.
+  GET  api/agent?i=N                              one agent (N = 1..1000): codename, session, recalls, wakes,
+                                                  last replies, awake_pct, last prompt / cached tokens
+  POST api/memory/reset {}                        new codenames + fresh sessions (idle only) -> result: gen
+  awake_pct: per agent, % of wall time awake since its codename was given (agents taught >= 5 s ago);
+  the fleet value is the mean over those agents (mock approximation of the driver's number).
+
 Mock-only extra (NOT part of the real contract, handy for testing edge states):
   POST api/mock      {"pod_up": [true, false]} | {"fail_rate": 0.01} | {"suspend_fail_rate": 0.02}
                      | {"reset": true}
@@ -33,7 +45,9 @@ Mock-only extra (NOT part of the real contract, handy for testing edge states):
 Routes match by suffix, so the page also works behind a path prefix,
 e.g. http://127.0.0.1:8765/some/prefix/ .
 
-Usage:  python3 mock_server.py [port]        (default 8765, binds 127.0.0.1)
+Usage:  python3 mock_server.py [port] [--harness sandbox|hermes] [--no-cluster]     (default 8765, sandbox)
+        config.cluster: sandbox 25 x c3-standard-4 (4 vCPU), hermes 18 x c4d-standard-16 (16 vCPU);
+        --no-cluster omits it, like an older backend.
 """
 
 import bisect
@@ -127,6 +141,26 @@ OPENERS = ("", "", "", "Sure! ", "Here's one: ", "Okay! ", "Ha, here you go: ", 
 CLOSERS = ("", "", "", " \U0001F604", " \U0001F525", " \U0001F916", " \U0001F602", " Hope that sparks joy!",
            " Happy training!", " \U0001F9E0", " Keep those gradients flowing!", " \U0001F389")
 
+# ---- Hermes Agent mode (--harness hermes)
+HARNESS = "sandbox"          # set from argv in main()
+# config.cluster per harness; --no-cluster omits it (emulates an older backend without the field)
+CLUSTERS = {"sandbox": {"nodes": 25, "node_type": "c3-standard-4", "vcpus_per_node": 4},
+            "hermes": {"nodes": 18, "node_type": "c4d-standard-16", "vcpus_per_node": 16}}
+SEND_CLUSTER = True
+CODE_ADJ = ("tensor", "gradient", "sparse", "fused", "quantized", "latent", "eager", "sharded", "cached", "vector",
+            "stochastic", "compiled", "async", "scalar", "ternary", "dropout")
+CODE_NOUN = ("otter", "falcon", "panda", "gecko", "badger", "lynx", "heron", "koala", "marmot", "orca", "puffin",
+             "wombat", "tapir", "ibis", "newt", "yak")
+FORGET_RATE = 0.01
+TAUGHT_FMT = ("Got it, I'm {cn} and I'll remember that! Here's one: {joke}", "{Cn}, noted! {joke}",
+              "Codename {cn}, locked in. {joke}", "I'm {cn} now. {joke}")
+RECALL_FMT = ("{Cn} here! {joke}", "{Cn} here! {joke}", "{Cn} here! {joke}", "It's {cn}! {joke}",
+              "{Cn} reporting in. {joke}", "{Sp} here, still me. {joke}")
+FORGOT_FMT = ("Hmm, I don't think I have a codename yet! Anyway: {joke}", "Codename? No idea, sorry. {joke}")
+HERMES_SYS_TOKENS = 1150     # Hermes system prompt + tool schemas (mock), cached after the first turn
+HERMES_TURN_TOKENS = 64      # each turn adds to the session history (mock)
+UPSET = (ord("1"), ord("2"), ord("3"), ord("4"))
+
 C0, C1, C2, C3, C4, C9 = (ord(c) for c in "012349")
 
 
@@ -172,7 +206,7 @@ def percentiles(v):
 
 class Req:
     __slots__ = ("agent", "steady", "first", "band", "pod", "t_arrive", "queue_ms", "prompt",
-                 "completion", "text", "ttft", "e2e", "vq", "mode", "suspend_after")
+                 "completion", "text", "ttft", "e2e", "vq", "mode", "suspend_after", "joke")
 
 
 class Sim:
@@ -224,7 +258,33 @@ class Sim:
         self.next_hist = now
         self.metrics = None
         self.sample_unix = unix_ms()
+        self.wakes = [0] * TOTAL            # sandbox resumes per agent
+        self.awake_acc = [0.0] * TOTAL      # seconds awake (states 1-4) per agent
+        self.awake_since = [0.0] * TOTAL
+        self.t_start = now
+        self.gen = 0
+        self._mem_reset(1)
         self._metrics(now)
+
+    def _mem_reset(self, gen):
+        """Fresh Hermes sessions: new codenames, nobody taught yet (api/memory/reset)."""
+        rnd = random.Random(7919 * gen + 17)
+        self.gen = gen
+        self.codename = ["%s-%s" % (rnd.choice(CODE_ADJ), rnd.choice(CODE_NOUN)) for _ in range(TOTAL)]
+        self.m_taught = [False] * TOTAL
+        self.m_taught_at = [0.0] * TOTAL     # mono time of the teaching reply
+        self.m_awake_at_teach = [0.0] * TOTAL
+        self.m_rests = [0] * TOTAL           # suspends since taught
+        self.m_ok = [0] * TOTAL
+        self.m_fail = [0] * TOTAL
+        self.m_survived = [0] * TOTAL        # survived count at the last correct recall
+        self.m_recalled = [False] * TOTAL    # recalled correctly after >= 1 suspend
+        self.m_turns = [0] * TOTAL
+        self.m_last = [deque(maxlen=4) for _ in range(TOTAL)]
+        self.m_prompt = [0] * TOTAL
+        self.m_cached = [0] * TOTAL
+        self.m_taught_n = self.m_ok_n = self.m_fail_n = self.m_recalled_n = self.m_max_surv = 0
+        self.m_calls = self.m_call_fail = 0
 
     def _new_burst(self, bid, t, n, hold, wake_only=False):
         """Fresh per-burst bookkeeping (the driver's newBurst + T0)."""
@@ -274,6 +334,20 @@ class Sim:
             self.cnt[old] -= 1
             self.cnt[c] += 1
             self.agents[i] = c
+            was_up, is_up = old in UPSET, c in UPSET
+            if is_up and not was_up:
+                self.wakes[i] += 1
+                self.awake_since[i] = mono()
+            elif was_up and not is_up:
+                self.awake_acc[i] += mono() - self.awake_since[i]
+                if c == C0 and self.m_taught[i]:
+                    self.m_rests[i] += 1        # snapshot to zero compute: the codename must survive this
+
+    def _awake_s(self, i, now):
+        a = self.awake_acc[i]
+        if self.agents[i] in UPSET:
+            a += now - self.awake_since[i]
+        return a
 
     def _up(self):
         """Sandboxes up, like the driver's d.up: running, requesting and suspending (plus waking during duty cycle)."""
@@ -415,6 +489,16 @@ class Sim:
             dur = max(RECONCILE_MIN_S, self._preflight_s(rest, dead))
             self._sched(mono() + dur, "recon_done", (rest, dead))
             return True, None
+
+    def memory_reset(self, body):
+        with self.lock:
+            if HARNESS != "hermes":
+                return False, "memory reset needs --harness hermes"
+            if self.busy or self.phase != "idle":
+                return False, "busy (phase %s)" % self.phase
+            self._mem_reset(self.gen + 1)
+            self.note = "memory reset: generation %d, new codenames and fresh Hermes sessions" % self.gen
+            return True, self.gen
 
     def mock_control(self, body):
         with self.lock:
@@ -606,7 +690,8 @@ class Sim:
         else:
             r.band = STANDARD
         r.prompt = rnd.randint(284, 297)
-        r.text = (rnd.choice(OPENERS) + rnd.choice(JOKES) + rnd.choice(CLOSERS)).strip()
+        r.joke = rnd.choice(JOKES)
+        r.text = (rnd.choice(OPENERS) + r.joke + rnd.choice(CLOSERS)).strip()
         r.completion = max(20, min(45, int(len(r.text) / 4.0) + rnd.randint(10, 20)))
         return r
 
@@ -738,6 +823,9 @@ class Sim:
         self.totals["requests"] += 1
         self.totals["failed"] += 1
         self.note = "%s: mock LLM failure: no inference pod is up" % agent_name(r.agent)
+        if HARNESS == "hermes":
+            self.m_calls += 1
+            self.m_call_fail += 1
         if r.steady:
             self.tr["inflight"] -= 1
             self.tr["failed"] += 1
@@ -747,7 +835,49 @@ class Sim:
         self.band_queue[r.band] -= 1
         self._dispatch(t, r, (t - r.t_arrive) * 1000.0)
 
+    def _hermes_turn(self, t, r):
+        """One Hermes Agent turn: teach the codename on the first turn, ask for it on every later one."""
+        i, rnd, now = r.agent, self.rnd, mono()
+        cn = self.codename[i]
+        fill = {"cn": cn, "Cn": cn[:1].upper() + cn[1:], "Sp": (cn[:1].upper() + cn[1:]).replace("-", " "),
+                "joke": r.joke}
+        self.m_calls += 1
+        self.m_turns[i] += 1
+        if not self.m_taught[i]:
+            self.m_taught[i] = True
+            self.m_taught_n += 1
+            self.m_rests[i] = 0
+            self.m_taught_at[i] = now
+            self.m_awake_at_teach[i] = self._awake_s(i, now)
+            mem = {"memory": "taught", "codename": cn}
+            r.text = rnd.choice(TAUGHT_FMT).format(**fill)
+        else:
+            surv = self.m_rests[i]
+            if rnd.random() < FORGET_RATE:
+                self.m_fail[i] += 1
+                self.m_fail_n += 1
+                mem = {"memory": "forgot", "codename": cn, "survived": surv}
+                r.text = rnd.choice(FORGOT_FMT).format(**fill)
+            else:
+                self.m_ok[i] += 1
+                self.m_ok_n += 1
+                self.m_survived[i] = surv
+                if surv >= 1 and not self.m_recalled[i]:
+                    self.m_recalled[i] = True
+                    self.m_recalled_n += 1
+                self.m_max_surv = max(self.m_max_surv, surv)
+                mem = {"memory": "recalled", "codename": cn, "survived": surv}
+                r.text = (rnd.choice(RECALL_FMT).format(**fill) + rnd.choice(CLOSERS)).strip()
+        # the Hermes session grows every turn; the system prompt and history are prefix-cached
+        r.prompt = HERMES_SYS_TOKENS + HERMES_TURN_TOKENS * self.m_turns[i] + rnd.randint(0, 40)
+        r.completion = max(20, min(60, int(len(r.text) / 4.0) + rnd.randint(6, 14)))
+        self.m_prompt[i] = r.prompt
+        self.m_cached[i] = (r.prompt - rnd.randint(30, 80)) if self.m_turns[i] > 1 else rnd.randint(900, HERMES_SYS_TOKENS)
+        self.m_last[i].append(r.text)
+        return mem
+
     def _ev_reply(self, t, r):
+        mem = self._hermes_turn(t, r) if HARNESS == "hermes" else None
         self.pod_inflight[r.pod] -= 1
         self.pod_total[r.pod] += 1
         tot = self.totals
@@ -767,10 +897,13 @@ class Sim:
             tag = BANDS[r.band][1]
         else:
             tag = ""
-        self.ticker.append({
+        entry = {
             "seq": self.seq, "agent": agent_name(r.agent), "text": r.text,
             "latency_ms": int(round(r.e2e + r.queue_ms)), "t_ms": int(round(self._ms(t))), "tag": tag,
-        })
+        }
+        if mem:
+            entry.update(mem)
+        self.ticker.append(entry)
         if r.first and self.t0 is not None:
             bisect.insort(self.done_recs, (self._ms(t), r.prompt + r.completion))
         self._req_finished(t, r)
@@ -994,6 +1127,46 @@ class Sim:
             self.ramp_frozen = pts
         return pts
 
+    def _agent_awake_pct(self, i, now):
+        if self.m_taught[i]:
+            w = now - self.m_taught_at[i]
+            a = self._awake_s(i, now) - self.m_awake_at_teach[i]
+        else:
+            w = now - self.t_start
+            a = self._awake_s(i, now)
+        return round(100.0 * a / w, 1) if w > 0.5 else 0.0
+
+    def _memory_json(self, now):
+        acc, n, surv, sn = 0.0, 0, 0, 0
+        for i in range(TOTAL):
+            if self.m_taught[i] and now - self.m_taught_at[i] >= 5.0:
+                acc += self._agent_awake_pct(i, now)
+                n += 1
+            if self.m_recalled[i]:
+                surv += self.m_survived[i]
+                sn += 1
+        return {"enabled": True, "gen": self.gen, "taught": self.m_taught_n, "recall_ok": self.m_ok_n,
+                "recall_fail": self.m_fail_n, "agents_recalled": self.m_recalled_n, "max_survived": self.m_max_surv,
+                "mean_survived": round(surv / float(sn), 2) if sn else 0.0,
+                "awake_pct": round(acc / n, 1) if n else round(100.0 * self._up() / TOTAL, 1),
+                "proxy_calls": self.m_calls, "proxy_failures": self.m_call_fail}
+
+    def agent_json(self, n):
+        """GET api/agent?i=N (N = 1..TOTAL)."""
+        with self.lock:
+            i, now = n - 1, mono()
+            out = {"agent": agent_name(i), "harness": HARNESS, "state": chr(self.agents[i]), "wakes": self.wakes[i],
+                   "awake_pct": self._agent_awake_pct(i, now)}
+            if HARNESS == "hermes":
+                out.update({
+                    "codename": self.codename[i], "session": "%s-g%d" % (agent_name(i), self.gen),
+                    "taught": self.m_taught[i], "recall_ok": self.m_ok[i], "recall_fail": self.m_fail[i],
+                    "rests_since_taught": self.m_rests[i], "survived": self.m_survived[i],
+                    "last": list(self.m_last[i]),
+                    "last_prompt_tokens": self.m_prompt[i] or None, "last_cached_tokens": self.m_cached[i] or None,
+                })
+            return out
+
     def snapshot(self):
         with self.lock:
             now = mono()
@@ -1027,10 +1200,13 @@ class Sim:
                         b["suspend_elapsed_ms"] = int(round(self.all_susp_ms))
                     if self.all_susp_ms is not None:
                         b["all_suspended_ms"] = int(round(self.all_susp_ms))
+            cfg = {"total_agents": TOTAL, "model": MODEL, "pods": list(PODS),
+                   "accelerator": ACCEL, "max_tokens": MAX_TOKENS, "harness": HARNESS}
+            if SEND_CLUSTER:
+                cfg["cluster"] = dict(CLUSTERS[HARNESS])
             state = {
                 "server_unix_ms": unix_ms(),
-                "config": {"total_agents": TOTAL, "model": MODEL, "pods": list(PODS),
-                           "accelerator": ACCEL, "max_tokens": MAX_TOKENS},
+                "config": cfg,
                 "phase": self.phase,
                 "burst": b,
                 "agents": self.agents.decode("ascii"),
@@ -1039,6 +1215,8 @@ class Sim:
                 "traffic": dict({"rate": self.rate, "strategy": self.strategy}, **self.tr),
                 "llmd": dict(self.metrics, sample_unix_ms=self.sample_unix, history=list(self.history)),
             }
+            if HARNESS == "hermes":
+                state["memory"] = self._memory_json(now)
             if self.note:
                 state["note"] = self.note
         return json.dumps(state, separators=(",", ":"), ensure_ascii=False)
@@ -1078,9 +1256,18 @@ class Handler(BaseHTTPRequestHandler):
         self._send(code, json.dumps(obj).encode("utf-8"), "application/json; charset=utf-8")
 
     def do_GET(self):
-        path = self.path.split("?", 1)[0]
+        path, _, query = self.path.partition("?")
         if path.endswith("/api/state"):
             self._send(200, SIM.snapshot().encode("utf-8"), "application/json; charset=utf-8")
+        elif path.endswith("/api/agent"):
+            q = dict(kv.partition("=")[::2] for kv in query.split("&") if kv)
+            try:
+                n = int(q.get("i", ""))
+            except ValueError:
+                n = 0
+            if not 1 <= n <= TOTAL:
+                return self._json(400, {"ok": False, "error": "i must be 1..%d" % TOTAL})
+            self._json(200, SIM.agent_json(n))
         elif path.endswith("/") or path.endswith("/index.html"):
             try:
                 with open(INDEX_HTML, "rb") as f:
@@ -1111,7 +1298,8 @@ class Handler(BaseHTTPRequestHandler):
         name = path[i + 5:] if i >= 0 else ""
         fn = {"burst": SIM.start_burst, "simulate_traffic": SIM.simulate_traffic,
               "traffic": SIM.set_traffic, "strategy": SIM.set_strategy,
-              "suspend": SIM.suspend, "reconcile": SIM.reconcile, "mock": SIM.mock_control}.get(name)
+              "suspend": SIM.suspend, "reconcile": SIM.reconcile, "mock": SIM.mock_control,
+              "memory/reset": SIM.memory_reset}.get(name)
         if fn is None:
             return self._json(404, {"ok": False, "error": "unknown endpoint: %s" % path})
         ok, res = fn(body)
@@ -1126,14 +1314,24 @@ class Handler(BaseHTTPRequestHandler):
 
 
 def main():
+    global HARNESS, SEND_CLUSTER
     port = 8765
-    for a in sys.argv[1:]:
+    args = sys.argv[1:]
+    for j, a in enumerate(args):
         if a.isdigit():
             port = int(a)
+        elif a == "--no-cluster":
+            SEND_CLUSTER = False
+        elif a.startswith("--harness="):
+            HARNESS = a.split("=", 1)[1]
+        elif a == "--harness" and j + 1 < len(args):
+            HARNESS = args[j + 1]
+    if HARNESS not in ("sandbox", "hermes"):
+        sys.exit("--harness must be sandbox or hermes")
     httpd = ThreadingHTTPServer(("0.0.0.0", port), Handler)
     httpd.daemon_threads = True
     threading.Thread(target=sim_loop, daemon=True).start()
-    print("mock keynote driver: http://127.0.0.1:%d/  (Ctrl-C to stop)" % port, flush=True)
+    print("mock keynote driver (harness %s): http://127.0.0.1:%d/  (Ctrl-C to stop)" % (HARNESS, port), flush=True)
     try:
         httpd.serve_forever()
     except KeyboardInterrupt:
@@ -1142,4 +1340,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

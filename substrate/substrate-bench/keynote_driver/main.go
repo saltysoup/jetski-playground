@@ -162,6 +162,12 @@ type config struct {
 	restMode                      string // "suspend" or "pause"
 	holdSeconds                   float64
 	tokenPath                     string
+	harness                       string // "sandbox" (shell script) or "hermes"
+	hermesKeyFile, llmListen      string
+	memory                        bool
+	contextLength                 int
+	nodes, nodeVCPUs              int    // display only: the dashboard groups the grid into one tile per node
+	nodeType                      string // display only
 }
 
 // agentRec is one agent's lifecycle in a burst. All times are ms since burst T0.
@@ -219,6 +225,10 @@ type tickEntry struct {
 	LatencyMs float64 `json:"latency_ms"`
 	TMs       float64 `json:"t_ms"`
 	Tag       string  `json:"tag"`
+	// Hermes memory demo: "taught" | "recalled" | "forgot" ("" otherwise).
+	Memory   string `json:"memory,omitempty"`
+	Codename string `json:"codename,omitempty"`
+	Survived int    `json:"survived,omitempty"` // suspends/pauses remembered through
 }
 
 type totals struct {
@@ -259,6 +269,9 @@ type jokeRes struct {
 	attempts  int
 	firstErr  string // first failed attempt's error (for retry accounting)
 	abandoned bool   // retries stopped because the agent is being put to rest
+	memory    string // hermes memory demo outcome
+	codename  string
+	survived  int
 }
 
 // ---- llm-d metrics ----
@@ -379,6 +392,8 @@ type driver struct {
 	base      []float64 // per-pod request counter at burst start
 	lastSplit []float64
 	view      llmdView
+
+	h *hermesState // -harness hermes only
 }
 
 func (d *driver) cliFor(idx int) *ateclient.Client {
@@ -431,9 +446,23 @@ func main() {
 	flag.BoolVar(&c.autoTraffic, "auto-traffic", true, "Automatically drive steady traffic while agents are held running in server mode")
 	flag.StringVar(&c.restMode, "rest-mode", "suspend", "How agents go to zero compute: suspend (snapshot to object storage) or pause (node-local snapshot)")
 	flag.StringVar(&c.tokenPath, "token-path", "/tmp/ate-client.token", "Where the refreshed ate-client bearer token is kept")
+	flag.IntVar(&c.nodes, "nodes", 25, "Display only: worker nodes the agents run on (the dashboard draws one grid tile per node)")
+	flag.StringVar(&c.nodeType, "node-type", "c3-standard-4", "Display only: machine type of the worker nodes")
+	flag.IntVar(&c.nodeVCPUs, "node-vcpus", 4, "Display only: vCPUs per worker node")
+	flag.StringVar(&c.harness, "harness", "sandbox", "What runs in each agent: sandbox (shell script calls the LLM) or hermes (Hermes Agent; use with -atespace keynote-hermes -template hermes-dense)")
+	flag.StringVar(&c.hermesKeyFile, "hermes-key-file", "/work/hermes_api_key", "-harness hermes: file with the agents' API_SERVER_KEY")
+	flag.StringVar(&c.llmListen, "llm-listen", ":8091", "-harness hermes: listen address of the LLM proxy the agents call (MODEL_BASE_URL)")
+	flag.BoolVar(&c.memory, "memory", true, "-harness hermes: codename memory demo (first turn gives a codename, later turns ask for it)")
+	flag.IntVar(&c.contextLength, "context-length", 65536, "-harness hermes: max_model_len the proxy reports on /models (match vLLM --max-model-len)")
 	flag.Parse()
 	if c.restMode != "suspend" && c.restMode != "pause" {
 		log.Fatalf("-rest-mode must be suspend or pause, got %q", c.restMode)
+	}
+	if c.harness != "sandbox" && c.harness != "hermes" {
+		log.Fatalf("-harness must be sandbox or hermes, got %q", c.harness)
+	}
+	if c.harness == "sandbox" {
+		c.memory = false
 	}
 	if c.gatewayURL == "" {
 		log.Fatal("-gateway-url is required")
@@ -508,6 +537,7 @@ func main() {
 		log.Printf("initial agent states: %s", d.stateCounts())
 	}
 
+	d.hermesInit()
 	go d.metricsLoop()
 	go d.trafficLoop()
 	go d.dutyLoop()
@@ -718,6 +748,7 @@ func (d *driver) recreate(ctx context.Context, idx int, existed bool) error {
 		}})
 		cancel()
 		if err == nil {
+			d.memForget(idx)
 			return nil
 		}
 		switch status.Code(err) {
@@ -728,6 +759,32 @@ func (d *driver) recreate(ctx context.Context, idx int, existed bool) error {
 		}
 	}
 	return fmt.Errorf("create: %w", err)
+}
+
+// goldenReady refuses a burst while ate-api is still building the template's
+// golden snapshot (e.g. right after the template was created). Actors resumed
+// before it is ready each cold-start their own sandbox instead of restoring
+// the snapshot; with a heavy image (Hermes) 1,000 cold starts at once time out
+// and can leave workers assigned. An error from the lookup itself is ignored,
+// so a flaky ate-api never blocks the demo.
+func (d *driver) goldenReady() error {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	t, err := d.cliFor(1).GetActorTemplate(ctx, &ateapipb.GetActorTemplateRequest{
+		ActorTemplate: &ateapipb.ObjectRef{Atespace: d.cfg.atespace, Name: d.cfg.tpl}})
+	if err != nil {
+		log.Printf("golden snapshot check skipped: %v", err)
+		return nil
+	}
+	gs := t.GetStatus().GetGoldenSnapshotStatus()
+	if gs.GetGoldenSnapshot().GetSnapshotUri() != "" {
+		return nil
+	}
+	msg := fmt.Sprintf("template %s/%s has no golden snapshot yet; ate-api builds it after the template is created (about a minute), try again then", d.cfg.atespace, d.cfg.tpl)
+	if e := gs.GetErrorMessage(); e != "" {
+		msg += " (last error: " + e + ")"
+	}
+	return errors.New(msg)
 }
 
 func retryable(err error) bool {
@@ -749,6 +806,9 @@ func (d *driver) wakeRPC(ctx context.Context, idx int) (int, error) {
 		cctx, cancel := context.WithTimeout(ctx, 60*time.Second)
 		_, err = cli.ResumeActor(cctx, &ateapipb.ResumeActorRequest{Actor: ref})
 		cancel()
+		if err == nil {
+			d.memWoke(idx)
+		}
 		if err == nil || !retryable(err) || time.Now().After(deadline) || attempt >= 40 {
 			return attempt, err
 		}
@@ -776,6 +836,9 @@ func (d *driver) restRPC(ctx context.Context, idx, attempts int, mode string) er
 			_, err = cli.SuspendActor(cctx, &ateapipb.SuspendActorRequest{Actor: ref})
 		}
 		cancel()
+		if err == nil {
+			d.memRested(idx)
+		}
 		if err == nil || !retryable(err) {
 			return err
 		}
@@ -807,6 +870,9 @@ func (d *driver) strategyHeaders(strategy string) (target, objective, tag string
 
 // askJoke makes the agent call the llm-d gateway from inside its sandbox.
 func (d *driver) askJoke(ctx context.Context, idx int, strategy string) jokeRes {
+	if d.h != nil {
+		return d.askHermes(ctx, idx, strategy)
+	}
 	name := agentName(idx)
 	target, objective, tag := d.strategyHeaders(strategy)
 	msgs := []map[string]string{}
@@ -961,7 +1027,8 @@ func (d *driver) recordReplyLocked(idx int, r jokeRes, tMs float64) {
 	d.uniq[normReply(r.text)] = struct{}{}
 	d.tot.UniqueReplies = len(d.uniq)
 	d.tickSeq++
-	d.ticker = append(d.ticker, tickEntry{Seq: d.tickSeq, Agent: agentName(idx), Text: r.text, LatencyMs: math.Round(r.latencyMs), TMs: math.Round(tMs), Tag: r.tag})
+	d.ticker = append(d.ticker, tickEntry{Seq: d.tickSeq, Agent: agentName(idx), Text: r.text, LatencyMs: math.Round(r.latencyMs), TMs: math.Round(tMs), Tag: r.tag,
+		Memory: r.memory, Codename: r.codename, Survived: r.survived})
 	if len(d.ticker) > 60 {
 		d.ticker = append([]tickEntry(nil), d.ticker[len(d.ticker)-60:]...)
 	}
@@ -970,6 +1037,10 @@ func (d *driver) recordReplyLocked(idx int, r jokeRes, tMs float64) {
 // startBurst wakes agents 1..n (n <= 0: all) with at most conc wakes in flight
 // (conc < 0: -burst-concurrency; 0: no limit).
 func (d *driver) startBurst(hold, wakeOnly bool, n, conc int) (string, error) {
+	// Before taking d.mu: it's an RPC, and the dashboard polls under d.mu.
+	if err := d.goldenReady(); err != nil {
+		return "", err
+	}
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	if d.busy || (d.phase != "idle") {
@@ -1226,6 +1297,12 @@ func (d *driver) agentResting(idx int) bool {
 	return s == stSuspending || s == stSuspended
 }
 
+// dutyTarget is how many agents the duty cycle keeps active: 10% of the
+// fleet (100 of 1,000), i.e. a ~90% idle rate.
+func (d *driver) dutyTarget() int {
+	return max(1, d.cfg.agents/10)
+}
+
 func (d *driver) dutyActiveCountLocked() int {
 	n := 0
 	for _, s := range d.states {
@@ -1257,10 +1334,13 @@ func (d *driver) startDutyCycleLocked(b *burst) {
 	go func(b *burst, idxs []int) {
 		ctx := context.Background()
 		var wg sync.WaitGroup
-		// First ~100 agents stagger a joke request over 0..0.85s and then pause, while remaining ~900 stagger-pause over 0..1.5s
-		// so the fleet settles smoothly to ~100 active (~90% idle rate) and every initial agent parks.
+		// The first ~10% of agents (100 of 1,000) stagger a joke request over
+		// 0..0.85s and then pause, while the rest stagger-pause over 0..1.5s, so
+		// the fleet settles smoothly to ~10% active (~90% idle rate) and every
+		// initial agent parks.
+		target := d.dutyTarget()
 		for rank, idx := range idxs {
-			if rank < 100 {
+			if rank < target {
 				wg.Add(1)
 				go func(idx, rank int) {
 					defer wg.Done()
@@ -1276,7 +1356,7 @@ func (d *driver) startDutyCycleLocked(b *burst) {
 				}(idx, rank)
 			} else {
 				go func(idx, rank int) {
-					delayMs := 20 + int(1450.0*float64(rank-100)/math.Max(1, float64(len(idxs)-100))) + rand.Intn(120)
+					delayMs := 20 + int(1450.0*float64(rank-target)/math.Max(1, float64(len(idxs)-target))) + rand.Intn(120)
 					time.Sleep(time.Duration(delayMs) * time.Millisecond)
 					d.mu.Lock()
 					stillDuty := d.phase == "running" && d.b == b && b.dutyCycle
@@ -1333,7 +1413,7 @@ func (d *driver) dutyPauseOne(ctx context.Context, b *burst, idx int) bool {
 
 func (d *driver) dutyWakeAndRequest(ctx context.Context, b *burst) {
 	d.mu.Lock()
-	if d.phase != "running" || d.tr.Rate <= 0 || d.b != b || !b.dutyCycle || d.dutyActiveCountLocked() >= 106 {
+	if d.phase != "running" || d.tr.Rate <= 0 || d.b != b || !b.dutyCycle || d.dutyActiveCountLocked() >= d.dutyTarget()+6 {
 		d.mu.Unlock()
 		return
 	}
@@ -1433,9 +1513,11 @@ func (d *driver) dutyWakeAndRequest(ctx context.Context, b *burst) {
 
 func (d *driver) dutyLoop() {
 	ctx := context.Background()
-	// 96 worker goroutines continuously wake random suspended agents, send a joke request, and pause back to 0 CPU
-	// so ~100 random agents are active at any moment (~90% idle rate) and different agents cycle across the grid.
-	for w := 0; w < 96; w++ {
+	// Worker goroutines (96 for 1,000 agents) continuously wake random
+	// suspended agents, send a joke request, and pause back to 0 CPU so ~10%
+	// of the agents are active at any moment (~90% idle rate) and different
+	// agents cycle across the grid.
+	for w := 0; w < d.dutyTarget()-4 || w < 1; w++ {
 		go func(w int) {
 			time.Sleep(time.Duration(w*12) * time.Millisecond)
 			for {
@@ -1451,7 +1533,7 @@ func (d *driver) dutyLoop() {
 					time.Sleep(80 * time.Millisecond)
 					continue
 				}
-				if actCnt > 108 {
+				if actCnt > d.dutyTarget()+8 {
 					d.mu.Lock()
 					pIdx := -1
 					n := len(d.states)
@@ -2385,6 +2467,7 @@ type stateJSON struct {
 	LLMD         llmdView       `json:"llmd"`
 	Note         string         `json:"note,omitempty"`
 	RetryReasons map[string]int `json:"retry_reasons,omitempty"`
+	Memory       *memView       `json:"memory,omitempty"`
 }
 
 func (d *driver) snapshot() stateJSON {
@@ -2403,7 +2486,8 @@ func (d *driver) snapshot() stateJSON {
 	s := stateJSON{
 		ServerUnixMs: time.Now().UnixMilli(),
 		Config: map[string]any{"total_agents": d.cfg.agents, "model": d.cfg.model, "pods": pods,
-			"accelerator": "TPU v6e", "max_tokens": d.cfg.maxTokens},
+			"accelerator": "TPU v6e", "max_tokens": d.cfg.maxTokens, "harness": d.cfg.harness,
+			"cluster": map[string]any{"nodes": d.cfg.nodes, "node_type": d.cfg.nodeType, "vcpus_per_node": d.cfg.nodeVCPUs}},
 		Phase:   d.phase,
 		Agents:  string(d.states),
 		Totals:  d.tot,
@@ -2411,6 +2495,7 @@ func (d *driver) snapshot() stateJSON {
 		Traffic: d.tr,
 		LLMD:    view,
 		Note:    d.note,
+		Memory:  d.memSnapshot(),
 	}
 	if len(d.retryReasons) > 0 {
 		s.RetryReasons = make(map[string]int, len(d.retryReasons))
@@ -2603,6 +2688,28 @@ func (d *driver) serve() {
 		err := d.startReconcile()
 		log.Printf("API reconcile %v", err)
 		return nil, err
+	}))
+	mux.HandleFunc("/api/agent", func(w http.ResponseWriter, r *http.Request) {
+		i, err := strconv.Atoi(r.URL.Query().Get("i"))
+		if err != nil || i < 1 || i > d.cfg.agents {
+			writeJSON(w, 400, map[string]any{"ok": false, "error": "i must be 1..agents"})
+			return
+		}
+		writeJSON(w, 200, d.agentInfo(i))
+	})
+	mux.HandleFunc("/api/memory/reset", post(func(map[string]any) (any, error) {
+		if d.h == nil {
+			return nil, fmt.Errorf("memory demo needs -harness hermes")
+		}
+		d.mu.Lock()
+		idle := d.phase == "idle" && !d.busy
+		d.mu.Unlock()
+		if !idle {
+			return nil, fmt.Errorf("suspend all agents first")
+		}
+		gen := d.memReset()
+		log.Printf("API memory reset -> generation %d", gen)
+		return gen, nil
 	}))
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) { _, _ = io.WriteString(w, "ok\n") })
 	fs := http.FileServer(http.Dir(d.cfg.staticDir))

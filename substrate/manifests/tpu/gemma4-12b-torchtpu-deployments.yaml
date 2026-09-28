@@ -70,7 +70,7 @@ spec:
             --tensor-parallel-size 4 \
             --disable-uvicorn-access-log \
             --gpu-memory-utilization 0.90 \
-            --max-model-len 2048 \
+            --max-model-len 65536 \
             --kv-events-config "${KV_EVENTS_CONFIG}"
         env:
         - name: POD_IP
@@ -223,7 +223,7 @@ spec:
             --tensor-parallel-size 4 \
             --disable-uvicorn-access-log \
             --gpu-memory-utilization 0.90 \
-            --max-model-len 2048 \
+            --max-model-len 65536 \
             --kv-events-config "${KV_EVENTS_CONFIG}"
         env:
         - name: POD_IP

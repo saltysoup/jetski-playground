@@ -1,0 +1,59 @@
+# ActorTemplate "hermes-dense": one Hermes Agent per sandbox, for the keynote
+# driver's -harness hermes mode. Not a Kubernetes object: create it through the
+# ate API once the atespace and WorkerPool exist:
+#   kubectl ate create atespace keynote-hermes
+#   envsubst < hermes-template.yaml.tmpl | kubectl ate create actor-template -f -
+#
+# ${HERMES_IMAGE}      the actor image built from ../actor, pinned by digest
+# ${HERMES_API_KEY}    bearer key for the agent's API (>= 16 chars); the driver
+#                      gets the same value via -hermes-key-file
+# ${LLM_PROXY_URL}     the driver's LLM proxy as seen from inside a sandbox, e.g.
+#                      http://keynote-llm-proxy.keynote-demo.svc.cluster.local:8091/llm/v1
+# ${BUCKET_NAME}       the snapshot bucket created by `setup-gcp bootstrap`
+#
+# The golden snapshot is taken once readyz passes: the image's warmup.py runs a
+# few throwaway turns first (answered by the driver's LLM proxy, not the model),
+# so every restored agent skips Hermes' ~3 s first-turn setup. Every agent is
+# restored from that snapshot, and after that from its own snapshot. Pause/suspend keep the
+# full memory and rootfs (onPause FULL), so each agent's Hermes session history
+# (SQLite under /data) survives.
+metadata:
+  atespace: keynote-hermes
+  name: hermes-dense
+workerSelector:
+  matchLabels:
+    workload: hermes
+containers:
+- name: hermes
+  image: ${HERMES_IMAGE}
+  env:
+  - name: API_SERVER_KEY
+    value: "${HERMES_API_KEY}"
+  - name: MODEL_BASE_URL
+    value: "${LLM_PROXY_URL}"
+  - name: MODEL_NAME
+    value: google/gemma-4-12B-it
+  - name: MAX_TOKENS
+    value: "50"
+  - name: CONTEXT_LENGTH
+    value: "65536"
+  readyz:
+    httpGet:
+      path: /ready
+      port: 8081
+# 1 GiB: the sandbox's memory cgroup is also charged for the page cache of the
+# ~150 MiB checkpoint it writes on every pause. At 512 MiB, about 1 pause in 400
+# ended with the kernel OOM-killing the gVisor sentry mid-checkpoint.
+resources:
+  limits:
+  - name: cpu
+    quantity: "1"
+  - name: memory
+    quantity: 1Gi
+snapshotsConfig:
+  onPause: SNAPSHOT_CONTENT_SCOPE_FULL
+  onCommit: SNAPSHOT_CONTENT_SCOPE_FULL
+  storageLocation: gs://${BUCKET_NAME}/keynote-hermes/
+sandboxConfig:
+  sandboxClass: SANDBOX_CLASS_GVISOR
+  configName: gvisor-default

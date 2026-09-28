@@ -1,0 +1,34 @@
+# Hermes config for the keynote agents. The entrypoint fills in the dollar
+# placeholders from the ActorTemplate's env and writes the result to
+# HERMES_HOME/config.yaml.
+#
+# - No tools: each turn is one short chat completion (~700 prompt tokens),
+#   and the system prompt is identical across agents, so llm-d's prefix cache
+#   serves it from memory. The agent's memory is its own session history.
+# - max_tokens 50 keeps every reply short and fast.
+# - context_length matches vLLM's --max-model-len (Hermes refuses < 64k).
+model:
+  default: ${MODEL_NAME}
+  provider: custom
+  max_tokens: ${MAX_TOKENS}
+  context_length: ${CONTEXT_LENGTH}
+providers:
+  custom:
+    base_url: ${MODEL_BASE_URL}
+terminal:
+  backend: local
+platform_toolsets:
+  api_server: []
+approvals:
+  mode: "off"
+# History stays far below the 64k window (~80 tokens per turn), so never run a
+# compression pass: it would be an extra, off-script LLM call mid-demo.
+compression:
+  enabled: false
+plugins:
+  enabled: []
+gateway:
+  api_server:
+    enabled: true
+    host: 0.0.0.0
+    port: 80

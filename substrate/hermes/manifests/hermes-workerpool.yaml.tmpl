@@ -1,0 +1,49 @@
+# WorkerPool for the Hermes keynote agents (namespace keynote-hermes).
+#
+# Differences from the light sandbox pool (../substrate/sandbox-workerpool.yaml):
+#   * Runs only on the hermes node pool: nodeSelector pool=hermes plus a
+#     toleration for its ate.dev/sandboxClass=hermes:NoSchedule taint. The taint
+#     keeps the light pool's workers off these nodes; atelet and ate-node-tuner
+#     already tolerate it.
+#   * 1.5 GiB limit per worker: a Hermes agent is ~180 MiB RSS plus the gVisor
+#     sentry, and pausing it writes a ~150 MiB checkpoint whose page cache is
+#     charged to the worker. At 512 MiB, workers were OOM-killed mid-checkpoint.
+#   * The 880 MiB request is not what an agent uses; it caps a 16-vCPU,
+#     64 GB node (c4d-standard-16) at ~61 workers, so the scheduler spreads
+#     workers evenly. WorkerPool has no topology spread, and the node with the
+#     most agents sets the wake time.
+# REPLICAS: 60 x nodes (1,080 for 18 nodes). That leaves ~4 spare workers per
+# node for 1,000 agents; an agent is pinned to the node that holds its local
+# snapshot.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: keynote-hermes
+---
+apiVersion: ate.dev/v1alpha1
+kind: WorkerPool
+metadata:
+  name: hermes-workerpool
+  namespace: keynote-hermes
+  labels:
+    workload: hermes
+spec:
+  replicas: ${HERMES_WORKER_REPLICAS}
+  sandboxClass: gvisor
+  workerImage: us-docker.pkg.dev/gke-substrate-release/substrate/ateom-gvisor:v0.1.0-gke.1
+  template:
+    nodeSelector:
+      ate.dev/substrate-version: "v0.1.0-gke.1"
+      pool: hermes
+    tolerations:
+    - key: ate.dev/sandboxClass
+      operator: Equal
+      value: hermes
+      effect: NoSchedule
+    resources:
+      limits:
+        cpu: "1"
+        memory: 1536Mi
+      requests:
+        cpu: 10m
+        memory: 880Mi

@@ -23,3 +23,5 @@
 !*.py
 !*result*.json
 !*benchmark*.json
+# "*key*" above also matches the keynote_driver directory name; keep its source.
+!keynote_driver/

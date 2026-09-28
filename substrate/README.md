@@ -7,6 +7,9 @@ A keynote demo:
 
 This folder has the dashboard, the orchestrator ("keynote driver"), the patches, the manifests, and a step-by-step guide. The guide was re-verified against the running clusters on 2026-09-26 (see [How this guide was verified](#10-how-this-guide-was-verified)).
 
+> [!TIP]
+> **Hermes Agent variant:** [`hermes/`](./hermes/README.md) runs [Hermes Agent](https://github.com/NousResearch/hermes-agent) inside each of the 1,000 sandboxes. It keeps the same ~90% idle duty cycle and wakes all 1,000 in ~2.8 s on 18 × c4d-standard-16. On stage, each agent's memory visibly survives suspend (measured on 2026-09-28).
+
 > [!WARNING]
 > This is a demo setup, and several settings trade safety for speed:
 > - Postgres runs with `fsync=off`;
@@ -196,7 +199,7 @@ Envoy asks the EPP (`ext_proc`) which pod to use:
 
 **Software:**
 - **Agent Substrate:** [agent-substrate/substrate](https://github.com/agent-substrate/substrate) `v0.1.0` (`fa6d949`) with the GKE release images `v0.1.0-gke.1`. ate-api and atelet are replaced by patched builds (§4).
-- **vLLM:** [vllm-project/vllm-torchtpu](https://github.com/vllm-project/vllm-torchtpu) @ `3eb7abb5` with no code changes. The deployed image digest is `sha256:699c7ccf…`. It runs `google/gemma-4-12B-it` with TP=4, `--max-model-len 2048`, `--gpu-memory-utilization 0.90` and KV-cache events over ZMQ.
+- **vLLM:** [vllm-project/vllm-torchtpu](https://github.com/vllm-project/vllm-torchtpu) @ `3eb7abb5` with no code changes. The deployed image digest is `sha256:699c7ccf…`. It runs `google/gemma-4-12B-it` with TP=4, `--max-model-len 65536` (Hermes Agent needs ≥64k; replies are still capped at 50 tokens), `--gpu-memory-utilization 0.90` and KV-cache events over ZMQ.
 - **llm-d:** EPP `ghcr.io/llm-d/llm-d-router-endpoint-picker:v0.10.0`, installed with the `inferencepool` Helm chart v1.2.0. Envoy is `envoyproxy/envoy:v1.39-latest`.
 
 ## 4. Changes from stock
@@ -226,7 +229,11 @@ substrate/
 │   ├── index.html                     the stage dashboard (one file, served by the driver)
 │   ├── mock_server.py                 offline mock of the driver API for rehearsal (simulated numbers)
 │   └── shoot.mjs                      headless-Chrome screenshot script (drives the mock)
-├── docs/images/                       dashboard screenshots, rendered with the mock
+├── docs/images/                       dashboard screenshots, rendered with the mock (hermes-live.png is from the live cluster)
+├── hermes/                            Hermes Agent variant (see hermes/README.md)
+│   ├── README.md                      guide, measured results, pre-show steps, known issues
+│   ├── actor/                         actor image: Dockerfile, entrypoint, warm-up, Hermes config, persona
+│   └── manifests/                     WorkerPool, ActorTemplate and LLM-proxy Service
 ├── manifests/
 │   ├── substrate/
 │   │   ├── scale-control-plane.sh     sizes and tunes the Substrate cluster (idempotent, DRY_RUN=1)
@@ -250,6 +257,7 @@ substrate/
 │   └── runsc_fast_async.c             DO NOT USE: failed experiment (see implementation.md)
 └── substrate-bench/
     ├── keynote_driver/main.go         the driver: dashboard backend + orchestrator
+    ├── keynote_driver/hermes.go       -harness hermes: agent turns, memory grading, LLM proxy
     └── agent_bench/ burst_bench/ poisson_wave/   earlier CLI benchmarks; not used by the demo (they compile against v0.1.0 + the patch)
 ```
 
@@ -352,7 +360,7 @@ These commands run in the upstream checkout.
 cd "${SUBSTRATE_SRC}"
 git apply "${REPO_DIR}/patches/ateapi-atelet-fast-wake.patch"
 gcc -O3 -static -s -o cmd/atelet/runsc_fast "${REPO_DIR}/patches/runsc_fast_sync.c"   # embedded into atelet
-mkdir -p cmd/keynote_driver && cp "${REPO_DIR}/substrate-bench/keynote_driver/main.go" cmd/keynote_driver/
+mkdir -p cmd/keynote_driver && cp "${REPO_DIR}"/substrate-bench/keynote_driver/*.go cmd/keynote_driver/
 
 export CGO_ENABLED=0
 go build -buildvcs=false -trimpath -ldflags="-s -w" -o "${BIN_DIR}/ateapi" ./cmd/ateapi
@@ -371,9 +379,9 @@ With go1.27.0 (linux/amd64) and gcc 15.2.0 these builds are byte-for-byte reprod
 | `runsc_fast` | `403b8d3d` |
 | `ateapi` | `c53a6b41` |
 | `atelet` | `c24d7425` |
-| `keynote_driver` | `fdef79b4` |
+| `keynote_driver` | `466e8e5d` (source as of the Hermes variant, 2026-09-28) |
 
-Other toolchains produce different bytes but the same code.
+Other toolchains produce different bytes but the same code. The driver row changed with the Hermes variant: the light driver in the cluster still runs the earlier build `fdef79b4`, and the Hermes driver there was built from the current source without `-trimpath`, so its bytes differ.
 
 ### 6.4 Size and tune the Substrate cluster
 

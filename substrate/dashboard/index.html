@@ -396,6 +396,69 @@ canvas.chart{flex:1 1 0px;min-height:0;width:100%;display:block}
 #right.compact .rkeys{font-size:10px}
 #right.compact .radmin{font-size:10.5px}
 
+/* ---------- Hermes Agent memory (only used when config.harness == "hermes") ---------- */
+.gridCard{position:relative}
+.mid.hermes{height:170px;grid-template-columns:318px minmax(0,1fr)}
+.mid.hermes .tiles{grid-template-rows:1fr 1fr 1.5fr}
+#left.compact .mid.hermes{grid-template-columns:186px minmax(0,1fr)}
+.mtile{gap:2px;transition:border-color .4s,background .4s}
+.mtile .tv{font-size:27px;font-weight:700;line-height:32px}
+.mtile .mck{color:var(--green-l);margin-right:8px;font-size:.86em;line-height:0}
+.mtile .tv .of{line-height:1}
+.mtile .mnone{display:none;font-size:19px;font-weight:600;color:var(--text2)}
+.mtile.none .mrec{display:none}
+.mtile.none .mnone{display:inline}
+.msub{font-size:12.5px;font-weight:600;color:var(--dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mtile.good{border-color:rgba(52,168,83,.6);background:linear-gradient(180deg,rgba(52,168,83,.15),rgba(52,168,83,.04))}
+.mtile.good .tl,.mtile.good .msub{color:var(--green-l)}
+.mtile.warn{border-color:rgba(251,188,4,.6);background:linear-gradient(180deg,rgba(251,188,4,.13),rgba(251,188,4,.03))}
+.mtile.warn .tl,.mtile.warn .msub,.mtile.warn .mck{color:var(--yellow-l)}
+#left.compact .mtile .tv{font-size:21px;line-height:26px}
+#left.compact .mtile .mnone{font-size:14px}
+#left.compact .msub{font-size:10.5px}
+
+.m-ok{color:var(--green-l);border-color:rgba(52,168,83,.65);background:rgba(52,168,83,.15)}
+.m-taught{color:var(--blue-l);border-color:rgba(138,180,248,.5);background:rgba(138,180,248,.1)}
+.m-forgot{color:var(--red-l);border-color:rgba(234,67,53,.65);background:rgba(234,67,53,.15)}
+.tin.mem{grid-template-columns:160px minmax(0,1fr) auto}
+.tmeta .mchip{display:flex;flex-direction:column;align-items:flex-start;width:max-content;max-width:100%;margin-top:3px;padding:2px 7px;
+  border-radius:6px;border:1px solid;font-family:var(--sans);font-size:11.5px;line-height:1.12;white-space:nowrap;overflow:hidden}
+.mchip b{font-weight:700}
+.mchip span{font-weight:600;opacity:.9}
+.mchip .cnm{font-family:var(--mono);font-size:11px}
+#left.compact .tin.mem{grid-template-columns:118px minmax(0,1fr) auto}
+#left.compact .tmeta .mchip{font-size:10.5px;padding:2px 6px}
+#left.compact .mchip span{display:none}
+mark.cn{background:rgba(52,168,83,.26);color:#e2f7e8;border-radius:5px;padding:0 4px;box-shadow:inset 0 -2px 0 var(--green);
+  -webkit-box-decoration-break:clone;box-decoration-break:clone}
+mark.cn.given{background:rgba(138,180,248,.14);color:inherit;box-shadow:inset 0 -2px 0 rgba(138,180,248,.75)}
+.jspot-mem{display:none;margin-top:6px}
+.jspot-mem.on{display:flex}
+.mchip1{display:inline-flex;align-items:center;padding:4px 12px;border-radius:8px;border:1px solid;font-size:15.5px;font-weight:700;white-space:nowrap}
+
+.ains{position:absolute;z-index:12;left:0;top:0;width:430px;max-height:calc(100% - 12px);display:none;flex-direction:column;gap:7px;
+  padding:11px 14px 11px;background:rgba(12,16,22,.97);border:1.5px solid rgba(129,201,149,.75);border-radius:14px;overflow:hidden;
+  box-shadow:0 14px 40px rgba(0,0,0,.72),inset 0 0 24px rgba(52,168,83,.08)}
+.ains.on{display:flex;animation:jpop .16s ease-out}
+.ai-hd{flex:none;display:flex;align-items:center;gap:10px}
+.ai-name{font-family:var(--mono);font-size:17px;font-weight:700;color:#fff}
+.ai-st{font-size:11.5px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;padding:3px 8px;border-radius:6px;border:1px solid;white-space:nowrap}
+.ai-x{margin-left:auto;height:28px;width:28px;border-radius:7px;border:1px solid var(--line2);background:#18202c;color:var(--text2);
+  font-size:14px;cursor:pointer;line-height:1}
+.ai-x:hover{border-color:var(--red-l);color:var(--red-l)}
+.ai-cl{font-size:11.5px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--dim)}
+.ai-cn{font-family:var(--disp);font-size:36px;font-weight:700;line-height:1.05;color:var(--green-l);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ai-cn.pend{color:var(--text2)}
+.ai-l{flex:none;font-size:14.5px;color:var(--dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ai-l b{color:#fff;font-weight:700}
+.ai-l .bad{color:var(--red-l);font-weight:700}
+.ai-reps{flex:0 1 auto;min-height:0;overflow:hidden;display:flex;flex-direction:column;gap:6px;border-top:1px solid var(--line);padding-top:7px}
+.ai-rep{flex:none;font-size:14px;line-height:1.3;color:var(--text);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.ai-rep:nth-child(n+2){color:var(--text2)}
+.ai-none{font-size:14px;color:var(--dim2)}
+.ai-ft{flex:none;font-size:11.5px;color:var(--dim2);font-family:var(--mono);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.radrow{flex:none;display:flex;justify-content:center;gap:2px}
+
 #toast{position:absolute;left:50%;bottom:26px;transform:translate(-50%,16px);opacity:0;pointer-events:none;z-index:20;
   background:#3b1b19;border:1px solid var(--red);color:#fce8e6;font-size:19px;padding:12px 22px;border-radius:12px;
   transition:opacity .25s,transform .25s;max-width:1100px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -406,7 +469,7 @@ canvas.chart{flex:1 1 0px;min-height:0;width:100%;display:block}
 <div id="stage">
   <section id="left" class="panel">
     <header class="phead">
-      <div class="ptitle"><span class="pdot" style="background:var(--green)"></span><b>AGENTS</b><span class="opt"> · Agent Substrate on GKE</span></div>
+      <div class="ptitle"><span class="pdot" style="background:var(--green)"></span><b>AGENTS</b><span class="opt" id="ptitleL"> · Agent Substrate on GKE</span></div>
       <div class="acts">
         <button id="btnWake" class="btn primary" title="Wake all 1,000 agents (W)">Wake Agents</button>
         <button id="btnTraffic" class="btn traffic" title="Send LLM requests from awake agents (T)" disabled>Simulate Traffic</button>
@@ -431,8 +494,8 @@ canvas.chart{flex:1 1 0px;min-height:0;width:100%;display:block}
     </div>
     <div class="card gridCard data">
       <div class="ctitle">
-        <span>1,000 gVisor Sandboxes<span class="opt"> · 25 GKE Nodes (5×5 Node Tiles)</span></span>
-        <span class="denspill"><i></i><b>40 sandboxes / node</b><span>·</span><b>10 / vCPU</b><span class="opt" id="densIdle">· Idle: 100% (0 CPU)</span></span>
+        <span><span id="gridHdr">1,000 gVisor Sandboxes</span><span class="opt" id="gridHdrOpt"> · 25 GKE Nodes (5×5 Node Tiles)</span></span>
+        <span class="denspill"><i></i><b id="densNode">40 sandboxes / node</b><span id="densSep">·</span><b id="densVcpu">10 / vCPU</b><span class="opt" id="densIdle">· Idle: 100% (0 CPU)</span></span>
       </div>
       <canvas id="grid"></canvas>
       <div class="legend">
@@ -444,12 +507,26 @@ canvas.chart{flex:1 1 0px;min-height:0;width:100%;display:block}
         <span><i style="background:var(--red)"></i>failed</span>
         <span class="note" id="gridNote">1 tile = 1 node (40 gVisor sandboxes · 4 vCPU)</span>
       </div>
+      <div class="ains" id="ains" aria-hidden="true">
+        <div class="ai-hd"><span class="ai-name" id="aiName">agent-0001</span><span class="ai-st" id="aiSt"></span>
+          <button class="ai-x" id="aiX" title="Close (Esc)">✕</button></div>
+        <div><div class="ai-cl" id="aiCl">🧠 codename</div><div class="ai-cn" id="aiCn">—</div></div>
+        <div class="ai-l" id="aiMem"></div>
+        <div class="ai-l" id="aiWake"></div>
+        <div class="ai-reps" id="aiReps"></div>
+        <div class="ai-ft" id="aiFt"></div>
+      </div>
     </div>
-    <div class="mid data">
+    <div class="mid data" id="mid">
       <div class="tiles">
         <div class="card tile"><div class="tl">LLM requests</div><div class="tv" id="tReq">0</div></div>
         <div class="card tile"><div class="tl">tokens<small>prompt + completion</small></div><div class="tv" id="tTok">0</div></div>
-        <div class="card tile"><div class="tl">unique replies</div><div class="tv"><span id="tUniq">0</span><span class="of"> / <span id="tRep">0</span></span></div></div>
+        <div class="card tile" id="uniqTile"><div class="tl">unique replies</div><div class="tv"><span id="tUniq">0</span><span class="of"> / <span id="tRep">0</span></span></div></div>
+        <div class="card tile mtile none" id="memTile" style="display:none" title="Correct codename recalls after the agent was suspended to zero compute and restored">
+          <div class="tl">🧠 memory after suspend</div>
+          <div class="tv"><span class="mrec"><span class="mck">✓</span><span id="mOk">0</span><span class="of"> / <span id="mTot">0</span></span></span><span class="mnone" id="mNone">codenames given: 0</span></div>
+          <div class="msub" id="mSub">&nbsp;</div>
+        </div>
       </div>
       <div class="card rampCard">
         <div class="ctitle"><span>Agents running per 1,000 ms</span>
@@ -474,6 +551,7 @@ canvas.chart{flex:1 1 0px;min-height:0;width:100%;display:block}
           </div>
         </div>
         <div class="jspot-prompt" id="jsPrompt"></div>
+        <div class="jspot-mem" id="jsMemRow"><span class="mchip1" id="jsMem"></span></div>
         <div class="jspot-body" id="jsBody"></div>
       </div>
     </div>
@@ -537,7 +615,10 @@ canvas.chart{flex:1 1 0px;min-height:0;width:100%;display:block}
         <span>failed</span><b id="rsFail">—</b>
       </div>
       <div class="rkeys">keys: W wake · T traffic · S suspend<br>B / E / P strategy</div>
-      <button class="radmin" id="btnRecon" title="Admin: POST api/reconcile (heal all agents back to suspended). Click twice.">reconcile agents</button>
+      <div class="radrow">
+        <button class="radmin" id="btnRecon" title="Admin: POST api/reconcile (heal all agents back to suspended). Click twice.">reconcile agents</button>
+        <button class="radmin" id="btnMemReset" style="display:none" title="Admin: POST api/memory/reset (new codenames + fresh Hermes sessions, idle only). Click twice.">reset memory</button>
+      </div>
     </nav>
   </section>
   <div id="toast"></div>
@@ -658,6 +739,11 @@ function countRunning(s) {
   for (let i = 0; i < s.length; i++) { const c = s.charCodeAt(i); if (c === 50 || c === 51) n++; }
   return n;
 }
+function normCluster(c) {
+  if (!c || typeof c !== 'object' || Array.isArray(c) || !isNum(c.nodes) || c.nodes < 1) return null;
+  const v = isNum(c.vcpus_per_node) && c.vcpus_per_node > 0 ? c.vcpus_per_node : null;
+  return {nodes: Math.round(c.nodes), type: str(c.node_type), vcpus: v};
+}
 function normalize(js) {
   const s = obj(js), cfg = obj(s.config), b = obj(s.burst), t = obj(s.totals), tr = obj(s.traffic), l = obj(s.llmd);
   const agents = str(s.agents);
@@ -667,6 +753,9 @@ function normalize(js) {
     total: Math.max(1, Math.round(num(cfg.total_agents, agents.length || 1000))),
     model: str(cfg.model), pods: pods.length ? pods : null, accel: str(cfg.accelerator),
     phase: str(s.phase, 'idle'), note: str(s.note).slice(0, 400),
+    harness: str(cfg.harness),      // optional: "hermes" | "sandbox" (absent = sandbox)
+    memory: s.memory && typeof s.memory === 'object' && !Array.isArray(s.memory) ? s.memory : null,   // hermes only
+    cluster: normCluster(cfg.cluster),   // optional {nodes, node_type, vcpus_per_node}; null = older backend
     busy: s.busy === true,          // optional (not in the contract today): honoured if the driver ever sends it
     burst: {
       id: b.id == null ? '' : String(b.id), t0: num(b.t0_unix_ms, 0), elapsed: nn(b.elapsed_ms),
@@ -912,8 +1001,11 @@ function ingestMarkers(st, key) {
 
 // ------------------------------------------------------------------ UI refs
 const PROMPT = 'hello from {agent}, tell me a short joke about pytorch.';   // display only (the backend owns the real prompt)
+// Hermes mode (display only): the first turn teaches a codename, every later turn asks for it
+const PROMPT_TEACH = 'Your codename is {codename}, remember it. Now tell me a short joke about pytorch.';
+const PROMPT_RECALL = "hello from {agent}, what's your codename? Say it first, then tell me a short joke about pytorch.";
 const UI = {
-  wake: $('btnWake'), traf: $('btnTraffic'), susp: $('btnSuspend'), recon: $('btnRecon'),
+  wake: $('btnWake'), traf: $('btnTraffic'), susp: $('btnSuspend'), recon: $('btnRecon'), memReset: $('btnMemReset'),
   hero: $('hero'), counter: $('counter'), hlabel: $('hlabel'), hstats: $('hstats'),
   idleBox: $('idleBox'), idlePct: $('idlePct'), idleSub: $('idleSub'),
   densIdle: $('densIdle'), gridNote: $('gridNote'),
@@ -922,6 +1014,7 @@ const UI = {
   split: new Num(null, (v) => v, 450), sat: new Num($('satv'), (v) => fInt(v * 100) + '%', 300),
   kvSumUse: new Num(null, (v) => v, 260), kvSumHit: new Num(null, (v) => v, 260),
   rsInf: new Num($('rsInf'), fInt), rsSent: new Num($('rsSent'), fInt), rsRep: new Num($('rsRep'), fInt), rsFail: new Num($('rsFail'), fInt),
+  mOk: new Num($('mOk'), fInt), mTot: new Num($('mTot'), fInt),
 };
 let wakePending = 0;   // after a successful Wake POST the driver stays 'idle' during its preflight: keep Wake disabled
                        // (and show "starting…") until the phase moves on, for at most 15 s
@@ -1061,13 +1154,14 @@ function updateFromState(st) {
   // sense while sandboxes are still up (e.g. after a suspend that left some running)
   if (!pendingBtn.has(UI.susp)) UI.susp.disabled = st.busy || !(ph === 'running' || (ph === 'idle' && !starting && st.burst.running > 0));
   if (!pendingBtn.has(UI.recon)) UI.recon.disabled = ph !== 'idle' || st.busy || starting;
+  if (!pendingBtn.has(UI.memReset)) UI.memReset.disabled = ph !== 'idle' || st.busy || starting;
   UI.tReq.set(st.totals.requests); UI.tTok.set(st.totals.tokens);
   UI.tUniq.set(st.totals.unique); UI.tRep.set(st.totals.replies);
   document.querySelectorAll('.lp1').forEach((e) => setText(e, podName(0)));
   document.querySelectorAll('.lp2').forEach((e) => setText(e, podName(1)));
   const msg = $('rmsg');
   setText(msg, st.note); if (msg.title !== st.note) msg.title = st.note;
-  updatePods(st); updateSplit(st); updateFlow(st); updateRail(st);
+  updateCluster(); updateHermes(st); updatePods(st); updateSplit(st); updateFlow(st); updateRail(st);
 }
 function updatePods(st) {
   let useSum = 0, useN = 0, hitSum = 0, hitN = 0;
@@ -1163,8 +1257,17 @@ function showSpotlight(e, idx = -1) {
   T.spotIdx = idx >= 0 ? idx : T.history.indexOf(e);
   const ag = str(e.agent, 'agent-0001');
   setText($('jsAgent'), ag);
-  setText($('jsPrompt'), `Prompt: “${PROMPT.replace('{agent}', ag)}”`);
-  setText($('jsBody'), String(e.text == null ? '' : e.text).replace(/\s+/g, ' ').trim());
+  setText($('jsPrompt'), `Prompt: “${promptFor(e)}”`);
+  const mi = memInfo(e), jm = $('jsMem'), jb = $('jsBody'), cn = str(e.codename);
+  if (mi && mi.hl && cn) {   // .jspot-body is a flex box: keep text + <mark> inline inside one span
+    if (!jb.__sp || jb.__sp.parentNode !== jb) { jb.textContent = ''; jb.__t = undefined; jb.__sp = document.createElement('span'); jb.append(jb.__sp); }
+    fillReply(jb.__sp, e.text, cn, mi.hl);
+  } else {
+    if (jb.__sp) { jb.__sp = null; jb.__t = undefined; }
+    fillReply(jb, e.text, '', '');
+  }
+  setCls($('jsMemRow'), 'on', !!mi);
+  if (mi) { jm.className = 'mchip1 ' + mi.cls; setText(jm, mi.b + (mi.s ? mi.sep + mi.s : '')); }
   setText($('jsLat'), isNum(e.latency_ms) ? `${fInt(e.latency_ms)} ms E2E` : '');
   const tag = str(e.tag), jt = $('jsTag');
   if (tag) {
@@ -1225,9 +1328,21 @@ function addRow(e, animate) {
   const row = document.createElement('div'), inner = document.createElement('div');
   row.className = 'trow'; inner.className = 'tin';
   row.title = 'Click to magnify & freeze this joke reply';
-  const meta = document.createElement('div'); meta.className = 'tmeta'; meta.textContent = str(e.agent, '—');
+  const mi = memInfo(e);
+  const meta = document.createElement('div'); meta.className = 'tmeta';
   const tx = document.createElement('div'); tx.className = 'ttext';
-  tx.textContent = String(e.text == null ? '' : e.text).replace(/\s+/g, ' ').trim();
+  if (mi) {   // hermes: agent id + two-line memory chip in the meta column, codename highlighted in the reply
+    inner.classList.add('mem');
+    const id = document.createElement('span'); id.textContent = str(e.agent, '—');
+    const chip = document.createElement('span'); chip.className = 'mchip ' + mi.cls;
+    const b = document.createElement('b'); b.textContent = mi.b; chip.append(b);
+    if (mi.s) { const s = document.createElement('span'); s.textContent = mi.s; if (mi.mono) s.className = 'cnm'; chip.append(s); }
+    meta.append(id, chip);
+    fillReply(tx, e.text, str(e.codename), mi.hl);
+  } else {
+    meta.textContent = str(e.agent, '—');
+    tx.textContent = String(e.text == null ? '' : e.text).replace(/\s+/g, ' ').trim();
+  }
   const right = document.createElement('div'); right.className = 'tright';
   const tag = str(e.tag);
   if (tag) { const chip = document.createElement('span'); chip.className = 'tchip ' + tagClass(tag); chip.textContent = tagDisplay(tag); right.append(chip); }
@@ -1247,7 +1362,27 @@ function addRow(e, animate) {
     setTimeout(() => { row.style.height = ''; row.style.transition = ''; }, 320);
   }
   while (tickerEl.children.length > TICKER_DOM_MAX) tickerEl.removeChild(tickerEl.lastChild);
-  if (e.agent) setText($('promptQ'), PROMPT.replace('{agent}', str(e.agent)));
+  if (e.agent) setText($('promptQ'), (MEM.on ? PROMPT_RECALL : PROMPT).replace('{agent}', str(e.agent)));
+}
+
+// ------------------------------------------------------------------ cluster shape (config.cluster)
+// null = older backend without the field: the original hard-coded fleet text (25 nodes, 40/node, 10/vCPU) stays.
+const CL_OLD = {hdr: $('gridHdr').textContent, opt: $('gridHdrOpt').textContent, node: $('densNode').textContent, vcpu: $('densVcpu').textContent};
+function clusterInfo() {
+  const c = S.latest && S.latest.cluster;
+  if (!c) return null;
+  const nodes = Math.max(1, c.nodes), perF = S.total / nodes;
+  return {nodes, type: c.type, vcpus: c.vcpus, per: Math.max(1, Math.round(perF)), perV: c.vcpus ? perF / c.vcpus : null};
+}
+const fDens = (v) => (v < 10 ? NF1.format(v) : fInt(v));
+function updateCluster() {
+  const ci = clusterInfo();
+  setText($('gridHdr'), ci ? `${fInt(S.total)} gVisor sandboxes` : CL_OLD.hdr);
+  setText($('gridHdrOpt'), ci ? ` · ${fInt(ci.nodes)} GKE node${ci.nodes === 1 ? '' : 's'}${ci.type ? ` (${ci.type})` : ''}` : CL_OLD.opt);
+  setText($('densNode'), ci ? `${fInt(ci.per)} sandboxes / node` : CL_OLD.node);
+  const showV = !ci || ci.perV != null, dv = showV ? '' : 'none';
+  setText($('densVcpu'), ci && ci.perV != null ? `${fDens(ci.perV)} / vCPU` : CL_OLD.vcpu);
+  if ($('densVcpu').style.display !== dv) { $('densVcpu').style.display = dv; $('densSep').style.display = dv; }
 }
 
 // ------------------------------------------------------------------ hero (counter + idle rate + ms clock)
@@ -1282,17 +1417,22 @@ function renderHero(rt) {
   const ist = duty ? 'duty' : (h.mode === 'running' ? 'burst' : 'rest');
   if (ist !== idleState && UI.idleBox) { idleState = ist; UI.idleBox.dataset.state = ist; }
   setText(UI.idlePct, fInt(idlePctRound));
-  setText(UI.idleSub, duty ? `${fInt(suspCnt)} at 0 CPU · 10× dense`
+  const ci = clusterInfo();
+  const densTxt = ci && ci.perV != null && ci.perV < 10 ? `${fDens(ci.perV)} / vCPU` : '10× dense';
+  setText(UI.idleSub, duty ? `${fInt(suspCnt)} at 0 CPU · ${densTxt}`
     : h.mode === 'running' ? `all ${fInt(cnt)} awake · peak burst`
     : h.mode === 'waking' ? `waking 0 → ${fInt(total)} sandboxes…`
     : h.mode === 'suspending' ? 'suspending to memory…'
     : `${fInt(suspCnt)} at 0 CPU · snapshot ready`);
-  setText(UI.densIdle, duty ? `· Idle: ${idlePctRound}% (${fInt(suspCnt)} at 0 CPU)`
+  setText(UI.densIdle, ci ? (duty ? `· Idle: ${idlePctRound}%` : h.mode === 'running' ? '· Idle: 0%' : `· Idle: ${idlePctRound}% (0 CPU)`)
+    : duty ? `· Idle: ${idlePctRound}% (${fInt(suspCnt)} at 0 CPU)`
     : h.mode === 'running' ? '· Idle: 0% (all 1,000 awake)'
     : `· Idle: ${idlePctRound}% (0 CPU)`);
-  setText(UI.gridNote, duty
-    ? `~4 active / 36 suspended per node (~${idlePctRound}% idle)`
-    : '1 tile = 1 node (40 gVisor sandboxes · 4 vCPU)');
+  let note;
+  if (!ci) note = duty ? `~4 active / 36 suspended per node (~${idlePctRound}% idle)` : '1 tile = 1 node (40 gVisor sandboxes · 4 vCPU)';
+  else if (duty) { const act = clamp(Math.round(cnt / ci.nodes), 0, ci.per); note = `~${fInt(act)} active / ${fInt(ci.per - act)} suspended per node (~${idlePctRound}% idle)`; }
+  else note = `1 tile = 1 node (${fInt(ci.per)} gVisor sandboxes${ci.vcpus ? ` · ${fInt(ci.vcpus)} vCPU` : ''})`;
+  setText(UI.gridNote, note);
 
   setText(UI.clabel, LABELS[h.mode] || h.mode);
   const wf = h.b && h.b.wakeFinal != null ? h.b.wakeFinal : null;
@@ -1350,12 +1490,58 @@ function renderBars() {
   if (sb.__c !== col) { sb.__c = col; sb.style.background = col; }
 }
 
-// ------------------------------------------------------------------ canvas: agent grid (grouped into 5x5 = 25 GKE node tiles, 40 sandboxes/node)
+// ------------------------------------------------------------------ canvas: agent grid (one tile per GKE node)
 const gridCv = $('grid'), rampCv = $('ramp'), tokCv = $('tokChart'), latCv = $('latChart');
-function drawGrid(now) {
-  const c = prep(gridCv);
-  if (!c || !G.disp.length) return;
-  const {ctx, w, h} = c, n = G.disp.length, cols = G.cols, rows = G.rows;
+// Cell geometry shared by drawGrid() and the agent inspector's click hit-test.
+// With config.cluster: one tile per node, agents split contiguously (ceil(total/nodes) per tile, the last one may be
+// short); the tile grid (cols x rows of tiles) and the cell grid inside a tile are chosen to give the biggest cells in
+// the canvas. Without it (older backend): agent i sits at row-major (i % cols, i / cols) of the 50x20 grid, split
+// into 5x5 node tiles of 10x4 cells, exactly as before.
+const GL = {key: '', lay: null};
+function clusterLayout(n, nodes, w, h, gx, gy) {
+  const key = [n, nodes, Math.round(w), Math.round(h)].join('|');
+  if (GL.key === key) return GL.lay;
+  nodes = clamp(nodes, 1, n);
+  const per = Math.ceil(n / nodes);
+  let best = null;
+  const consider = (exactOnly, landscape) => {
+    for (let tc = 1; tc <= nodes; tc++) {
+      const tr = Math.ceil(nodes / tc);
+      if (exactOnly && tr * tc !== nodes) continue;          // prefer tile grids with no empty slots (18 -> 6x3, 9x2, ...)
+      for (let bc = 1; bc <= per; bc++) {
+        const br = Math.ceil(per / bc);
+        if (landscape && (bc < br || bc > 4 * br)) continue;  // node tiles read as landscape blocks, not slivers
+        const pitch = Math.min((w - (tc - 1) * gx) / (tc * bc), (h - (tr - 1) * gy) / (tr * br));
+        if (!(pitch > 0)) continue;
+        const waste = tr * tc * bc * br - n;
+        if (!best || pitch > best.pitch + 1e-6 || (pitch > best.pitch - 1e-6 && waste < best.waste)) best = {tc, tr, bc, br, per, pitch, waste, nodes};
+      }
+    }
+  };
+  consider(true, true);
+  if (!best) consider(false, true);
+  if (!best) consider(false, false);
+  GL.key = key; GL.lay = best;
+  return best;
+}
+function gridGeom(w, h) {
+  const n = G.disp.length, cl = S.latest && S.latest.cluster;
+  if (cl && n > 0) {
+    const tileGapX = Math.max(5, Math.min(9, w * 0.008)), tileGapY = Math.max(4, Math.min(7, h * 0.018));
+    const L = clusterLayout(n, cl.nodes, w, h, tileGapX, tileGapY);
+    if (L) {
+      const {tc, tr, bc, br, per, pitch} = L, gap = Math.max(1.5, pitch * 0.19), size = pitch - gap;
+      const totW = pitch * tc * bc + (tc - 1) * tileGapX, totH = pitch * tr * br + (tr - 1) * tileGapY;
+      const ox = (w - totW) / 2 + gap / 2, oy = (h - totH) / 2 + gap / 2;
+      const cellPos = (i) => {
+        const t = (i / per) | 0, k = i - t * per, tcol = t % tc, trow = (t / tc) | 0;
+        return [ox + (tcol * bc + (k % bc)) * pitch + tcol * tileGapX, oy + (trow * br + ((k / bc) | 0)) * pitch + trow * tileGapY];
+      };
+      return {w, h, cols: tc * bc, rows: tr * br, nodeGrouped: true, nCols: tc, nRows: tr, bCols: bc, bRows: br, nTiles: L.nodes,
+        tileGapX, tileGapY, pitch, gap, size, ox, oy, cellPos};
+    }
+  }
+  const cols = G.cols, rows = G.rows;
   const nodeGrouped = cols === 50 && rows === 20;
   const nCols = 5, nRows = 5, bCols = 10, bRows = 4;
   const tileGapX = nodeGrouped ? Math.max(5, Math.min(9, w * 0.008)) : 0;
@@ -1366,29 +1552,36 @@ function drawGrid(now) {
   const totW = pitch * cols + (nodeGrouped ? (nCols - 1) * tileGapX : 0);
   const totH = pitch * rows + (nodeGrouped ? (nRows - 1) * tileGapY : 0);
   const ox = (w - totW) / 2 + gap / 2, oy = (h - totH) / 2 + gap / 2;
-  const rad = Math.min(3, size * 0.22), ts = now / 1000;
-
   const cellPos = (i) => {
     const col = i % cols, row = (i / cols) | 0;
     const gx = nodeGrouped ? ((col / bCols) | 0) * tileGapX : 0;
     const gy = nodeGrouped ? ((row / bRows) | 0) * tileGapY : 0;
     return [ox + col * pitch + gx, oy + row * pitch + gy];
   };
+  return {w, h, cols, rows, nodeGrouped, nCols, nRows, bCols, bRows, nTiles: nCols * nRows, tileGapX, tileGapY, pitch, gap, size, ox, oy, cellPos};
+}
+function drawGrid(now) {
+  const c = prep(gridCv);
+  if (!c || !G.disp.length) return;
+  const {ctx, w, h} = c, n = G.disp.length;
+  const g = gridGeom(w, h);
+  G.geom = g;
+  const {nodeGrouped, nCols, bCols, bRows, nTiles, tileGapX, tileGapY, pitch, gap, size, ox, oy, cellPos} = g;
+  const rad = Math.min(3, size * 0.22), ts = now / 1000;
 
   if (nodeGrouped) {
     const tw = bCols * pitch - gap + 4, th = bRows * pitch - gap + 4;
     ctx.lineWidth = 1;
     ctx.strokeStyle = 'rgba(138,180,248,.16)';
     ctx.fillStyle = 'rgba(255,255,255,.014)';
-    for (let nr = 0; nr < nRows; nr++) {
-      for (let nc = 0; nc < nCols; nc++) {
-        const tx = ox + nc * (bCols * pitch + tileGapX) - 2;
-        const ty = oy + nr * (bRows * pitch + tileGapY) - 2;
-        ctx.beginPath();
-        ctx.roundRect(tx, ty, tw, th, 4);
-        ctx.fill();
-        ctx.stroke();
-      }
+    for (let t = 0; t < nTiles; t++) {
+      const nc = t % nCols, nr = (t / nCols) | 0;
+      const tx = ox + nc * (bCols * pitch + tileGapX) - 2;
+      const ty = oy + nr * (bRows * pitch + tileGapY) - 2;
+      ctx.beginPath();
+      ctx.roundRect(tx, ty, tw, th, 4);
+      ctx.fill();
+      ctx.stroke();
     }
   }
 
@@ -1411,7 +1604,224 @@ function drawGrid(now) {
     if (code === 51) { ctx.fillStyle = `rgba(255,255,255,${(0.07 + 0.07 * Math.sin(ts * 6 + i * 2.3)).toFixed(3)})`; ctx.fill(); }
     if (flash) { ctx.fillStyle = `rgba(255,255,255,${((wake ? 0.55 : 0.22) * flash).toFixed(3)})`; ctx.fill(); }
   }
+  if (INS.open && INS.idx >= 0 && INS.idx < n) {   // agent inspector: ring around the inspected cell
+    const [x, y] = cellPos(INS.idx);
+    ctx.beginPath(); ctx.roundRect(x - 3, y - 3, size + 6, size + 6, rad + 2);
+    ctx.lineWidth = 2.5; ctx.strokeStyle = `rgba(255,255,255,${(0.7 + 0.3 * Math.sin(ts * 6)).toFixed(3)})`; ctx.stroke();
+  }
 }
+
+// ------------------------------------------------------------------ Hermes Agent: "memory survives suspend" (only when config.harness == "hermes")
+// Everything below is inert in sandbox mode: the memory tile, ticker chips, prompt text and inspector only switch on
+// when the backend reports the Hermes harness, so the classic look is untouched when the new fields are absent.
+const MEM = {on: false};
+const isHermes = (st) => st.harness === 'hermes' || !!(st.memory && st.memory.enabled === true);
+const plural = (n, w) => `${fInt(n)} ${w}${Math.round(n) === 1 ? '' : 's'}`;
+const fPct = (v) => (v < 10 ? NF1.format(v) : fInt(v)) + '%';
+const memTileEl = $('memTile'), uniqTileEl = $('uniqTile'), midEl = $('mid');
+function updateHermes(st) {
+  const on = isHermes(st);
+  if (on !== MEM.on) {
+    MEM.on = on;
+    setCls(midEl, 'hermes', on);
+    uniqTileEl.style.display = on ? 'none' : '';
+    memTileEl.style.display = on ? '' : 'none';
+    UI.memReset.style.display = on ? '' : 'none';
+    gridCv.style.cursor = on ? 'pointer' : '';
+    gridCv.title = on ? 'Click any agent to see what it remembers' : '';
+    if (!on) closeInspector();
+  }
+  setText($('ptitleL'), on ? ` · Hermes Agent × ${fInt(S.total)} on GKE` : ' · Agent Substrate on GKE');
+  if (!on) return;
+  const m = obj(st.memory);
+  const ok = num(m.recall_ok, 0), bad = num(m.recall_fail, 0), tot = ok + bad, taught = num(m.taught, 0);
+  const cls = tot <= 0 ? 'none' : bad / tot < 0.02 ? 'good' : 'warn';
+  if (memTileEl.__c !== cls) { memTileEl.__c = cls; memTileEl.className = 'card tile mtile ' + cls; }
+  UI.mOk.set(ok); UI.mTot.set(tot);
+  setText($('mNone'), `codenames given: ${fInt(taught)}`);
+  const aw = isNum(m.awake_pct) ? ` · awake ${fPct(m.awake_pct)}` : '';
+  setText($('mSub'), tot > 0
+    ? `${plural(num(m.agents_recalled, 0), 'agent')} · up to ${plural(num(m.max_survived, 0), 'suspend')}${aw}`
+    : taught > 0 ? `waiting for the first recall${aw}` : 'no codenames given yet');
+}
+
+// codename highlight: case-insensitive, and "amber falcon" == "amber-falcon" == "Amber_Falcon"
+function cnRegex(cn) {
+  const parts = String(cn || '').trim().split(/[\s_\-\u2010\u2011]+/).filter(Boolean)
+    .map((p) => p.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+  return parts.length ? new RegExp(parts.join('[\\s_\\-\\u2010\\u2011]+'), 'gi') : null;
+}
+function fillReply(el, text, cn, cls) {
+  const t = String(text == null ? '' : text).replace(/\s+/g, ' ').trim();
+  const re = cls && cn ? cnRegex(cn) : null;
+  if (!re) { setText(el, t); return; }
+  const key = t + '\u0000' + cn + '\u0000' + cls;
+  if (el.__t === key) return;
+  el.__t = key; el.textContent = '';
+  let last = 0, m;
+  while ((m = re.exec(t))) {
+    if (!m[0]) { re.lastIndex++; continue; }
+    if (m.index > last) el.append(t.slice(last, m.index));
+    const mk = document.createElement('mark'); mk.className = cls; mk.textContent = m[0]; el.append(mk);
+    last = m.index + m[0].length;
+  }
+  if (last < t.length) el.append(t.slice(last));
+}
+function memInfo(e) {
+  const k = str(e.memory), cn = str(e.codename);
+  if (k === 'recalled') {
+    return {cls: 'm-ok', b: '🧠 remembered', s: isNum(e.survived) ? `survived ${plural(e.survived, 'suspend')}` : 'after suspend',
+      sep: ' · ', hl: 'cn', mono: false};
+  }
+  if (k === 'taught') return {cls: 'm-taught', b: '🧠 codename given', s: cn, sep: ': ', hl: 'cn given', mono: true};
+  if (k === 'forgot') return {cls: 'm-forgot', b: '🧠 forgot', s: cn ? `expected ${cn}` : '', sep: ' · ', hl: '', mono: false};
+  return null;
+}
+function promptFor(e) {
+  const ag = str(e.agent, 'agent-0001');
+  if (!MEM.on && !e.memory) return PROMPT.replace('{agent}', ag);
+  return (e.memory === 'taught' ? PROMPT_TEACH : PROMPT_RECALL).replace('{agent}', ag).replace('{codename}', str(e.codename, '…'));
+}
+
+// ---- agent inspector: click a grid cell (hermes only) -> live card for that agent, polled at 1 Hz
+const INS = {open: false, idx: -1, data: null, err: '', timer: 0, req: 0, ctl: null, repKey: ''};
+const insEl = $('ains');
+const ST_INFO = {48: ['suspended · 0 CPU', '#9aa0a6'], 49: ['waking', 'var(--yellow-l)'], 50: ['running', 'var(--green-l)'],
+  51: ['request in flight', 'var(--blue-l)'], 52: ['suspending', 'var(--purple-l)'], 57: ['failed', 'var(--red-l)']};
+const agentName = (i) => 'agent-' + String(i + 1).padStart(4, '0');
+function gridHit(cx, cy) {
+  const g = G.geom, s = csize.get(gridCv);
+  if (!g || !s || !G.disp.length) return -1;
+  const r = gridCv.getBoundingClientRect();
+  if (!r.width || !r.height) return -1;
+  const x = ((cx - r.left) * s.w) / r.width, y = ((cy - r.top) * s.h) / r.height;
+  let best = -1, bd = Infinity;
+  for (let i = 0; i < G.disp.length; i++) {
+    const [px, py] = g.cellPos(i), dx = px + g.size / 2 - x, dy = py + g.size / 2 - y, d = dx * dx + dy * dy;
+    if (d < bd) { bd = d; best = i; }
+  }
+  return bd <= (0.75 * g.pitch) ** 2 ? best : -1;
+}
+window.__gridCellCenter = (i) => {   // test hook: viewport coords of agent index i (0-based)
+  const g = G.geom, s = csize.get(gridCv);
+  if (!g || !s) return null;
+  const r = gridCv.getBoundingClientRect(), [px, py] = g.cellPos(i);
+  return {x: r.left + ((px + g.size / 2) * r.width) / s.w, y: r.top + ((py + g.size / 2) * r.height) / s.h};
+};
+function openInspector(i) {
+  if (INS.open && INS.idx === i) return;
+  INS.req++;
+  if (INS.ctl) { INS.ctl.abort(); INS.ctl = null; }
+  Object.assign(INS, {open: true, idx: i, data: null, err: '', repKey: ''});
+  insEl.classList.add('on'); insEl.setAttribute('aria-hidden', 'false');
+  renderInspector(); renderInsState(); positionInspector();
+  clearInterval(INS.timer); fetchAgent(); INS.timer = setInterval(fetchAgent, 1000);
+}
+function closeInspector() {
+  if (!INS.open) return;
+  INS.open = false; INS.idx = -1; INS.req++;
+  clearInterval(INS.timer); INS.timer = 0;
+  if (INS.ctl) { INS.ctl.abort(); INS.ctl = null; }
+  insEl.classList.remove('on'); insEl.setAttribute('aria-hidden', 'true');
+}
+async function fetchAgent() {
+  if (!INS.open || INS.ctl) return;   // at most one request in flight
+  const my = ++INS.req, idx = INS.idx, ctl = new AbortController();
+  INS.ctl = ctl;
+  const to = setTimeout(() => ctl.abort(), 2500);
+  try {
+    const r = await fetch(`api/agent?i=${idx + 1}`, {cache: 'no-store', signal: ctl.signal});
+    let js = null;
+    try { js = await r.json(); } catch (e) { /* non-JSON reply */ }
+    if (my !== INS.req || !INS.open || idx !== INS.idx) return;
+    if (!r.ok || !js || js.ok === false) INS.err = (js && js.error) || `api/agent: HTTP ${r.status}`;
+    else { INS.data = js; INS.err = ''; }
+  } catch (e) {
+    if (my === INS.req) INS.err = 'reconnecting…';
+  } finally {
+    clearTimeout(to);
+    if (INS.ctl === ctl) INS.ctl = null;
+  }
+  if (my === INS.req && INS.open) { renderInspector(); positionInspector(); }
+}
+function renderInspector() {
+  if (!INS.open) return;
+  const d = INS.data;
+  setText($('aiName'), agentName(INS.idx));
+  const cn = d ? str(d.codename) : '', taught = !!(d && d.taught && cn);
+  const cnEl = $('aiCn');
+  setText(cnEl, taught ? cn : d ? 'not given yet' : '…');
+  setCls(cnEl, 'pend', !taught);
+  const mem = $('aiMem'), wk = $('aiWake');
+  if (d) {
+    const ok = num(d.recall_ok, 0), bad = num(d.recall_fail, 0), sv = num(d.survived, 0);
+    const memH = taught
+      ? `remembered <b>${plural(ok, 'time')}</b> · survived <b>${plural(sv, 'suspend')}</b>${bad > 0 ? ` <span class="bad">· forgot ${fInt(bad)}×</span>` : ''}`
+      : 'gets its codename on its next reply';
+    if (mem.__h !== memH) { mem.__h = memH; mem.innerHTML = memH; }
+    const wkH = `woken <b>${plural(num(d.wakes, 0), 'time')}</b>${isNum(d.awake_pct) ? ` · awake <b>${fPct(d.awake_pct)}</b> of the time` : ''}`;
+    if (wk.__h !== wkH) { wk.__h = wkH; wk.innerHTML = wkH; }
+  } else {
+    if (mem.__h !== '') { mem.__h = ''; mem.textContent = '\u00a0'; }
+    if (wk.__h !== '') { wk.__h = ''; wk.textContent = '\u00a0'; }
+  }
+  const reps = arr(d && d.last).map((x) => (typeof x === 'string' ? x : str(obj(x).text))).filter(Boolean).reverse().slice(0, 3);
+  const key = JSON.stringify([reps, cn, !!d]);
+  if (key !== INS.repKey) {
+    INS.repKey = key;
+    const box = $('aiReps');
+    box.textContent = '';
+    if (!reps.length) {
+      const n = document.createElement('div'); n.className = 'ai-none';
+      n.textContent = d ? 'no replies yet' : 'loading…';
+      box.append(n);
+    }
+    for (const t of reps) { const r = document.createElement('div'); r.className = 'ai-rep'; fillReply(r, t, cn, taught ? 'cn' : ''); box.append(r); }
+  }
+  let ft = '';
+  if (INS.err) ft = '⚠ ' + INS.err;
+  else if (d) {
+    const bits = [];
+    if (str(d.session)) bits.push('session ' + d.session);
+    if (isNum(d.last_prompt_tokens)) bits.push(`prompt ${fInt(d.last_prompt_tokens)} tok` + (isNum(d.last_cached_tokens) ? ` (${fInt(d.last_cached_tokens)} cached)` : ''));
+    ft = bits.join(' · ');
+  }
+  setText($('aiFt'), ft || '\u00a0');
+}
+function renderInsState() {
+  if (!INS.open) return;
+  const code = G.disp[INS.idx];
+  const api = INS.data ? str(INS.data.state) : '';
+  const info = ST_INFO[code] || ST_INFO[api.charCodeAt(0)] || [api || '—', 'var(--text2)'];
+  const el = $('aiSt');
+  setText(el, info[0]);
+  if (el.__c !== info[1]) { el.__c = info[1]; el.style.color = info[1]; el.style.borderColor = info[1]; }
+}
+function positionInspector() {
+  if (!INS.open || !G.geom) return;
+  const card = insEl.parentElement, W = card.clientWidth, H = card.clientHeight, g = G.geom;
+  const [px, py] = g.cellPos(INS.idx);
+  const cx = gridCv.offsetLeft + px, cy = gridCv.offsetTop + py;
+  const w = Math.min(430, W - 12);
+  if (insEl.__w !== w) { insEl.__w = w; insEl.style.width = w + 'px'; }
+  const h = insEl.offsetHeight;
+  let x = cx + g.size + 16;
+  if (x + w > W - 6) x = cx - 16 - w;
+  x = clamp(x, 6, Math.max(6, W - w - 6));
+  const y = clamp(cy + g.size / 2 - h / 2, 6, Math.max(6, H - h - 6));
+  const l = Math.round(x) + 'px', t = Math.round(y) + 'px';
+  if (insEl.style.left !== l) insEl.style.left = l;
+  if (insEl.style.top !== t) insEl.style.top = t;
+}
+gridCv.addEventListener('click', (ev) => {
+  if (!MEM.on) return;
+  const i = gridHit(ev.clientX, ev.clientY);
+  if (i < 0) closeInspector(); else openInspector(i);
+});
+$('aiX').addEventListener('click', (ev) => { ev.stopPropagation(); closeInspector(); });
+document.addEventListener('pointerdown', (ev) => {
+  if (INS.open && !insEl.contains(ev.target) && ev.target !== gridCv) closeInspector();
+}, true);
 
 // ------------------------------------------------------------------ canvas: ramp chart (bars per 1,000 ms + cumulative replies)
 const RAMP = {rmax: 0};
@@ -1643,7 +2053,18 @@ UI.recon.addEventListener('click', () => {
   setText(UI.recon, 'click again to reconcile'); UI.recon.classList.add('arm');
   setTimeout(() => { if (reconArm && performance.now() >= reconArm) disarmRecon(); }, 3100);
 });
+// admin (hermes only): POST api/memory/reset, same two-click arming as reconcile
+let memArm = 0;
+function disarmMem() { memArm = 0; setText(UI.memReset, 'reset memory'); UI.memReset.classList.remove('arm'); }
+UI.memReset.addEventListener('click', () => {
+  if (UI.memReset.disabled) return;
+  if (performance.now() < memArm) { disarmMem(); UI.memReset.disabled = true; post('api/memory/reset', {}, UI.memReset); return; }
+  memArm = performance.now() + 3000;
+  setText(UI.memReset, 'click again to reset'); UI.memReset.classList.add('arm');
+  setTimeout(() => { if (memArm && performance.now() >= memArm) disarmMem(); }, 3100);
+});
 document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && INS.open) { e.preventDefault(); closeInspector(); return; }
   if (e.key === 'Escape' && spotEl && spotEl.classList.contains('on')) { e.preventDefault(); hideSpotlight(); return; }
   if (e.ctrlKey || e.metaKey || e.altKey || e.repeat) return;
   const k = e.key.toLowerCase();
@@ -1662,6 +2083,7 @@ function frame(now) {
     renderBars();
     pumpTicker(now);
     drawGrid(now);
+    if (INS.open) { renderInsState(); positionInspector(); }
     drawRamp(rt);
     drawTS(tokCv, 'gen', TS.tok);
     drawTS(latCv, 'e2e', TS.lat);
