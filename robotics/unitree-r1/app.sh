@@ -2,21 +2,52 @@
 # ==============================================================================
 # Unitree R1: Real-Time Multimodal Voice & Vision Assistant
 # Starts Riva Speech Server, Gemma-4 Multimodal Server, and Audio Daemon in BG
+#
+# Usage:
+#   bash app.sh                  Start all services, then the interactive assistant.
+#                                Services keep running after the assistant exits, so
+#                                `python3 test_vision_voice_assistant.py` can be re-run directly.
+#   bash app.sh --services-only  Start all services and exit.
+#   bash app.sh --stop           Stop all background services (frees GPU memory).
 # ==============================================================================
 
 set -e
+
+MODE="${1:-full}"
+SERVICES="riva_server llama-server unitree_audio_daemon unitree_head_camera_daemon"
+READY_TIMEOUT="${READY_TIMEOUT:-180}"   # seconds to wait for model loading / CUDA warmup
+
+stop_services() {
+    echo "[CLEANUP] Stopping existing background processes..."
+    killall -9 $SERVICES 2>/dev/null || true
+    # Remove stale sockets so clients don't try to connect to dead daemons
+    rm -f /tmp/unitree_audio.sock /tmp/unitree_head_camera.sock
+    sleep 1
+}
+
+case "$MODE" in
+    --stop)
+        stop_services
+        echo "[OK] All services stopped."
+        exit 0
+        ;;
+    full|--services-only)
+        ;;
+    *)
+        echo "Usage: $0 [--services-only|--stop]"
+        exit 1
+        ;;
+esac
 
 echo "============================================================"
 echo "[INIT] Starting Unitree R1 Multimodal Assistant Services"
 echo "============================================================"
 
 # 1. Stop any stale background servers
-echo "[CLEANUP] Stopping existing background processes..."
-killall -9 riva_server llama-server unitree_audio_daemon unitree_head_camera_daemon 2>/dev/null || true
-sleep 1
+stop_services
 
 # 2. Launch Riva Speech Server (ASR + Magpie TTS) in Background
-echo "[1/3] Launching Riva Speech Server (ASR + Magpie TTS)..."
+echo "[1/4] Launching Riva Speech Server (ASR + Magpie TTS)..."
 export LD_LIBRARY_PATH=/home/unitree/NeMo-Speech.cpp/build-cuda/bin:$LD_LIBRARY_PATH
 nohup /home/unitree/NeMo-Speech.cpp/build-cuda/bin/riva_server \
   --asr.model.path /home/unitree/robot_assets/models/nemotron-speech-streaming-en-0.6b.q8_0.gguf \
@@ -26,7 +57,7 @@ nohup /home/unitree/NeMo-Speech.cpp/build-cuda/bin/riva_server \
   --bind 127.0.0.1:50051 > /home/unitree/riva_server.log 2>&1 &
 
 # 3. Launch Native CUDA Gemma-4 Multimodal Server in Background
-echo "[2/3] Launching Gemma-4 Multimodal VLM Server (Port 8000)..."
+echo "[2/4] Launching Gemma-4 Multimodal VLM Server (Port 8000)..."
 export LD_LIBRARY_PATH=/home/unitree/NeMo-Speech.cpp/llama.cpp/build-cuda/bin:$LD_LIBRARY_PATH
 nohup /home/unitree/NeMo-Speech.cpp/llama.cpp/build-cuda/bin/llama-server \
   -m /home/unitree/robot_assets/models/gemma-4-E2B-it-q8_0.gguf \
@@ -47,27 +78,54 @@ echo "[3/4] Launching Persistent Unitree Audio Daemon..."
 nohup /home/unitree/unitree_sdk2/build/bin/unitree_audio_daemon eth10 > /home/unitree/audio_daemon.log 2>&1 &
 
 echo "[4/4] Launching Persistent Unitree Head Eye Camera Daemon (DDS eth10)..."
-killall -9 unitree_head_camera_daemon 2>/dev/null || true
 nohup /home/unitree/unitree_sdk2/build/bin/unitree_head_camera_daemon eth10 > /home/unitree/head_camera_daemon.log 2>&1 &
 
 # 5. Wait for GPU memory initialization & server readiness
-echo "[WAIT] Waiting for Riva (50051) & Gemma-4 (8000) to finish CUDA warmup..."
+#    Riva: gRPC port accepting connections. llama-server: /health returns 200 only after the
+#    model is loaded (the port opens earlier and answers 503 while loading).
+echo "[WAIT] Waiting for Riva (50051) & Gemma-4 (8000/health) to finish loading (timeout ${READY_TIMEOUT}s)..."
 WAITED=0
-while [ $WAITED -lt 30 ]; do
-    if nc -z 127.0.0.1 50051 2>/dev/null && nc -z 127.0.0.1 8000 2>/dev/null; then
-        echo "[OK] All neural services are fully online and ready!"
+READY=0
+while [ $WAITED -lt $READY_TIMEOUT ]; do
+    for svc in riva_server llama-server; do
+        if ! pgrep -x "$svc" > /dev/null; then
+            echo "[FATAL] $svc exited during startup. Last log lines:"
+            tail -n 20 "/home/unitree/$( [ "$svc" = "riva_server" ] && echo riva_server || echo llama_server ).log"
+            exit 1
+        fi
+    done
+    if nc -z 127.0.0.1 50051 2>/dev/null && curl -sf http://127.0.0.1:8000/health > /dev/null 2>&1; then
+        READY=1
+        echo "[OK] All neural services are fully online and ready! (${WAITED}s)"
         break
     fi
     sleep 1
     WAITED=$((WAITED + 1))
 done
 
+if [ $READY -ne 1 ]; then
+    echo "[WARN] Services not ready after ${READY_TIMEOUT}s - check /home/unitree/riva_server.log and /home/unitree/llama_server.log"
+fi
+
+for daemon in unitree_audio_daemon unitree_head_camera_daemon; do
+    if ! pgrep -f "bin/$daemon" > /dev/null; then
+        echo "[WARN] $daemon is not running - see /home/unitree/${daemon#unitree_}.log"
+    fi
+done
+
 echo "============================================================"
 echo "[STATUS] Active Background Services:"
-ps aux | grep -E '(riva_server|llama-server|unitree_audio_daemon|unitree_head_camera_daemon)' | grep -v grep
+ps aux | grep -E '(riva_server|llama-server|unitree_audio_daemon|unitree_head_camera_daemon)' | grep -v grep || true
 echo "============================================================"
+
+if [ "$MODE" = "--services-only" ]; then
+    echo "[READY] Services running. Start the assistant with: python3 /home/unitree/test_vision_voice_assistant.py"
+    echo "[READY] Stop services with: bash $0 --stop"
+    exit 0
+fi
 
 # 6. Launch Interactive Voice & Vision Assistant
 echo "[READY] Launching Jason Interactive Assistant..."
+echo "[INFO] Services keep running after exit. Stop them with: bash $0 --stop"
 export CAMERA_SOURCE="${CAMERA_SOURCE:-head}"
 python3 /home/unitree/test_vision_voice_assistant.py

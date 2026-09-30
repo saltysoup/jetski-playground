@@ -16,14 +16,24 @@ import requests
 import json
 import threading
 import queue
+import random
 import re
+import subprocess
+import unicodedata
 import numpy as np
 import soundfile as sf
+# onnxruntime MUST be imported before riva.client: if riva's grpc/protobuf load first, ORT rejects the
+# MiniLM model with "INVALID_GRAPH ... Unsqueeze" and the router silently falls back to keyword matching.
+try:
+    import onnxruntime  # noqa: F401
+except ImportError:
+    onnxruntime = None
 import riva.client
 
 # --- Server & Network Configurations ---
 RIVA_URI = "127.0.0.1:50051"
-VLLM_URL = os.getenv("VLLM_URL", "http://127.0.0.1:8000/v1/chat/completions")
+# llama-server exposes an OpenAI-compatible endpoint (VLLM_URL kept for backwards compatibility)
+LLM_URL = os.getenv("LLM_URL", os.getenv("VLLM_URL", "http://127.0.0.1:8000/v1/chat/completions"))
 MODEL_NAME = "gemma"
 
 MCAST_GRP = "239.168.123.161"
@@ -32,12 +42,22 @@ NET_INTERFACE_IP = "192.168.123.164"
 NET_INTERFACE_NAME = "eth10"
 CAMERA_SOURCE = os.getenv("CAMERA_SOURCE", "head")  # "head" (DDS eyes), "wrist0" (/dev/video0), "wrist2" (/dev/video2)
 HEAD_CAMERA_SOCK = "/tmp/unitree_head_camera.sock"
-HEAD_CAMERA_SNAP = "/tmp/unitree_head_camera.jpg"
+# Snapshot lives in RAM (/dev/shm) - /tmp is on the NVMe root fs and would be rewritten 25x/sec
+HEAD_CAMERA_SNAP = "/dev/shm/unitree_head_camera.jpg"
+MAX_FRAME_AGE_SEC = 1.0  # Reject camera frames older than this (stale DDS stream)
 AUDIO_SOCKET = "/tmp/unitree_audio.sock"
 PLAYER_BIN = "/home/unitree/unitree_sdk2/build/bin/unitree_play_wav"
+TTS_SAMPLE_RATE = 16000
 
 ROUTER_MODEL_PATH = "/home/unitree/robot_assets/models/onnx/model_qint8_arm64.onnx"
 ROUTER_VOCAB_PATH = "/home/unitree/robot_assets/models/vocab.txt"
+# Calibrated on-robot with tests/calibrate_router.py: 0.35 -> 24/28, 0.40 -> 25/28, 0.50 -> 22/28.
+# Kept at 0.35 because a missed vision request is worse than an unneeded camera frame.
+ROUTER_THRESHOLD = float(os.getenv("ROUTER_THRESHOLD", "0.35"))
+
+MAX_RECORD_SEC = 30.0      # Safety cap for push-to-talk recording
+AGC_NOISE_FLOOR = 500      # Don't amplify recordings whose peak is below this (silence / noise)
+LLM_MAX_TOKENS = 80        # ~35 words + headroom so replies are not cut mid-sentence
 
 # --- 1. MiniLM Dense Semantic Intent Router ---
 class MiniLMEncoder:
@@ -60,8 +80,58 @@ class MiniLMEncoder:
                 print("[WARN] MiniLM ONNX init failed (%s), using fast keyword matcher." % e)
                 self.session = None
 
+    @staticmethod
+    def _is_punctuation(ch):
+        cp = ord(ch)
+        if (33 <= cp <= 47) or (58 <= cp <= 64) or (91 <= cp <= 96) or (123 <= cp <= 126):
+            return True
+        return unicodedata.category(ch).startswith("P")
+
+    def _basic_tokenize(self, text):
+        """BERT BasicTokenizer: lowercase, strip accents, split on whitespace and punctuation."""
+        text = unicodedata.normalize("NFD", text.lower())
+        text = "".join(ch for ch in text if unicodedata.category(ch) != "Mn")
+        words = []
+        for word in text.split():
+            current = ""
+            for ch in word:
+                if self._is_punctuation(ch):
+                    if current:
+                        words.append(current)
+                        current = ""
+                    words.append(ch)
+                else:
+                    current += ch
+            if current:
+                words.append(current)
+        return words
+
+    def _wordpiece(self, word, max_chars=100):
+        """Greedy longest-match-first WordPiece (matches HF BertTokenizer)."""
+        if len(word) > max_chars:
+            return ["[UNK]"]
+        pieces = []
+        start = 0
+        while start < len(word):
+            end = len(word)
+            match = None
+            while start < end:
+                piece = word[start:end] if start == 0 else "##" + word[start:end]
+                if piece in self.vocab:
+                    match = piece
+                    break
+                end -= 1
+            if match is None:
+                return ["[UNK]"]
+            pieces.append(match)
+            start = end
+        return pieces
+
     def tokenize(self, text, max_len=64):
-        tokens = ["[CLS]"] + re.findall(r'\w+|[^\w\s]', text.lower())[:max_len-2] + ["[SEP]"]
+        wordpieces = []
+        for word in self._basic_tokenize(text):
+            wordpieces.extend(self._wordpiece(word))
+        tokens = ["[CLS]"] + wordpieces[:max_len-2] + ["[SEP]"]
         input_ids = [self.vocab.get(t, self.vocab.get("[UNK]", 100)) for t in tokens]
         attention_mask = [1] * len(input_ids)
         token_type_ids = [0] * len(input_ids)
@@ -144,23 +214,41 @@ print("[RIVA] Connecting to Riva Speech Server at %s..." % RIVA_URI)
 riva_auth = None
 riva_asr = None
 riva_tts = None
+last_riva_error = None
 for attempt in range(1, 31):
     try:
         riva_auth = riva.client.Auth(uri=RIVA_URI)
         riva_asr = riva.client.ASRService(riva_auth)
         riva_tts = riva.client.SpeechSynthesisService(riva_auth)
         # Test basic synthesis call to verify server is listening and ready
-        _ = riva_tts.synthesize(text="ready", voice_name="jason", language_code="en-US", sample_rate_hz=16000)
+        _ = riva_tts.synthesize(text="ready", voice_name="jason", language_code="en-US", sample_rate_hz=TTS_SAMPLE_RATE)
         print("[OK] Riva ASR & TTS connected and warmed up!")
         break
-    except Exception:
+    except Exception as e:
+        last_riva_error = e
         if attempt % 3 == 0:
             print("[RIVA] Waiting for Riva server... (%d/30)" % attempt)
         time.sleep(1)
+else:
+    # Without Riva there is no ASR or TTS - fail loudly instead of running a mute assistant
+    print("[FATAL] Could not reach Riva Speech Server at %s after 30s: %s" % (RIVA_URI, last_riva_error))
+    print("[FATAL] Check /home/unitree/riva_server.log or start the services with: bash /home/unitree/app.sh")
+    sys.exit(1)
 
 # --- 3. Natural Sentence-Level Multi-Threaded Pipelined TTS ---
 synthesis_queue = queue.Queue()
 playback_queue = queue.Queue()
+
+# Estimated wall-clock time at which the robot speaker finishes the audio we have handed off.
+# The daemon accepts audio instantly, so queue.join() alone returns while the robot is still talking.
+_playback_lock = threading.Lock()
+_playback_until = 0.0
+
+def _register_playback(num_samples):
+    global _playback_until
+    with _playback_lock:
+        start = max(time.time(), _playback_until)
+        _playback_until = start + float(num_samples) / TTS_SAMPLE_RATE
 
 def trim_silence_padding(audio_np, threshold=400):
     """Trims dead-air silence from the beginning and end of synthesized chunks so sentences connect smoothly."""
@@ -188,7 +276,7 @@ def tts_synthesizer_worker():
                     text=clean_text,
                     voice_name="jason",
                     language_code="en-US",
-                    sample_rate_hz=16000
+                    sample_rate_hz=TTS_SAMPLE_RATE
                 )
                 if resp.audio:
                     audio_np = np.frombuffer(resp.audio, dtype=np.int16)
@@ -207,8 +295,24 @@ def tts_synthesizer_worker():
         finally:
             synthesis_queue.task_done()
 
+def _send_to_audio_daemon(raw_pcm):
+    """Returns True if the PCM was handed to the audio daemon. A stale socket file (daemon killed) returns False."""
+    if not os.path.exists(AUDIO_SOCKET):
+        return False
+    sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    try:
+        sock.settimeout(2.0)
+        sock.connect(AUDIO_SOCKET)
+        sock.sendall(raw_pcm)
+        return True
+    except (socket.error, OSError):
+        return False
+    finally:
+        sock.close()
+
 def audio_playback_worker():
     """Streams audio buffers through non-blocking UNIX domain socket directly to the audio daemon in <1ms."""
+    fallback_warned = False
     while True:
         audio_np = playback_queue.get()
         if audio_np is None:
@@ -217,16 +321,18 @@ def audio_playback_worker():
         try:
             raw_pcm = audio_np.tobytes()
             # 1. Fast Path: Persistent UNIX Domain Socket to Audio Daemon (<1ms)
-            if os.path.exists(AUDIO_SOCKET):
-                sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-                sock.connect(AUDIO_SOCKET)
-                sock.sendall(raw_pcm)
-                sock.close()
+            if _send_to_audio_daemon(raw_pcm):
+                _register_playback(len(audio_np))
             elif os.path.exists(PLAYER_BIN):
-                # 2. Fallback Path: Subprocess CLI player
+                # 2. Fallback Path: Subprocess CLI player (blocking, returns after playback)
+                if not fallback_warned:
+                    print("\n[WARN] Audio daemon unavailable, falling back to %s" % PLAYER_BIN)
+                    fallback_warned = True
                 temp_wav = "/tmp/tts_chunk_%d.wav" % int(time.time() * 1000 % 100)
-                sf.write(temp_wav, audio_np, 16000, format='WAV', subtype='PCM_16')
+                sf.write(temp_wav, audio_np, TTS_SAMPLE_RATE, format='WAV', subtype='PCM_16')
                 subprocess.run([PLAYER_BIN, temp_wav, NET_INTERFACE_NAME], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            else:
+                print("\n[ERROR] No audio output available (daemon down and %s missing)" % PLAYER_BIN)
         except Exception as e:
             print("\n[ERROR] Playback worker error: %s" % e)
         finally:
@@ -243,6 +349,11 @@ def wait_for_all_tts_to_finish():
     """Waits until all queued synthesis and audio playbacks are complete."""
     synthesis_queue.join()
     playback_queue.join()
+    # Wait for the robot speaker to actually finish, so the mic does not record the robot's own voice
+    with _playback_lock:
+        remaining = _playback_until - time.time()
+    if remaining > 0:
+        time.sleep(remaining)
 
 def speak_direct_via_riva(text_to_speak):
     """Synchronous speech for standalone announcements."""
@@ -255,7 +366,7 @@ def capture_head_camera_frame():
     import cv2
     raw_jpeg = None
     
-    # 1. Fast Path: Read via UNIX socket from daemon
+    # 1. Fast Path: Read via UNIX socket from daemon (daemon returns size 0 if its latest frame is stale)
     if os.path.exists(HEAD_CAMERA_SOCK):
         try:
             sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
@@ -279,11 +390,15 @@ def capture_head_camera_frame():
         except Exception:
             pass
 
-    # 2. Secondary Fast Path: Read from tmpfs
+    # 2. Secondary Fast Path: Read from tmpfs (/dev/shm), only if the snapshot is fresh
     if raw_jpeg is None and os.path.exists(HEAD_CAMERA_SNAP):
         try:
-            with open(HEAD_CAMERA_SNAP, "rb") as f:
-                raw_jpeg = f.read()
+            age = time.time() - os.path.getmtime(HEAD_CAMERA_SNAP)
+            if age <= MAX_FRAME_AGE_SEC:
+                with open(HEAD_CAMERA_SNAP, "rb") as f:
+                    raw_jpeg = f.read()
+            else:
+                print("[WARN] Head camera snapshot is stale (%.1fs old) - is unitree_head_camera_daemon running?" % age)
         except Exception:
             pass
 
@@ -382,12 +497,11 @@ def record_push_to_talk():
     print("\n[TALK] 🎙️ LISTENING... Speak now! (Press [ENTER] when finished speaking)")
     
     audio_frames = []
-    stop_recording = False
+    stop_event = threading.Event()
     
     def listen_for_enter():
-        nonlocal stop_recording
         sys.stdin.readline()
-        stop_recording = True
+        stop_event.set()
         
     input_thread = threading.Thread(target=listen_for_enter, daemon=True)
     input_thread.start()
@@ -400,7 +514,12 @@ def record_push_to_talk():
         except socket.timeout:
             break
             
-    while not stop_recording:
+    record_deadline = time.time() + MAX_RECORD_SEC
+    while not stop_event.is_set():
+        if time.time() > record_deadline:
+            print("[TALK] Max recording length (%ds) reached - press [ENTER] to continue." % MAX_RECORD_SEC)
+            stop_event.wait()  # Still consume the pending ENTER so it doesn't leak into the next prompt
+            break
         try:
             data = sock.recv(4096)
             if data:
@@ -411,14 +530,15 @@ def record_push_to_talk():
     sock.close()
     
     raw_audio = b"".join(audio_frames)
-    if not raw_audio:
+    if len(raw_audio) < 2:
         return None
+    raw_audio = raw_audio[:len(raw_audio) - (len(raw_audio) % 2)]  # int16 alignment
         
     audio_np = np.frombuffer(raw_audio, dtype=np.int16)
     
-    # Software Automatic Gain Control (AGC)
-    peak = np.max(np.abs(audio_np))
-    if peak > 0:
+    # Software Automatic Gain Control (AGC) - skip near-silent input to avoid amplifying noise into ASR hallucinations
+    peak = int(np.max(np.abs(audio_np.astype(np.int32))))
+    if peak >= AGC_NOISE_FLOOR:
         target_peak = 24000.0
         gain = min(5.0, target_peak / float(peak))
         audio_np = np.clip(audio_np * gain, -32767, 32767).astype(np.int16)
@@ -449,6 +569,35 @@ def transcribe_audio_bytes(audio_bytes):
     return ""
 
 # --- 6. Natural Continuous Flow Token Streaming ---
+# We split speech ONLY at natural clause and sentence boundaries for human-like prosody
+SENTENCE_ENDINGS = set([".", "!", "?"])
+CLAUSE_SEPARATORS = set([",", ";", ":", "\u2014"])
+MIN_CLAUSE_WORDS = 7
+
+def split_speakable_text(buffer):
+    """Splits streamed LLM text at sentence/clause boundaries.
+
+    A boundary only counts once the following character has arrived and is whitespace, so decimals
+    like "3.5" are not split. Clause breaks require MIN_CLAUSE_WORDS words. Returns (ready_list, remainder).
+    """
+    ready = []
+    start = 0
+    for i, ch in enumerate(buffer):
+        is_boundary = False
+        if ch == "\n":
+            is_boundary = True
+        elif i + 1 < len(buffer) and buffer[i + 1].isspace():
+            if ch in SENTENCE_ENDINGS:
+                is_boundary = True
+            elif ch in CLAUSE_SEPARATORS and len(buffer[start:i + 1].split()) >= MIN_CLAUSE_WORDS:
+                is_boundary = True
+        if is_boundary:
+            piece = buffer[start:i + 1].strip()
+            if piece:
+                ready.append(piece)
+            start = i + 1
+    return ready, buffer[start:]
+
 def query_gemma4_and_stream_tts(user_text, image_b64=None):
     """Streams tokens from Gemma-4 and dispatches complete, natural sentence chunks to parallel TTS pipeline."""
     if image_b64:
@@ -472,25 +621,21 @@ def query_gemma4_and_stream_tts(user_text, image_b64=None):
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": content}
         ],
-        "max_tokens": 50,
+        "max_tokens": LLM_MAX_TOKENS,
         "temperature": 0.1,
         "stream": True
     }
     
     try:
-        resp = requests.post(VLLM_URL, json=payload, stream=True, timeout=20)
+        resp = requests.post(LLM_URL, json=payload, stream=True, timeout=20)
         if resp.status_code != 200:
-            print("[ERROR] Server Error: %s" % resp.text)
-            speak_direct_via_riva("I am ready to assist you.")
+            print("[ERROR] Server Error (HTTP %d): %s" % (resp.status_code, resp.text))
+            speak_direct_via_riva("Sorry, my language model is not ready yet. Please try again in a moment.")
             return
             
         full_text = ""
         current_sentence = ""
         print("[ROBOT] Jason: ", end="", flush=True)
-        
-        # We split speech ONLY at natural clause and sentence boundaries for human-like prosody
-        SENTENCE_ENDINGS = set([".", "!", "?", "\n"])
-        CLAUSE_SEPARATORS = set([",", ";", ":", "—"])
         
         for line in resp.iter_lines():
             if line:
@@ -508,17 +653,11 @@ def query_gemma4_and_stream_tts(user_text, image_b64=None):
                             current_sentence += text_chunk
                             full_text += text_chunk
                             
-                            words = current_sentence.strip().split()
-                            # 1. Major sentence boundary: emit immediately
-                            has_sentence_end = any(p in text_chunk for p in SENTENCE_ENDINGS)
-                            # 2. Major clause comma boundary: emit only if at least 7 words accumulated
-                            has_clause_break = any(p in text_chunk for p in CLAUSE_SEPARATORS) and len(words) >= 7
-                            
-                            if has_sentence_end or has_clause_break:
-                                sentence_to_speak = current_sentence.strip()
-                                if sentence_to_speak:
-                                    queue_text_for_streaming_tts(sentence_to_speak)
-                                    current_sentence = ""
+                            # Split at the exact boundary position so text after the punctuation
+                            # (e.g. ". The") stays with the next sentence
+                            ready, current_sentence = split_speakable_text(current_sentence)
+                            for sentence_to_speak in ready:
+                                queue_text_for_streaming_tts(sentence_to_speak)
                     except Exception:
                         continue
                         
@@ -527,7 +666,7 @@ def query_gemma4_and_stream_tts(user_text, image_b64=None):
         if current_sentence.strip():
             queue_text_for_streaming_tts(current_sentence.strip())
         elif not full_text.strip():
-            queue_text_for_streaming_tts("I see what is in front of me.")
+            queue_text_for_streaming_tts("Sorry, I don't have an answer for that.")
             
         # Wait for pipelined audio playback to complete cleanly
         wait_for_all_tts_to_finish()
@@ -542,8 +681,6 @@ def main():
     print("[AUDIO] Non-Blocking Gapless Audio Daemon (/tmp/unitree_audio.sock)")
     print("=" * 60)
     
-    ROUTER_THRESHOLD = 0.35
-    
     # 1. Robot greeting
     startup_greeting = "My name is Jason. Domo Arigato Mr robot. oh."
     speak_direct_via_riva(startup_greeting)
@@ -553,7 +690,11 @@ def main():
         print("[PROMPT] Press [ENTER] to start speaking (or type 'q' to quit):")
         sys.stdout.flush()
         
-        choice = sys.stdin.readline().strip().lower()
+        line = sys.stdin.readline()
+        if not line:  # EOF on stdin (e.g. piped input finished)
+            print("[EXIT] stdin closed, exiting assistant.")
+            break
+        choice = line.strip().lower()
         if choice == 'q' or choice == 'exit':
             print("[EXIT] Exiting assistant.")
             break
@@ -572,7 +713,6 @@ def main():
         has_visual_intent = (similarity_score >= ROUTER_THRESHOLD)
         
         image_b64 = None
-        import random
         if has_visual_intent:
             print("[ROUTE] 🎯 Vision Route Triggered (MiniLM Score: %.2f >= %.2f)!" % (similarity_score, ROUTER_THRESHOLD))
             # Speculative visual conversational filler (<30ms instant spoken response)

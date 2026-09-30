@@ -130,9 +130,10 @@ From your laptop terminal:
 # 1. Transfer model weights and wheels (~10 GB)
 scp -r ~/robot_assets unitree@192.168.123.164:/home/unitree/robot_assets
 
-# 2. Transfer NeMo-Speech.cpp and assistant code
+# 2. Transfer NeMo-Speech.cpp and this repo folder (assistant, launcher, daemon sources, tests)
 scp -r /path/to/NeMo-Speech.cpp unitree@192.168.123.164:/home/unitree/NeMo-Speech.cpp
-scp app.sh test_vision_voice_assistant.py unitree@192.168.123.164:/home/unitree/
+scp -r /path/to/unitree-r1 unitree@192.168.123.164:/home/unitree/unitree-r1
+ssh unitree@192.168.123.164 'cp /home/unitree/unitree-r1/app.sh /home/unitree/unitree-r1/test_vision_voice_assistant.py /home/unitree/'
 ```
 
 ---
@@ -171,12 +172,28 @@ make llama-server -j$(nproc)
 ```bash
 cd /home/unitree/unitree_sdk2
 
-# Copy C++ daemon sources into SDK examples
-cp /home/unitree/NeMo-Speech.cpp/scripts/unitree_head_camera_daemon.cpp example/go2/
-cp /home/unitree/NeMo-Speech.cpp/scripts/unitree_audio_daemon.cpp example/g1/audio/
+# Copy C++ daemon sources (from this repo's scripts/ folder, transferred in step 3.2) into SDK examples
+cp /home/unitree/unitree-r1/scripts/unitree_head_camera_daemon.cpp example/go2/
+cp /home/unitree/unitree-r1/scripts/unitree_audio_daemon.cpp example/g1/audio/
+cp /home/unitree/unitree-r1/scripts/unitree_play_wav.cpp example/g1/audio/
+
+# Register the build targets (copying a .cpp alone does not create a make target).
+# Skip any line that is already present.
+grep -q unitree_play_wav example/g1/CMakeLists.txt || cat >> example/g1/CMakeLists.txt <<'EOF'
+add_executable(unitree_play_wav audio/unitree_play_wav.cpp)
+target_link_libraries(unitree_play_wav unitree_sdk2)
+EOF
+grep -q unitree_audio_daemon example/g1/CMakeLists.txt || cat >> example/g1/CMakeLists.txt <<'EOF'
+add_executable(unitree_audio_daemon audio/unitree_audio_daemon.cpp)
+target_link_libraries(unitree_audio_daemon unitree_sdk2)
+EOF
+grep -q unitree_head_camera_daemon example/go2/CMakeLists.txt || cat >> example/go2/CMakeLists.txt <<'EOF'
+add_executable(unitree_head_camera_daemon unitree_head_camera_daemon.cpp)
+target_link_libraries(unitree_head_camera_daemon unitree_sdk2)
+EOF
 
 # Build daemons
-cd build
+mkdir -p build && cd build
 cmake ..
 make unitree_head_camera_daemon unitree_audio_daemon unitree_play_wav -j$(nproc)
 ```
@@ -198,7 +215,25 @@ bash /home/unitree/app.sh
 3. Launches `llama-server` with Gemma-4 VLM and mmproj on port `8000`.
 4. Launches `unitree_audio_daemon` (handling gapless speaker output).
 5. Launches `unitree_head_camera_daemon` (streaming head eye frames over DDS).
-6. Polls until all neural engines complete CUDA graph warmup, then launches the interactive assistant.
+6. Polls until Riva accepts connections and `llama-server` `/health` returns 200 (model fully loaded), then launches the interactive assistant.
+
+Services keep running after the assistant exits, so you can re-run `python3 /home/unitree/test_vision_voice_assistant.py` directly. Other modes:
+```bash
+bash /home/unitree/app.sh --services-only   # start services only
+bash /home/unitree/app.sh --stop            # stop all services (frees GPU memory)
+```
+
+### 5.1.1 Tests
+```bash
+cd /home/unitree/unitree-r1
+python3 tests/test_assistant_units.py   # offline unit tests (no services needed)
+python3 tests/calibrate_router.py       # MiniLM router accuracy vs threshold
+python3 tests/integration_test.py       # silent: services, ASR/TTS, camera, Gemma, router load
+python3 tests/e2e_injected.py /home/unitree/test_vision_voice_assistant.py   # real main loop, robot speaks
+```
+> [!NOTE]
+> The robot's mic array cancels the robot's own speaker output, so the E2E test injects synthesized
+> questions in place of mic capture rather than having the robot ask itself out loud.
 
 ---
 
