@@ -1818,11 +1818,16 @@ def process_turn(audio_bytes, t_end_of_speech, require_wake=False, prefill=None)
 
         # Hand gesture voice commands ("flex your hands", "thumbs up") skip the LLM entirely
         gesture, gesture_reply = match_gesture_command(transcript) if VOICE_GESTURES else (None, None)
-        if gesture and hands.enabled and hands.connected():
+        if gesture and hands.enabled:
             if prefill:
                 prefill.cancel()
-            print("[HANDS] 🖐  Gesture command: %s" % gesture)
-            hands.play(gesture)
+            if hands.connected():
+                print("[HANDS] 🖐  Gesture command: %s" % gesture)
+                hands.play(gesture)
+            else:
+                print("[HANDS] Gesture '%s' requested but the hands are not connected - start brainco_hand_server "
+                      "(bash app.sh --services-only)." % gesture)
+                gesture_reply = "Sorry, my hands are not connected right now."
             queue_text_for_streaming_tts(gesture_reply, "answer")
             wait_for_all_tts_to_finish()
             remember_exchange(transcript, gesture_reply)
