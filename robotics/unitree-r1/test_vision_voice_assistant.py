@@ -78,7 +78,8 @@ LLM_MAX_TOKENS = 80        # ~35 words + headroom so replies are not cut mid-sen
 GREETING = os.getenv("GREETING", "Hasta la vista, baby.")
 # Hands-free / push-to-talk (quiet room)
 DEFAULT_SYSTEM_PROMPT = ("Your name is Jason. Don't use acronyms. You are a robot. For time or numbers spell them "
-                         "out in letters. Speak in smooth, complete sentences. Response must be under 35 words.")
+                         "out in letters. Speak in smooth, complete sentences. Response must be under 35 words. "
+                         "Answer only what was asked: never end by offering more help or asking a question back.")
 # Tap-to-talk is the noisy conference booth mode: shorter answers for faster turn-taking, and a prompt that
 # expects speech recognition mistakes. Applied by apply_tap_mode_profile().
 BOOTH_SYSTEM_PROMPT = ("Your name is Jason. You are a friendly robot at a conference booth, talking with visitors. "
@@ -86,7 +87,8 @@ BOOTH_SYSTEM_PROMPT = ("Your name is Jason. You are a friendly robot at a confer
                        "sentences. Response must be under 25 words. The visitor's words come from speech recognition "
                        "in a noisy room and may contain mistakes: if a request is unclear, ask one short question. "
                        "When describing what you see, focus on the person or object closest to you. Never guess who "
-                       "a person is. Politely decline inappropriate requests.")
+                       "a person is. Politely decline inappropriate requests. Answer only what was asked: never end by "
+                       "offering more help or asking if they have another question.")
 SYSTEM_PROMPT = os.getenv("SYSTEM_PROMPT", DEFAULT_SYSTEM_PROMPT)
 
 # Streaming TTS: Magpie starts returning audio after ~0.25 s instead of synthesizing the whole sentence
@@ -1130,8 +1132,17 @@ def query_gemma4_and_stream_tts(user_text, image_b64=None, history=None):
             return
             
         full_text = ""
+        spoken = []  # sentences actually spoken (closing offers removed); this is what gets remembered
         current_sentence = ""
         print("[ROBOT] Jason: ", end="", flush=True)
+
+        def speak(sentence):
+            if spoken and is_closing_offer(sentence):
+                print(" [dropped closing offer]", end="", flush=True)
+                return
+            timer_mark("first_sentence")
+            spoken.append(sentence)
+            queue_text_for_streaming_tts(sentence)
         
         for line in resp.iter_lines():
             if line:
@@ -1154,27 +1165,41 @@ def query_gemma4_and_stream_tts(user_text, image_b64=None, history=None):
                             # (e.g. ". The") stays with the next sentence
                             ready, current_sentence = split_speakable_text(current_sentence)
                             for sentence_to_speak in ready:
-                                timer_mark("first_sentence")
-                                queue_text_for_streaming_tts(sentence_to_speak)
+                                speak(sentence_to_speak)
                     except Exception:
                         continue
                         
         print()
         # Enqueue any remaining full phrase
         if current_sentence.strip():
-            timer_mark("first_sentence")
-            queue_text_for_streaming_tts(current_sentence.strip())
+            speak(current_sentence.strip())
         elif not full_text.strip():
             queue_text_for_streaming_tts("Sorry, I don't have an answer for that.")
             
         # Wait for pipelined audio playback to complete cleanly
         wait_for_all_tts_to_finish()
-        return full_text
+        return " ".join(spoken)
             
     except Exception as e:
         print("[ERROR] Connection Error: %s" % e)
         speak_direct_via_riva("I encountered an error connecting to my intelligence engine.")
         return ""
+
+# Small models often tack on "Can I help you with anything else today?" even when told not to.
+# Such closing offers are dropped before they are spoken - unless they are the whole reply (then it is
+# probably a genuine clarifying question, which the booth prompt asks for).
+_CLOSING_OFFER = re.compile(
+    r"\b(anything|something) else\b|\banother question\b|\b(any )?(other|more|further) questions?\b"
+    r"|\bhow (can|may) i (help|assist)\b|\bwhat else can i\b|\bcan i (help|assist) you\b"
+    r"|\b(let me know|feel free)\b|\bis there (anything|something)\b|\bi am (here|ready) to (help|assist)\b"
+    r"|\bwhat would you like (to know|me to do|assistance with|help with)\b"
+    r"|\bplease (tell me|let me know|state) what you\b|\bhow can i be of\b|\bwhat you are looking for\b"
+    r"|\bis (that|this) what you\b|\bwhat you were asking\b|\bdoes (that|this) (answer|help)\b"
+    r"|\bwould you like to (know|hear) more\b|\banything more\b",
+    re.IGNORECASE)
+
+def is_closing_offer(sentence):
+    return bool(_CLOSING_OFFER.search(sentence))
 
 # --- 8. Wake word, Voice Activity Detection & end-of-speech detection ---
 def match_wake_word(transcript, wake_words=None, max_leading_words=3):

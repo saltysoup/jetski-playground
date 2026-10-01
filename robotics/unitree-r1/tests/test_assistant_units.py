@@ -534,6 +534,24 @@ class LedTests(unittest.TestCase):
         daemon.close()
 
 
+class ClosingOfferTests(unittest.TestCase):
+    def test_closers_detected(self):
+        for t in ["Can I help you with anything else today?", "Do you have another question for me?",
+                  "Is there anything else I can do?", "Let me know if you need more help.",
+                  "Please tell me what you would like assistance with now.",
+                  "Can you tell me what you are looking for?", "How can I help you further?",
+                  "Feel free to ask more questions.", "Please state what you require.",
+                  "Is that what you were asking about?", "Does that answer your question?",
+                  "Would you like to know more?"]:
+            self.assertTrue(assistant.is_closing_offer(t), t)
+
+    def test_real_answers_kept(self):
+        for t in ["The capital of France is Paris.", "I see a table with some papers in front of me.",
+                  "Both series are excellent science fiction.", "Do you mean the Star Wars movies?",
+                  "My name is Jason.", "Berlin is known for its rich history and culture."]:
+            self.assertFalse(assistant.is_closing_offer(t), t)
+
+
 class ModeSelectionTests(unittest.TestCase):
     def test_tap_mode_uses_booth_profile(self):
         saved = (assistant.SYSTEM_PROMPT, assistant.CONVERSATION_MEMORY_SEC)
