@@ -27,6 +27,7 @@ import warnings
 
 warnings.filterwarnings("ignore")
 os.environ["FOLLOW_UP_SEC"] = "4"
+os.environ["WAKE_WORDS"] = "jason,jayson,jaysen,jaison"  # this test covers the wake word path (off by default)
 import numpy as np  # noqa: E402
 
 SCRIPT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "test_vision_voice_assistant.py")

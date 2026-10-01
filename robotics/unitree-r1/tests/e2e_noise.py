@@ -144,7 +144,7 @@ def run_vad(scene, gate_db, refs):
             continue
         u = hit[0]
         text = A.transcribe_audio_bytes(A.apply_agc(u[2]), verbose=False)
-        results.append(dict(found=not u[3], forced=u[3], wake=A.match_wake_word(text)[0], wer=wer(ref, text),
+        results.append(dict(found=not u[3], forced=u[3], wake=A.match_wake_word(text, ["jason", "jayson", "jaysen", "jaison"])[0], wer=wer(ref, text),
                             delay=(u[1] - f1) * FRAME_SEC, text=text))
     return results
 

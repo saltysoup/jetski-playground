@@ -1,5 +1,5 @@
 [Unit]
-Description=Unitree R1 voice & vision assistant (ASSISTANT_MODE: vad = wake word, tap = button)
+Description=Unitree R1 voice & vision assistant (ASSISTANT_MODE: vad = hands-free, tap = button)
 After=r1-services.service network-online.target
 Requires=r1-services.service
 

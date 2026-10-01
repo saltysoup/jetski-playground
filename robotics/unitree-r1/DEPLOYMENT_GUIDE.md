@@ -248,6 +248,7 @@ python3 tests/integration_test.py       # silent: services, ASR/TTS, camera, Gem
 python3 tests/bench_latency.py          # silent: ASR/TTS/LLM/vision latency numbers
 python3 tests/e2e_injected.py /home/unitree/test_vision_voice_assistant.py   # push-to-talk loop, robot speaks
 python3 tests/e2e_vad_injected.py       # hands-free loop (VAD + wake word + follow-up), robot speaks
+                                        # (sets WAKE_WORDS itself, to test the wake word path)
 python3 tests/e2e_tap_injected.py       # tap-to-talk in cafeteria noise (SNR_DB=10), robot speaks
 python3 tests/e2e_noise.py              # silent: VAD/tap accuracy vs crowd noise level and GATE_DB
 python3 tests/motion_hand_demo.py       # MOVES THE HANDS: open, flex, fist, thumbs up, count (asks first)
@@ -263,7 +264,7 @@ corpus (`PCAFETER_16k.zip`, `PRESTO_16k.zip`): copy one channel WAV of each to
 | Mode | Start | Best for | How a turn works |
 |---|---|---|---|
 | Push-to-talk (default) | `python3 test_vision_voice_assistant.py` | development over SSH | ENTER to start, ENTER to stop |
-| **Hands-free** | `--vad` or `ASSISTANT_MODE=vad` | quiet rooms | Say "Jason, ...". Silero VAD finds the end of the sentence |
+| **Hands-free** | `--vad` or `ASSISTANT_MODE=vad` | quiet rooms | Just talk (no wake word by default). Silero VAD finds the end of the sentence |
 | **Tap-to-talk** | `--tap` or `ASSISTANT_MODE=tap` | noisy rooms (conference booth) | Press a key, speak. The turn ends when you stop talking |
 
 Head LED: **purple** = listening, **green** = talking, off otherwise (`LED_LISTEN`, `LED_TALK`, `LED_THINK`,
@@ -312,8 +313,10 @@ detects the end of each utterance and the request is sent automatically.
    scp ~/robot_assets/models/vad/silero_vad.onnx unitree@192.168.123.164:/home/unitree/robot_assets/models/vad/
    ```
 2. Try it in a terminal: `python3 /home/unitree/test_vision_voice_assistant.py --vad`
-3. Say **"Jason, what do you see?"**. For 3 s after each reply, follow-up questions need no wake word.
-   Speech that doesn't start with the wake word is ignored. The mic is muted while the robot talks.
+3. Say **"What do you see?"**. Every sentence it hears is answered (there is no wake word by default),
+   so it suits a quiet room with one person talking to the robot. The mic is muted while the robot talks.
+   To require the name, set `WAKE_WORDS=jason,jayson,jaysen,jaison`: then speech that doesn't start with
+   "Jason" is ignored, except for follow-ups within 3 s of a reply.
 
 ### 5.1.3 Hands (BrainCo Revo2)
 The assistant moves the fingers in two ways:
@@ -323,7 +326,7 @@ The assistant moves the fingers in two ways:
   (open palm, loose curl, half-point, loose fist, random fingers, quick emphasis beats) every 0.35-0.9 s,
   then settles to relaxed. `TALK_INTENSITY` (0-1) scales how far the fingers close; `TALK_GESTURES=0` turns it off.
 
-| Say (after "Jason," in hands-free mode) | Hands | Robot says |
+| Say | Hands | Robot says |
 |---|---|---|
 | "flex your hands" / "wiggle your fingers" | both: finger ripple to a fist and back, twice | "Check out these fingers!" |
 | "make a fist" / "open your hands" | both | "Like this!" / "Ta-da!" |
@@ -374,8 +377,8 @@ file (then use a USB keyboard on the robot as the talk key). Settings go in `/ho
 | `HAND_SPEED` | `0.8` | Finger motor speed limit (0-1) |
 | `VOICE_GESTURES` / `TALK_GESTURES` | `1` / `1` | Gesture voice commands / finger motion while talking |
 | `TALK_INTENSITY` | `1.0` | How far the fingers close while talking (0-1) |
-| `WAKE_WORDS` | `jason,jayson,jaysen,jaison` | Accepted spellings of the name; empty = respond to all speech |
-| `FOLLOW_UP_SEC` | `3` | Seconds after a reply during which no wake word is needed |
+| `WAKE_WORDS` | (empty) | Empty = respond to all speech. `jason,jayson,jaysen,jaison` = require the name |
+| `FOLLOW_UP_SEC` | `3` | With `WAKE_WORDS` set: seconds after a reply during which no wake word is needed |
 | `MEMORY_TURNS` | `3` | Previous exchanges sent to Gemma, so follow-ups like "and Germany?" work (0 = off) |
 | `CONVERSATION_MEMORY_SEC` | `120` (`30` tap) | Forget the conversation after this much silence |
 | `VAD_GAIN` | `2.0` | Mic boost before VAD (raise if quiet speech is missed) |

@@ -161,8 +161,9 @@ GATE_DB = float(os.getenv("GATE_DB", "6"))
 # keeps more of a soft-spoken visitor. Measured in cafeteria / restaurant noise, see tests/e2e_noise.py.
 TAP_GATE_DB = float(os.getenv("TAP_GATE_DB", "3"))
 # Wake words: utterances must start with one of these unless inside the follow-up window.
-# ASR spells the name several ways. Set WAKE_WORDS="" to respond to everything.
-WAKE_WORDS = [w.strip().lower() for w in os.getenv("WAKE_WORDS", "jason,jayson,jaysen,jaison").split(",")
+# Off by default (hands-free mode answers all speech). To require the name, set
+# WAKE_WORDS=jason,jayson,jaysen,jaison (ASR spells the name several ways).
+WAKE_WORDS = [w.strip().lower() for w in os.getenv("WAKE_WORDS", "").split(",")
               if w.strip()]
 FOLLOW_UP_SEC = float(os.getenv("FOLLOW_UP_SEC", "3"))  # no wake word needed this long after a reply
 ECHO_GUARD_SEC = 0.5  # ignore the mic this long after playback ends (speaker latency is ~0.32 s)
