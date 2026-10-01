@@ -177,6 +177,7 @@ cp /home/unitree/unitree-r1/scripts/unitree_head_camera_daemon.cpp example/go2/
 cp /home/unitree/unitree-r1/scripts/unitree_audio_daemon.cpp example/g1/audio/
 cp /home/unitree/unitree-r1/scripts/unitree_play_wav.cpp example/g1/audio/
 cp /home/unitree/unitree-r1/scripts/unitree_led.cpp example/g1/audio/
+cp /home/unitree/unitree-r1/scripts/unitree_hand_bridge.cpp example/g1/audio/
 
 # Register the build targets (copying a .cpp alone does not create a make target).
 # Skip any line that is already present.
@@ -192,6 +193,10 @@ grep -q unitree_led example/g1/CMakeLists.txt || cat >> example/g1/CMakeLists.tx
 add_executable(unitree_led audio/unitree_led.cpp)
 target_link_libraries(unitree_led unitree_sdk2)
 EOF
+grep -q unitree_hand_bridge example/g1/CMakeLists.txt || cat >> example/g1/CMakeLists.txt <<'EOF'
+add_executable(unitree_hand_bridge audio/unitree_hand_bridge.cpp)
+target_link_libraries(unitree_hand_bridge unitree_sdk2)
+EOF
 grep -q unitree_head_camera_daemon example/go2/CMakeLists.txt || cat >> example/go2/CMakeLists.txt <<'EOF'
 add_executable(unitree_head_camera_daemon unitree_head_camera_daemon.cpp)
 target_link_libraries(unitree_head_camera_daemon unitree_sdk2)
@@ -200,10 +205,12 @@ EOF
 # Build daemons
 mkdir -p build && cd build
 cmake ..
-make unitree_head_camera_daemon unitree_audio_daemon unitree_play_wav unitree_led -j$(nproc)
+make unitree_head_camera_daemon unitree_audio_daemon unitree_play_wav unitree_led unitree_hand_bridge -j$(nproc)
 ```
 The audio daemon also drives the head LED: it accepts `"R G B"` datagrams on `/tmp/unitree_led.sock`.
 `./bin/unitree_led 160 0 255` sets the LED directly (diagnostic).
+`unitree_hand_bridge` lets Python move the hands: it relays `"left|right q0..q5 [speed]"` datagrams on
+`/tmp/unitree_hand.sock` to Unitree's `brainco_hand_server` over DDS (see 5.1.3 Hands).
 
 ---
 
@@ -222,7 +229,9 @@ bash /home/unitree/app.sh
 3. Launches `llama-server` with Gemma-4 VLM and mmproj on port `8000`.
 4. Launches `unitree_audio_daemon` (handling gapless speaker output).
 5. Launches `unitree_head_camera_daemon` (streaming head eye frames over DDS).
-6. Polls until Riva accepts connections and `llama-server` `/health` returns 200 (model fully loaded), then launches the interactive assistant.
+6. Launches `brainco_hand_server` + `unitree_hand_bridge` for the hands (skip with `HANDS=0`).
+   **Both hands open when the hand server starts.**
+7. Polls until Riva accepts connections and `llama-server` `/health` returns 200 (model fully loaded), then launches the interactive assistant.
 
 Services keep running after the assistant exits, so you can re-run `python3 /home/unitree/test_vision_voice_assistant.py` directly. Other modes:
 ```bash
@@ -241,6 +250,7 @@ python3 tests/e2e_injected.py /home/unitree/test_vision_voice_assistant.py   # p
 python3 tests/e2e_vad_injected.py       # hands-free loop (VAD + wake word + follow-up), robot speaks
 python3 tests/e2e_tap_injected.py       # tap-to-talk in cafeteria noise (SNR_DB=10), robot speaks
 python3 tests/e2e_noise.py              # silent: VAD/tap accuracy vs crowd noise level and GATE_DB
+python3 tests/motion_hand_demo.py       # MOVES THE HANDS: open, flex, fist, thumbs up, count (asks first)
 ```
 `e2e_noise.py` and `e2e_tap_injected.py` need crowd noise from the [DEMAND](https://zenodo.org/records/1227121)
 corpus (`PCAFETER_16k.zip`, `PRESTO_16k.zip`): copy one channel WAV of each to
@@ -305,7 +315,35 @@ detects the end of each utterance and the request is sent automatically.
 3. Say **"Jason, what do you see?"**. For 3 s after each reply, follow-up questions need no wake word.
    Speech that doesn't start with the wake word is ignored. The mic is muted while the robot talks.
 
-### 5.1.3 Run in the background at boot (systemd)
+### 5.1.3 Hands (BrainCo Revo2)
+The assistant moves the fingers in two ways:
+- **Voice gestures:** a request that is *only* a gesture command is answered by the hands plus a short line,
+  without asking Gemma. Questions that merely contain the words ("what is the point of life") still go to Gemma.
+- **Talking hands:** while the robot speaks, the fingers drift slowly between relaxed poses, then settle.
+
+| Say (after "Jason," in hands-free mode) | Hands | Robot says |
+|---|---|---|
+| "flex your hands" / "wiggle your fingers" | both: finger ripple to a fist and back, twice | "Check out these fingers!" |
+| "make a fist" / "open your hands" | both | "Like this!" / "Ta-da!" |
+| "thumbs up" / "point" / "peace sign" / "rock on" | right | "Thumbs up!" / "Over there!" / ... |
+| "count to five" | right: fist, then one to five fingers | "One, two, three, four, five." |
+| "wave" / "say hi" | right: open, fingers wiggle | "Hello there!" |
+
+How it fits together: `HandMotion` (Python, 50 Hz, eased keyframes) -> `/tmp/unitree_hand.sock` ->
+`unitree_hand_bridge` -> DDS `rt/brainco/{left,right}/cmd` -> `brainco_hand_server` (Unitree,
+`~/brainco_hand_service`) -> serial `/dev/ttyHAND0/1`. Positions are 0 (open) to 1 (closed) per finger:
+thumb, thumb rotation, index, middle, ring, pinky. Gestures live in `HAND_POSES` / `HAND_GESTURES`.
+
+```bash
+bash /home/unitree/app.sh --services-only     # starts the hand server (hands open) and the bridge
+python3 /home/unitree/unitree-r1/tests/motion_hand_demo.py                    # full demo, asks first
+python3 /home/unitree/unitree-r1/tests/motion_hand_demo.py --gesture flex     # one gesture
+```
+If the hands are not connected the assistant says so at startup and works as before (no gestures).
+> [!CAUTION]
+> Keep fingers and cables clear of the robot's hands while they move. `HAND_SPEED` (0-1) limits finger speed.
+
+### 5.1.4 Run in the background at boot (systemd)
 ```bash
 cd /home/unitree/unitree-r1
 sudo bash service/install_service.sh            # install, enable at boot, start now
@@ -329,6 +367,9 @@ file (then use a USB keyboard on the robot as the talk key). Settings go in `/ho
 | `BUTTON_HOLD` | `0` | `1` = hold the button while speaking (release ends the turn) |
 | `TAP_NO_SPEECH_SEC` / `TAP_MAX_SEC` | `5` / `8` | Cancel if nobody speaks / longest question |
 | `LED` | `1` | Head LED status colours (`0` = off) |
+| `HANDS` | `1` | Hand gestures (`0` = off; `app.sh` then skips the hand services) |
+| `HAND_SPEED` | `0.8` | Finger motor speed limit (0-1) |
+| `VOICE_GESTURES` / `TALK_GESTURES` | `1` / `1` | Gesture voice commands / finger motion while talking |
 | `WAKE_WORDS` | `jason,jayson,jaysen,jaison` | Accepted spellings of the name; empty = respond to all speech |
 | `FOLLOW_UP_SEC` | `3` | Seconds after a reply during which no wake word is needed |
 | `MEMORY_TURNS` | `3` | Previous exchanges sent to Gemma, so follow-ups like "and Germany?" work (0 = off) |
@@ -343,7 +384,7 @@ file (then use a USB keyboard on the robot as the talk key). Settings go in `/ho
 | `IMAGE_MAX_SIDE` | `768` | Longest side of the frame sent to Gemma |
 | `ROUTER_THRESHOLD` | `0.35` | Vision-intent threshold |
 
-### 5.1.4 Latency design
+### 5.1.5 Latency design
 Each turn prints a `[TIMING]` line (milliseconds after the end of your speech). What makes it fast:
 - **Instant fillers:** "Hmm." / "Let me take a look." are synthesized at startup and played from memory.
 - **Streaming TTS:** Magpie and Gemma share the GPU, and offline synthesis slows ~3x while Gemma is

@@ -129,6 +129,15 @@ LED_THINK = _rgb("LED_THINK", "0,0,0")        # between end of speech and the fi
 LED_IDLE = _rgb("LED_IDLE", "0,0,0")          # tap mode, waiting for the button (off)
 SPEAKER_LATENCY_SEC = 0.3                     # audio handed to the daemon is heard ~0.3 s later
 
+# --- Hands (BrainCo Revo2, via unitree_hand_bridge -> brainco_hand_server) ---
+# Voice commands ("flex your hands", "thumbs up", "count to five", ...) are handled without the LLM, and the
+# fingers move gently while the robot talks. Does nothing if the hand services aren't running.
+HANDS_ENABLED = os.getenv("HANDS", "1") != "0"
+HAND_SOCKET = "/tmp/unitree_hand.sock"
+HAND_SPEED = float(os.getenv("HAND_SPEED", "0.8"))       # finger motor speed limit (0-1)
+VOICE_GESTURES = os.getenv("VOICE_GESTURES", "1") != "0"
+TALK_GESTURES = os.getenv("TALK_GESTURES", "1") != "0"
+
 # --- Microphone source ---
 # "robot": the R1's mic array (multicast UDP, has echo cancellation).
 # "usb": any ALSA capture device via arecord, e.g. a wireless handheld mic receiver (MIC_DEVICE, see `arecord -L`).
@@ -655,6 +664,212 @@ class LedIndicator(object):
             time.sleep(0.05)
 
 led = LedIndicator(enabled=False)  # replaced in main(); a no-op for tests that import this module
+
+# --- Hands: poses, gestures and a smooth motion engine ---
+# Finger order: thumb, thumb_aux (thumb rotation), index, middle, ring, pinky. 0 = open, 1 = closed.
+HAND_POSES = {
+    "open": (0.0, 0.0, 0.0, 0.0, 0.0, 0.0),
+    "relax": (0.15, 0.1, 0.2, 0.25, 0.3, 0.35),   # natural, slightly curled
+    "fist": (1.0, 1.0, 1.0, 1.0, 1.0, 1.0),
+    "point": (1.0, 1.0, 0.0, 1.0, 1.0, 1.0),
+    "thumbs_up": (0.0, 0.0, 1.0, 1.0, 1.0, 1.0),
+    "peace": (1.0, 1.0, 0.0, 0.0, 1.0, 1.0),
+    "rock": (1.0, 1.0, 0.0, 1.0, 1.0, 0.0),
+    "one": (1.0, 1.0, 0.0, 1.0, 1.0, 1.0),
+    "two": (1.0, 1.0, 0.0, 0.0, 1.0, 1.0),
+    "three": (1.0, 1.0, 0.0, 0.0, 0.0, 1.0),
+    "four": (1.0, 1.0, 0.0, 0.0, 0.0, 0.0),
+}
+
+def _ripple(close=True):
+    """Fingers curl one after another, pinky first (or open in reverse) - the 'flex'."""
+    steps = [(0, 0, 0, 0, 0, 1), (0, 0, 0, 0, 1, 1), (0, 0, 0, 1, 1, 1), (0, 0, 1, 1, 1, 1), (1, 1, 1, 1, 1, 1)]
+    if not close:
+        steps = steps[::-1][1:] + [(0, 0, 0, 0, 0, 0)]
+    return [(tuple(float(v) for v in s), 0.13) for s in steps]
+
+def _hold(name, sec):
+    return (HAND_POSES[name], sec)
+
+# Gesture = {side: [(pose, seconds to reach it), ...]}; holding = same pose again. Every gesture ends relaxed.
+_FLEX = _ripple(True) + [_hold("fist", 0.3)] + _ripple(False) + _ripple(True) + [_hold("fist", 0.3)] \
+    + _ripple(False) + [_hold("relax", 0.6)]
+HAND_GESTURES = {
+    "flex": {"left": _FLEX, "right": _FLEX},
+    "fist": {s: [_hold("fist", 0.5), _hold("fist", 1.5), _hold("relax", 0.6)] for s in ("left", "right")},
+    "open": {s: [_hold("open", 0.5), _hold("open", 1.5), _hold("relax", 0.6)] for s in ("left", "right")},
+    "thumbs_up": {"right": [_hold("thumbs_up", 0.5), _hold("thumbs_up", 2.0), _hold("relax", 0.6)]},
+    "point": {"right": [_hold("point", 0.5), _hold("point", 2.0), _hold("relax", 0.6)]},
+    "peace": {"right": [_hold("peace", 0.5), _hold("peace", 2.0), _hold("relax", 0.6)]},
+    "rock": {"right": [_hold("rock", 0.5), _hold("rock", 2.0), _hold("relax", 0.6)]},
+    # ~0.5 s per number, roughly in step with the spoken "One, two, three, four, five."
+    "count": {"right": [_hold("fist", 0.4), _hold("one", 0.5), _hold("two", 0.5), _hold("three", 0.5),
+                        _hold("four", 0.5), _hold("open", 0.5), _hold("open", 0.8), _hold("relax", 0.6)]},
+    "wave": {"right": [_hold("open", 0.4)]
+             + [((0, 0, 0.6, 0, 0.6, 0), 0.25), ((0, 0, 0, 0.6, 0, 0.6), 0.25)] * 3
+             + [_hold("open", 0.3), _hold("relax", 0.6)]},
+}
+
+def smoothstep_pose(start, target, frac):
+    """Pose between start and target with ease-in/ease-out (no jerk at either end)."""
+    f = max(0.0, min(1.0, frac))
+    f = f * f * (3.0 - 2.0 * f)
+    return tuple(a + (b - a) * f for a, b in zip(start, target))
+
+class HandMotion(object):
+    """Drives both hands at 50 Hz through the hand bridge (/tmp/unitree_hand.sock).
+    play(gesture) runs a keyframe gesture; while the robot is talking (and no gesture is playing) the
+    fingers drift slowly between relaxed poses, and settle back to "relax" when it stops."""
+    RATE_HZ = 50.0
+
+    def __init__(self, enabled=HANDS_ENABLED, path=HAND_SOCKET, talk_gestures=TALK_GESTURES, seed=None):
+        self.enabled = enabled
+        self.path = path
+        self.talk_gestures = talk_gestures
+        self.rng = random.Random(seed)
+        self._lock = threading.Lock()
+        self.pose = {"left": HAND_POSES["open"], "right": HAND_POSES["open"]}  # server starts with open hands
+        self._queue = {"left": collections.deque(), "right": collections.deque()}
+        self._segment = {"left": None, "right": None}  # (start_pose, target, t0, duration)
+        self._sent = {"left": None, "right": None}
+        self._settle = {"left": False, "right": False}
+        self._warned = False
+        self._state_cache = (0.0, None)
+        self.sock = socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM) if enabled else None
+        if enabled:
+            threading.Thread(target=self._loop, daemon=True).start()
+
+    # --- public API ---
+    def play(self, name):
+        with self._lock:
+            for side, frames in HAND_GESTURES[name].items():
+                self._queue[side].clear()
+                self._queue[side].extend(frames)
+                self._segment[side] = None
+
+    def relax(self):
+        with self._lock:
+            for side in ("left", "right"):
+                self._queue[side].clear()
+                self._queue[side].append((HAND_POSES["relax"], 0.6))
+                self._segment[side] = None
+
+    def relax_now(self):
+        """Send the relaxed pose immediately (at exit, when the 50 Hz loop is about to stop)."""
+        if self.enabled:
+            with self._lock:
+                for side in ("left", "right"):
+                    self._queue[side].clear()
+                    self._segment[side] = None
+            for side in ("left", "right"):
+                self._send(side, HAND_POSES["relax"], speed=0.4)
+
+    def busy(self, side=None):
+        sides = (side,) if side else ("left", "right")
+        return any(self._queue[s] or self._segment[s] for s in sides)
+
+    def connected(self, max_age_ms=1500):
+        """Sides whose hand state was seen recently (asks the bridge at most every 2 s)."""
+        t, cached = self._state_cache
+        if time.time() - t < 2.0 and cached is not None:
+            return cached
+        sides = []
+        state = self.query_state()
+        for side, (age, _) in (state or {}).items():
+            if 0 <= age <= max_age_ms:
+                sides.append(side)
+        self._state_cache = (time.time(), sides)
+        return sides
+
+    def query_state(self, timeout=0.3):
+        """{"left": (age_ms, q[6]), "right": ...} from the bridge, or None if it isn't running."""
+        if not self.enabled or not os.path.exists(self.path):
+            return None
+        reply_path = "/tmp/r1_assistant_hand_%d_%d.sock" % (os.getpid(), threading.current_thread().ident % 100000)
+        s = socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM)
+        try:
+            if os.path.exists(reply_path):
+                os.unlink(reply_path)
+            s.bind(reply_path)
+            s.settimeout(timeout)
+            s.sendto(b"state", self.path)
+            return parse_hand_state(s.recv(512).decode())
+        except (socket.error, OSError, ValueError):
+            return None
+        finally:
+            s.close()
+            if os.path.exists(reply_path):
+                os.unlink(reply_path)
+
+    # --- engine ---
+    def step(self, now):
+        """Advance both hands to time `now`; returns {side: pose} for sides whose pose changed."""
+        out = {}
+        talking = robot_is_talking(now)
+        with self._lock:
+            for side in ("left", "right"):
+                if talking and self.talk_gestures:
+                    self._settle[side] = True  # relax once the robot stops talking
+                seg = self._segment[side]
+                if seg is None and not self._queue[side]:
+                    if talking and self.talk_gestures:
+                        self._queue[side].append(self._talk_frame())
+                    elif self._settle[side] and not talking:
+                        self._settle[side] = False
+                        self._queue[side].append((HAND_POSES["relax"], 0.8))
+                if seg is None and self._queue[side]:
+                    target, dur = self._queue[side].popleft()
+                    seg = self._segment[side] = (self.pose[side], tuple(target), now, max(0.02, dur))
+                if seg is None:
+                    continue
+                start, target, t0, dur = seg
+                frac = (now - t0) / dur
+                if frac >= 1.0:
+                    self.pose[side] = target
+                    self._segment[side] = None
+                else:
+                    self.pose[side] = smoothstep_pose(start, target, frac)
+                out[side] = self.pose[side]
+        return out
+
+    def _talk_frame(self):
+        """A slow drift to a random relaxed pose: small, natural 'talking hands' movement."""
+        r = self.rng.uniform
+        pose = (r(0.1, 0.3), 0.1, r(0.05, 0.4), r(0.1, 0.45), r(0.15, 0.5), r(0.2, 0.55))
+        return pose, r(0.7, 1.1)
+
+    def _send(self, side, pose, speed=None):
+        msg = "%s %s %.2f" % (side, " ".join("%.3f" % v for v in pose), HAND_SPEED if speed is None else speed)
+        try:
+            self.sock.sendto(msg.encode(), self.path)
+            self._sent[side] = pose
+        except (socket.error, OSError):
+            if not self._warned:
+                self._warned = True
+                print("[HANDS] Hand bridge not running (%s) - gestures disabled. Start it with app.sh." % self.path)
+
+    def _loop(self):
+        period = 1.0 / self.RATE_HZ
+        while True:
+            changed = self.step(time.time())
+            live = self.connected() if changed else ()
+            for side, pose in changed.items():
+                if side not in live:
+                    continue
+                if self._sent[side] is None or max(abs(a - b) for a, b in zip(pose, self._sent[side])) > 0.003:
+                    self._send(side, pose)
+            time.sleep(period)
+
+def parse_hand_state(text):
+    """'left 12 q0..q5 | right -1 q0..q5' -> {"left": (12, [...]), "right": (-1, [...])}"""
+    out = {}
+    for part in text.split("|"):
+        f = part.split()
+        if len(f) == 8 and f[0] in ("left", "right"):
+            out[f[0]] = (int(f[1]), [float(v) for v in f[2:]])
+    return out
+
+hands = HandMotion(enabled=False)  # replaced in main()
 
 def speak_direct_via_riva(text_to_speak, tag="system"):
     """Synchronous speech for standalone announcements."""
@@ -1201,6 +1416,38 @@ _CLOSING_OFFER = re.compile(
 def is_closing_offer(sentence):
     return bool(_CLOSING_OFFER.search(sentence))
 
+# Voice commands for hand gestures. The whole (normalised) request must match, so questions that merely
+# contain the words ("what is the point of life", "how do you flex") still go to the LLM.
+_GESTURE_LEADIN = re.compile(
+    r"^(?:hey|ok|okay|so|now|jason|can you|could you|would you|will you|please|show me|show us|let me see"
+    r"|let us see|lets see|do|give me|give us|go ahead and|you)\s+")
+_GESTURE_TAIL = r"(?:\s+(?:for me|for us|please|now|again|jason))*"
+_GESTURE_COMMANDS = [
+    (r"flex(?: (?:your|the|those|these) (?:hands?|fingers?))?"
+     r"|(?:wiggle|move|stretch) (?:your|the|those|these) (?:hands?|fingers?)", "flex", "Check out these fingers!"),
+    (r"(?:make|do) a fist|fist", "fist", "Like this!"),
+    (r"(?:a |the )?thumbs? up", "thumbs_up", "Thumbs up!"),
+    (r"point(?: your finger)?", "point", "Over there!"),
+    (r"(?:a |the )?(?:peace|victory)(?: sign)?", "peace", "Peace!"),
+    (r"rock on|(?:a |the )?(?:rock|rock and roll|devil horns?) sign|devil horns", "rock", "Rock on!"),
+    (r"count(?: to (?:five|5)| with your fingers| on your fingers)", "count", "One, two, three, four, five."),
+    (r"open your hands?", "open", "Ta-da!"),
+    (r"wave(?: (?:at|to) (?:me|us|everyone|everybody))?(?: hello| hi)?|say (?:hi|hello)", "wave", "Hello there!"),
+]
+_GESTURE_COMMANDS = [(re.compile(r"^(?:%s)%s$" % (p, _GESTURE_TAIL)), g, r) for p, g, r in _GESTURE_COMMANDS]
+
+def match_gesture_command(text):
+    """'Jason, can you flex your hands?' -> ("flex", "Check out these fingers!"); (None, None) if no command."""
+    t = re.sub(r"[^\w\s']", " ", (text or "").lower()).replace("'", "")
+    t = re.sub(r"\s+", " ", t).strip()
+    prev = None
+    while prev != t:
+        prev, t = t, _GESTURE_LEADIN.sub("", t)
+    for pattern, gesture, reply in _GESTURE_COMMANDS:
+        if pattern.match(t):
+            return gesture, reply
+    return None, None
+
 # --- 8. Wake word, Voice Activity Detection & end-of-speech detection ---
 def match_wake_word(transcript, wake_words=None, max_leading_words=3):
     """Checks whether an utterance is addressed to the robot ("Jason, ...", "Hey Jason ...", "OK so Jason ...").
@@ -1569,6 +1816,19 @@ def process_turn(audio_bytes, t_end_of_speech, require_wake=False, prefill=None)
                 return True
             transcript = request
 
+        # Hand gesture voice commands ("flex your hands", "thumbs up") skip the LLM entirely
+        gesture, gesture_reply = match_gesture_command(transcript) if VOICE_GESTURES else (None, None)
+        if gesture and hands.enabled and hands.connected():
+            if prefill:
+                prefill.cancel()
+            print("[HANDS] 🖐  Gesture command: %s" % gesture)
+            hands.play(gesture)
+            queue_text_for_streaming_tts(gesture_reply, "answer")
+            wait_for_all_tts_to_finish()
+            remember_exchange(transcript, gesture_reply)
+            print("[TIMING] after end of speech: %s (+~0.3s speaker latency)" % _turn_timer.summary())
+            return True
+
         # MiniLM Dense Semantic Routing: Determine visual intent
         similarity_score = calculate_vision_similarity(transcript)
         has_visual_intent = (similarity_score >= ROUTER_THRESHOLD)
@@ -1846,17 +2106,27 @@ MODE_NAMES = {"ptt": "Push-to-talk (ENTER to start / stop)",
               "tap": "Tap-to-talk for noisy rooms (button starts, VAD ends, booth prompt)"}
 
 def main():
-    global led
+    global led, hands
     mode = select_mode(sys.argv[1:], os.environ)
     if mode == "tap":
         apply_tap_mode_profile()  # before warm-up, which caches the system prompt in llama-server
     led = LedIndicator()
     atexit.register(led.off)  # LED off when the assistant exits (Ctrl+C, or systemd stop via SIGTERM)
+    hands = HandMotion()
+    atexit.register(hands.relax_now)
     signal.signal(signal.SIGTERM, lambda *_: sys.exit(0))
     print("=" * 60)
     print("[SYSTEM] Unitree R1 Multimodal Assistant (Natural Continuous Flow)")
     print("[AUDIO] Non-Blocking Gapless Audio Daemon (/tmp/unitree_audio.sock)")
     print("[MODE] %s, mic: %s" % (MODE_NAMES[mode], MIC_SOURCE))
+    if hands.enabled:
+        sides = hands.connected()
+        if sides:
+            print("[HANDS] Connected: %s (voice gestures %s, talking hands %s)" % (
+                " + ".join(sides), "on" if VOICE_GESTURES else "off", "on" if TALK_GESTURES else "off"))
+            hands.relax()
+        else:
+            print("[HANDS] Not connected (start brainco_hand_server + unitree_hand_bridge, see app.sh) - no gestures.")
     print("=" * 60)
     
     # 1. Robot greeting (warm-up starts once the greeting is synthesized, so they don't compete for the GPU)

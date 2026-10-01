@@ -14,14 +14,17 @@
 set -e
 
 MODE="${1:-full}"
-SERVICES="riva_server llama-server unitree_audio_daemon unitree_head_camera_daemon"
+SERVICES="riva_server llama-server unitree_audio_daemon unitree_head_camera_daemon brainco_hand_server unitree_hand_bridge"
 READY_TIMEOUT="${READY_TIMEOUT:-180}"   # seconds to wait for model loading / CUDA warmup
+HANDS_ON="${HANDS:-1}"
+HAND_SERVER=/home/unitree/brainco_hand_service/bin/brainco_hand_server
+HAND_BRIDGE=/home/unitree/unitree_sdk2/build/bin/unitree_hand_bridge
 
 stop_services() {
     echo "[CLEANUP] Stopping existing background processes..."
     killall -9 $SERVICES 2>/dev/null || true
     # Remove stale sockets so clients don't try to connect to dead daemons
-    rm -f /tmp/unitree_audio.sock /tmp/unitree_led.sock /tmp/unitree_head_camera.sock
+    rm -f /tmp/unitree_audio.sock /tmp/unitree_led.sock /tmp/unitree_head_camera.sock /tmp/unitree_hand.sock
     sleep 1
 }
 
@@ -83,6 +86,19 @@ setsid nohup /home/unitree/unitree_sdk2/build/bin/unitree_audio_daemon eth10 > /
 echo "[4/4] Launching Persistent Unitree Head Eye Camera Daemon (DDS eth10)..."
 setsid nohup /home/unitree/unitree_sdk2/build/bin/unitree_head_camera_daemon eth10 > /home/unitree/head_camera_daemon.log 2>&1 &
 
+# Hands (BrainCo Revo2): hand server (serial <-> DDS) + bridge (unix socket <-> DDS). HANDS=0 to skip.
+if [ "$HANDS_ON" = "1" ]; then
+    if [ -x "$HAND_SERVER" ] && [ -x "$HAND_BRIDGE" ]; then
+        echo "[+] Launching BrainCo hand server + hand bridge (NOTE: both hands OPEN when the server starts)..."
+        (cd "$(dirname "$HAND_SERVER")" && setsid nohup "$HAND_SERVER" --network_interface eth10 \
+            > /home/unitree/brainco_hand.log 2>&1 < /dev/null &)
+        setsid nohup "$HAND_BRIDGE" eth10 > /home/unitree/hand_bridge.log 2>&1 < /dev/null &
+    else
+        echo "[WARN] Hands skipped: $HAND_SERVER or $HAND_BRIDGE missing (see README: Hands)."
+        HANDS_ON=0
+    fi
+fi
+
 # 5. Wait for GPU memory initialization & server readiness
 #    Riva: gRPC port accepting connections. llama-server: /health returns 200 only after the
 #    model is loaded (the port opens earlier and answers 503 while loading).
@@ -110,15 +126,17 @@ if [ $READY -ne 1 ]; then
     echo "[WARN] Services not ready after ${READY_TIMEOUT}s - check /home/unitree/riva_server.log and /home/unitree/llama_server.log"
 fi
 
-for daemon in unitree_audio_daemon unitree_head_camera_daemon; do
+DAEMONS="unitree_audio_daemon unitree_head_camera_daemon"
+[ "$HANDS_ON" = "1" ] && DAEMONS="$DAEMONS brainco_hand_server unitree_hand_bridge"
+for daemon in $DAEMONS; do
     if ! pgrep -f "bin/$daemon" > /dev/null; then
-        echo "[WARN] $daemon is not running - see /home/unitree/${daemon#unitree_}.log"
+        echo "[WARN] $daemon is not running - see its log in /home/unitree/"
     fi
 done
 
 echo "============================================================"
 echo "[STATUS] Active Background Services:"
-ps aux | grep -E '(riva_server|llama-server|unitree_audio_daemon|unitree_head_camera_daemon)' | grep -v grep || true
+ps aux | grep -E '(riva_server|llama-server|unitree_audio_daemon|unitree_head_camera_daemon|brainco_hand_server|unitree_hand_bridge)' | grep -v grep || true
 echo "============================================================"
 
 if [ "$MODE" = "--services-only" ]; then

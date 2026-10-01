@@ -573,6 +573,148 @@ class ModeSelectionTests(unittest.TestCase):
         self.assertEqual(assistant.select_mode([], {"ASSISTANT_MODE": "bogus"}), "ptt")
 
 
+class HandMotionTests(unittest.TestCase):
+    def setUp(self):
+        self.saved = (assistant._playback_run_start, assistant._playback_until)
+        assistant._playback_run_start = assistant._playback_until = 0.0  # not talking
+
+    def tearDown(self):
+        assistant._playback_run_start, assistant._playback_until = self.saved
+
+    def _run(self, hm, t0, seconds, dt=0.02):
+        t = t0
+        while t < t0 + seconds:
+            hm.step(t)
+            t += dt
+        return t
+
+    def test_smoothstep_pose(self):
+        a, b = (0.0,) * 6, (1.0,) * 6
+        self.assertEqual(assistant.smoothstep_pose(a, b, 0.0), a)
+        self.assertEqual(assistant.smoothstep_pose(a, b, 1.0), b)
+        self.assertEqual(assistant.smoothstep_pose(a, b, 2.0), b)
+        self.assertAlmostEqual(assistant.smoothstep_pose(a, b, 0.5)[0], 0.5)
+        self.assertLess(assistant.smoothstep_pose(a, b, 0.1)[0], 0.1)  # eases in
+
+    def test_all_gestures_are_valid(self):
+        for name, sides in assistant.HAND_GESTURES.items():
+            for side, frames in sides.items():
+                self.assertIn(side, ("left", "right"))
+                self.assertEqual(tuple(frames[-1][0]), assistant.HAND_POSES["relax"], name)  # ends relaxed
+                for pose, dur in frames:
+                    self.assertEqual(len(pose), 6)
+                    self.assertTrue(all(0.0 <= v <= 1.0 for v in pose))
+                    self.assertGreater(dur, 0)
+
+    def test_gesture_reaches_targets_and_ends_relaxed(self):
+        hm = assistant.HandMotion(enabled=False, talk_gestures=False, seed=1)
+        hm.play("thumbs_up")
+        t = self._run(hm, 1000.0, 0.55)
+        self.assertEqual(hm.pose["right"], assistant.HAND_POSES["thumbs_up"])
+        self.assertEqual(hm.pose["left"], assistant.HAND_POSES["open"])  # one-handed gesture
+        self._run(hm, t, 4.0)
+        self.assertEqual(hm.pose["right"], assistant.HAND_POSES["relax"])
+        self.assertFalse(hm.busy())
+
+    def test_flex_closes_fully_both_hands(self):
+        hm = assistant.HandMotion(enabled=False, talk_gestures=False)
+        hm.play("flex")
+        closed = {"left": False, "right": False}
+        t = 1000.0
+        while t < 1006.0:
+            for side, pose in hm.step(t).items():
+                closed[side] |= min(pose) > 0.99
+            t += 0.02
+        self.assertTrue(all(closed.values()))
+        self.assertFalse(hm.busy())
+
+    def test_talking_hands_move_only_while_talking(self):
+        hm = assistant.HandMotion(enabled=False, talk_gestures=True, seed=2)
+        self.assertEqual(hm.step(1000.0), {})  # idle and silent: nothing to send
+        assistant._playback_run_start, assistant._playback_until = 0.0, 1003.0
+        t = self._run(hm, 1000.0, 2.5)
+        self.assertNotEqual(hm.pose["left"], assistant.HAND_POSES["open"])
+        for pose in hm.pose.values():
+            self.assertTrue(all(v <= 0.55 for v in pose))  # small, relaxed motion
+        self._run(hm, t, 4.0)  # stopped talking -> settles to relax
+        self.assertEqual(hm.pose["left"], assistant.HAND_POSES["relax"])
+        self.assertEqual(hm.step(t + 5.0), {})
+
+    def test_gesture_wins_over_talking_hands(self):
+        hm = assistant.HandMotion(enabled=False, talk_gestures=True, seed=3)
+        assistant._playback_run_start, assistant._playback_until = 0.0, 1010.0
+        hm.play("fist")
+        self._run(hm, 1000.0, 0.6)
+        self.assertEqual(hm.pose["right"], assistant.HAND_POSES["fist"])
+
+    def test_parse_hand_state(self):
+        st = assistant.parse_hand_state("left 12 0 0.1 0.2 0.3 0.4 0.5 | right -1 0 0 0 0 0 0")
+        self.assertEqual(st["left"], (12, [0.0, 0.1, 0.2, 0.3, 0.4, 0.5]))
+        self.assertEqual(st["right"][0], -1)
+        self.assertEqual(assistant.parse_hand_state("garbage"), {})
+
+    def test_bridge_protocol_with_fake_bridge(self):
+        import socket as _s
+        import threading as _t
+        path = "/tmp/_test_hand_%d.sock" % os.getpid()
+        if os.path.exists(path):
+            os.unlink(path)
+        srv = _s.socket(_s.AF_UNIX, _s.SOCK_DGRAM)
+        srv.bind(path)
+        cmds = []
+
+        def bridge():  # replies like unitree_hand_bridge: only the right hand is connected
+            while True:
+                try:
+                    data, addr = srv.recvfrom(512)
+                except OSError:
+                    return
+                if data == b"state":
+                    srv.sendto(b"left -1 0 0 0 0 0 0 | right 5 0 0 0 0 0 0", addr)
+                else:
+                    cmds.append(data.decode())
+        _t.Thread(target=bridge, daemon=True).start()
+        try:
+            hm = assistant.HandMotion(enabled=True, path=path, talk_gestures=False)
+            self.assertEqual(hm.connected(), ["right"])
+            hm.play("fist")
+            time.sleep(0.8)
+            self.assertTrue(cmds)
+            self.assertTrue(all(c.startswith("right ") for c in cmds))  # nothing sent to the absent hand
+            last = cmds[-1].split()
+            self.assertEqual(len(last), 8)
+            self.assertAlmostEqual(float(last[1]), 1.0, places=2)
+        finally:
+            srv.close()
+            os.unlink(path)
+
+
+class GestureCommandTests(unittest.TestCase):
+    def test_commands(self):
+        m = assistant.match_gesture_command
+        self.assertEqual(m("Can you flex your hands?")[0], "flex")
+        self.assertEqual(m("Jason, flex.")[0], "flex")
+        self.assertEqual(m("Hey Jason could you please wiggle your fingers for me")[0], "flex")
+        self.assertEqual(m("Make a fist!")[0], "fist")
+        self.assertEqual(m("Give me a thumbs up")[0], "thumbs_up")
+        self.assertEqual(m("show me a peace sign")[0], "peace")
+        self.assertEqual(m("Rock on!")[0], "rock")
+        self.assertEqual(m("Count to five")[0], "count")
+        self.assertEqual(m("count to 5 please")[0], "count")
+        self.assertEqual(m("open your hands")[0], "open")
+        self.assertEqual(m("Wave at everyone")[0], "wave")
+        self.assertEqual(m("say hi")[0], "wave")
+        self.assertEqual(m("point")[0], "point")
+        self.assertTrue(m("flex")[1])
+
+    def test_questions_are_not_commands(self):
+        m = assistant.match_gesture_command
+        for text in ("What is the point of life?", "Count the people in front of you", "How do you flex?",
+                     "Can you move?", "What rock is this?", "Tell me about your hands", "", None,
+                     "Can you see my thumbs up?", "Wave hello to the crowd and tell a joke"):
+            self.assertEqual(m(text), (None, None), text)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
 
