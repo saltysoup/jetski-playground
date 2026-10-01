@@ -74,24 +74,20 @@ MAX_RECORD_SEC = 30.0      # Safety cap for push-to-talk recording
 AGC_NOISE_FLOOR = 500      # Don't amplify recordings whose peak is below this (silence / noise)
 LLM_MAX_TOKENS = 80        # ~35 words + headroom so replies are not cut mid-sentence
 
-# BOOTH_MODE=1: preset for a noisy conference booth (each setting below can still be overridden).
-# Shorter answers for faster turn-taking, a prompt that expects ASR mistakes, and memory that resets
-# between visitors.
-BOOTH_MODE = os.getenv("BOOTH_MODE", "0") == "1"
-
 # Startup phrase spoken once the assistant is up (override with the GREETING env var)
 GREETING = os.getenv("GREETING", "Hasta la vista, baby.")
-if BOOTH_MODE:
-    SYSTEM_PROMPT = ("Your name is Jason. You are a friendly robot at a conference booth, talking with visitors. "
-                     "Don't use acronyms. For time or numbers spell them out in letters. Speak in smooth, complete "
-                     "sentences. Response must be under 25 words. The visitor's words come from speech recognition "
-                     "in a noisy room and may contain mistakes: if a request is unclear, ask one short question. "
-                     "When describing what you see, focus on the person or object closest to you. Never guess who "
-                     "a person is. Politely decline inappropriate requests.")
-else:
-    SYSTEM_PROMPT = ("Your name is Jason. Don't use acronyms. You are a robot. For time or numbers spell them out "
-                     "in letters. Speak in smooth, complete sentences. Response must be under 35 words.")
-SYSTEM_PROMPT = os.getenv("SYSTEM_PROMPT", SYSTEM_PROMPT)
+# Hands-free / push-to-talk (quiet room)
+DEFAULT_SYSTEM_PROMPT = ("Your name is Jason. Don't use acronyms. You are a robot. For time or numbers spell them "
+                         "out in letters. Speak in smooth, complete sentences. Response must be under 35 words.")
+# Tap-to-talk is the noisy conference booth mode: shorter answers for faster turn-taking, and a prompt that
+# expects speech recognition mistakes. Applied by apply_tap_mode_profile().
+BOOTH_SYSTEM_PROMPT = ("Your name is Jason. You are a friendly robot at a conference booth, talking with visitors. "
+                       "Don't use acronyms. For time or numbers spell them out in letters. Speak in smooth, complete "
+                       "sentences. Response must be under 25 words. The visitor's words come from speech recognition "
+                       "in a noisy room and may contain mistakes: if a request is unclear, ask one short question. "
+                       "When describing what you see, focus on the person or object closest to you. Never guess who "
+                       "a person is. Politely decline inappropriate requests.")
+SYSTEM_PROMPT = os.getenv("SYSTEM_PROMPT", DEFAULT_SYSTEM_PROMPT)
 
 # Streaming TTS: Magpie starts returning audio after ~0.25 s instead of synthesizing the whole sentence
 # first. The GPU is shared with the LLM, which slows offline synthesis ~3x while Gemma is decoding:
@@ -143,7 +139,7 @@ VAD_GAIN = float(os.getenv("VAD_GAIN", "2.0"))            # mic is quiet; boost 
 VAD_START_THRESHOLD = float(os.getenv("VAD_START_THRESHOLD", "0.5"))
 VAD_END_THRESHOLD = float(os.getenv("VAD_END_THRESHOLD", "0.35"))
 VAD_END_SILENCE_SEC = float(os.getenv("VAD_END_SILENCE_SEC", "0.6"))  # silence that ends an utterance
-VAD_MAX_SPEECH_SEC = float(os.getenv("VAD_MAX_SPEECH_SEC", "8" if BOOTH_MODE else "15"))
+VAD_MAX_SPEECH_SEC = float(os.getenv("VAD_MAX_SPEECH_SEC", "15"))
 VAD_DEBUG = os.getenv("VAD_DEBUG", "0") == "1"
 # Proximity gate: background chatter IS speech to Silero, so in a crowd the end of the visitor's sentence is
 # never "silence". A frame only counts as the visitor's speech if it is also GATE_DB louder than the
@@ -1021,7 +1017,7 @@ def split_speakable_text(buffer, min_clause_words=MIN_CLAUSE_WORDS):
 # Short-term memory so follow-ups ("And what about Germany?") work. Text only (no old images), last
 # MEMORY_TURNS exchanges, forgotten after CONVERSATION_MEMORY_SEC of silence.
 MEMORY_TURNS = int(os.getenv("MEMORY_TURNS", "3"))
-CONVERSATION_MEMORY_SEC = float(os.getenv("CONVERSATION_MEMORY_SEC", "30" if BOOTH_MODE else "120"))
+CONVERSATION_MEMORY_SEC = float(os.getenv("CONVERSATION_MEMORY_SEC", "120"))  # 30 in tap (booth) mode
 _history = []          # [(user_text, assistant_text), ...]
 _history_time = 0.0    # when the last exchange finished
 
@@ -1804,6 +1800,14 @@ def run_tap_mode(buttons=None, sock=None, max_turns=None):
             led.set("idle")
             print(ready_msg)
 
+def apply_tap_mode_profile(env=os.environ):
+    """Tap-to-talk = noisy booth: booth prompt (short answers, expects recognition mistakes) and the
+    conversation is forgotten after 30 s, so the next visitor starts fresh. SYSTEM_PROMPT /
+    CONVERSATION_MEMORY_SEC env vars still win."""
+    global SYSTEM_PROMPT, CONVERSATION_MEMORY_SEC
+    SYSTEM_PROMPT = env.get("SYSTEM_PROMPT", BOOTH_SYSTEM_PROMPT)
+    CONVERSATION_MEMORY_SEC = float(env.get("CONVERSATION_MEMORY_SEC", "30"))
+
 def select_mode(argv, env):
     """--tap / --vad flags, else ASSISTANT_MODE (ptt | vad | tap), else push-to-talk."""
     for flag, mode in (("--tap", "tap"), ("--vad", "vad"), ("--ptt", "ptt")):
@@ -1814,18 +1818,20 @@ def select_mode(argv, env):
 
 MODE_NAMES = {"ptt": "Push-to-talk (ENTER to start / stop)",
               "vad": "Hands-free (Silero VAD + wake word)",
-              "tap": "Tap-to-talk (button starts, VAD ends)"}
+              "tap": "Tap-to-talk for noisy rooms (button starts, VAD ends, booth prompt)"}
 
 def main():
     global led
     mode = select_mode(sys.argv[1:], os.environ)
+    if mode == "tap":
+        apply_tap_mode_profile()  # before warm-up, which caches the system prompt in llama-server
     led = LedIndicator()
     atexit.register(led.off)  # LED off when the assistant exits (Ctrl+C, or systemd stop via SIGTERM)
     signal.signal(signal.SIGTERM, lambda *_: sys.exit(0))
     print("=" * 60)
     print("[SYSTEM] Unitree R1 Multimodal Assistant (Natural Continuous Flow)")
     print("[AUDIO] Non-Blocking Gapless Audio Daemon (/tmp/unitree_audio.sock)")
-    print("[MODE] %s%s, mic: %s" % (MODE_NAMES[mode], " - booth preset" if BOOTH_MODE else "", MIC_SOURCE))
+    print("[MODE] %s, mic: %s" % (MODE_NAMES[mode], MIC_SOURCE))
     print("=" * 60)
     
     # 1. Robot greeting (warm-up starts once the greeting is synthesized, so they don't compete for the GPU)

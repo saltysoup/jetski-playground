@@ -254,7 +254,7 @@ corpus (`PCAFETER_16k.zip`, `PRESTO_16k.zip`): copy one channel WAV of each to
 |---|---|---|---|
 | Push-to-talk (default) | `python3 test_vision_voice_assistant.py` | development over SSH | ENTER to start, ENTER to stop |
 | **Hands-free** | `--vad` or `ASSISTANT_MODE=vad` | quiet rooms | Say "Jason, ...". Silero VAD finds the end of the sentence |
-| **Tap-to-talk** | `--tap` or `ASSISTANT_MODE=tap` | loud rooms (conference booth) | Tap a button, speak. The turn ends when you stop talking |
+| **Tap-to-talk** | `--tap` or `ASSISTANT_MODE=tap` | noisy rooms (conference booth) | Press a key, speak. The turn ends when you stop talking |
 
 Head LED: **purple** = listening, **green** = talking, off otherwise (`LED_LISTEN`, `LED_TALK`, `LED_THINK`,
 `LED_IDLE` take `R,G,B`; `LED=0` disables). In hands-free mode the LED is purple whenever the robot is not talking.
@@ -274,19 +274,21 @@ Measured with `tests/e2e_noise.py` (6 questions mixed with cafeteria / restauran
 
 Booth tips: have visitors stand close (about 50 cm) and speak towards the head; every 6 dB counts.
 
-**Tap-to-talk button:** any USB keyboard, numpad or wireless presenter clicker plugged into the robot works
-(Enter, Space, PageUp/PageDown, arrows, B, F5). It is found automatically and can be re-plugged at any time.
-**Esc** or **R** = new visitor (forgets the conversation). In a terminal, ENTER also works (`r` + ENTER = reset).
-A tap with nobody speaking is cancelled after 5 s; a second tap ends the question immediately.
-Reading `/dev/input` needs the `input` group: `sudo usermod -aG input unitree` and log in again
-(the systemd service already has it).
-
-**Booth preset:** `BOOTH_MODE=1` shortens answers (under 25 words), tells Gemma the transcript may contain
-recognition mistakes (ask a short question if unclear), focuses descriptions on the nearest person or object,
-caps questions at 8 s and forgets the conversation after 30 s.
+**Tap-to-talk always assumes a noisy booth:** answers are kept under 25 words, Gemma is told the transcript may
+contain recognition mistakes (it asks a short question if unclear), descriptions focus on the nearest person or
+object, questions are capped at 8 s and the conversation is forgotten after 30 s so the next visitor starts fresh.
 ```bash
-BOOTH_MODE=1 python3 /home/unitree/test_vision_voice_assistant.py --tap
+python3 /home/unitree/test_vision_voice_assistant.py --tap
 ```
+
+**Talk key (keyboard):**
+- Laptop over SSH: press **ENTER** in the terminal running the assistant; type `r` + ENTER for a new visitor.
+- USB keyboard plugged into the robot (works without SSH and under systemd): **Enter** or **Space** = talk,
+  **Esc** or **R** = new visitor. Found automatically, can be re-plugged at any time. Reading `/dev/input` needs
+  the `input` group: `sudo usermod -aG input unitree` and log in again (the systemd service already has it).
+  Presenter clickers / numpads also work (PageUp/PageDown, arrows, B, F5).
+
+A press with nobody speaking is cancelled after 5 s; pressing again while talking ends the question immediately.
 
 #### Hands-free setup (Silero VAD model)
 Instead of pressing ENTER, the assistant can listen continuously: [Silero VAD](https://github.com/snakers4/silero-vad)
@@ -313,14 +315,13 @@ sudo systemctl restart r1-assistant             # restart after editing the scri
 sudo bash service/install_service.sh --remove   # uninstall
 ```
 `r1-services` starts the four backend services (via `app.sh --services-only`) and `r1-assistant` runs the
-assistant in hands-free mode, restarting it if it crashes. For a booth, put `ASSISTANT_MODE=tap` and
-`BOOTH_MODE=1` in the env file. Settings go in `/home/unitree/r1-assistant.env`
+assistant in hands-free mode, restarting it if it crashes. For a booth, put `ASSISTANT_MODE=tap` in the env
+file (then use a USB keyboard on the robot as the talk key). Settings go in `/home/unitree/r1-assistant.env`
 (one `VAR=value` per line), for example:
 
 | Variable | Default | Meaning |
 |---|---|---|
 | `ASSISTANT_MODE` | `vad` (service) | `vad` = hands-free, `tap` = tap-to-talk, `ptt` = ENTER |
-| `BOOTH_MODE` | `0` | `1` = conference booth preset (see 5.1.2) |
 | `GATE_DB` | `6` | Speech must be this much louder than the background (0 = off) |
 | `TAP_GATE_DB` | `3` | Same, in tap-to-talk mode |
 | `BUTTON_DEVICE` | `auto` | Tap button input device, or a path like `/dev/input/event7` |
@@ -331,10 +332,10 @@ assistant in hands-free mode, restarting it if it crashes. For a booth, put `ASS
 | `WAKE_WORDS` | `jason,jayson,jaysen,jaison` | Accepted spellings of the name; empty = respond to all speech |
 | `FOLLOW_UP_SEC` | `3` | Seconds after a reply during which no wake word is needed |
 | `MEMORY_TURNS` | `3` | Previous exchanges sent to Gemma, so follow-ups like "and Germany?" work (0 = off) |
-| `CONVERSATION_MEMORY_SEC` | `120` | Forget the conversation after this much silence |
+| `CONVERSATION_MEMORY_SEC` | `120` (`30` tap) | Forget the conversation after this much silence |
 | `VAD_GAIN` | `2.0` | Mic boost before VAD (raise if quiet speech is missed) |
 | `VAD_END_SILENCE_SEC` | `0.6` | Pause length that ends an utterance |
-| `VAD_MAX_SPEECH_SEC` | `15` (`8` booth) | Longest utterance |
+| `VAD_MAX_SPEECH_SEC` | `15` | Longest utterance in hands-free mode |
 | `GREETING` | `Hasta la vista, baby.` | Startup phrase |
 | `TTS_GAIN` | `2.0` | Speech volume (soft-limited, never clips) |
 | `TTS_STREAMING` | `1` | `0` = synthesize whole sentences (slower first audio) |

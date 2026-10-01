@@ -8,7 +8,7 @@ Type=simple
 User=unitree
 Environment=HOME=/home/unitree
 Environment=PYTHONUNBUFFERED=1
-# Default mode; override in r1-assistant.env (e.g. ASSISTANT_MODE=tap and BOOTH_MODE=1 for a conference booth)
+# Default mode; override in r1-assistant.env (ASSISTANT_MODE=tap for a noisy conference booth)
 Environment=ASSISTANT_MODE=vad
 EnvironmentFile=-/etc/environment
 # Optional overrides (WAKE_WORDS, GREETING, FOLLOW_UP_SEC, VAD_GAIN, ...), one VAR=value per line

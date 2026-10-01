@@ -535,6 +535,18 @@ class LedTests(unittest.TestCase):
 
 
 class ModeSelectionTests(unittest.TestCase):
+    def test_tap_mode_uses_booth_profile(self):
+        saved = (assistant.SYSTEM_PROMPT, assistant.CONVERSATION_MEMORY_SEC)
+        try:
+            assistant.apply_tap_mode_profile({})
+            self.assertEqual(assistant.SYSTEM_PROMPT, assistant.BOOTH_SYSTEM_PROMPT)
+            self.assertEqual(assistant.CONVERSATION_MEMORY_SEC, 30)
+            self.assertEqual(assistant.build_llm_messages("hi")[0]["content"], assistant.BOOTH_SYSTEM_PROMPT)
+            assistant.apply_tap_mode_profile({"SYSTEM_PROMPT": "custom"})
+            self.assertEqual(assistant.SYSTEM_PROMPT, "custom")
+        finally:
+            assistant.SYSTEM_PROMPT, assistant.CONVERSATION_MEMORY_SEC = saved
+
     def test_modes(self):
         self.assertEqual(assistant.select_mode([], {}), "ptt")
         self.assertEqual(assistant.select_mode(["--vad"], {}), "vad")
