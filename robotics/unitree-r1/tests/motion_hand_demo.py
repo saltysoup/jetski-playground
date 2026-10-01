@@ -54,10 +54,12 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--yes", action="store_true", help="don't ask before moving")
     ap.add_argument("--gesture", action="append", help="gesture(s) to play (default: the full demo)")
+    ap.add_argument("--talk", type=float, metavar="SEC",
+                    help="preview the random 'talking hands' motion for SEC seconds (no audio)")
     args = ap.parse_args()
 
     a = load_assistant()
-    hands = a.HandMotion(enabled=True, talk_gestures=False)
+    hands = a.HandMotion(enabled=True, talk_gestures=bool(args.talk))
     state = hands.query_state()
     if state is None:
         print("[FAIL] Hand bridge not running (%s). Start: bash app.sh --services-only" % a.HAND_SOCKET)
@@ -70,18 +72,26 @@ def main():
         print("[FAIL] No hand state from brainco_hand_server - is it running? (see /home/unitree/brainco_hand.log)")
         return 1
 
-    names = args.gesture or ["open", "flex", "fist", "thumbs_up", "count"]
+    names = [] if args.talk else (args.gesture or ["open", "flex", "fist", "thumbs_up", "count"])
     for n in names:
         if n not in a.HAND_GESTURES:
             print("[FAIL] Unknown gesture %r. Choose from: %s" % (n, ", ".join(sorted(a.HAND_GESTURES))))
             return 1
     if not args.yes:
+        what = "talking hands for %.0f s" % args.talk if args.talk else ", ".join(names)
         sys.stdout.write("The %s hand(s) will move: %s. Keep clear of the fingers. Press ENTER to start... "
-                         % (" + ".join(live), ", ".join(names)))
+                         % (" + ".join(live), what))
         sys.stdout.flush()
         sys.stdin.readline()
 
     try:
+        if args.talk:
+            print("[DEMO] talking hands (TALK_INTENSITY=%.2f, HAND_SPEED=%.2f)" % (a.TALK_INTENSITY, a.HAND_SPEED))
+            now = time.time()
+            with a._playback_lock:  # pretend the robot is speaking for --talk seconds
+                a._playback_run_start = now - a.SPEAKER_LATENCY_SEC
+                a._playback_until = now + args.talk
+            time.sleep(args.talk + a.SPEAKER_LATENCY_SEC + 1.5)  # + time to settle back to relaxed
         for n in names:
             print("[DEMO] %s" % n)
             hands.play(n)

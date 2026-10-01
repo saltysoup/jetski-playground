@@ -137,6 +137,7 @@ HAND_SOCKET = "/tmp/unitree_hand.sock"
 HAND_SPEED = float(os.getenv("HAND_SPEED", "0.8"))       # finger motor speed limit (0-1)
 VOICE_GESTURES = os.getenv("VOICE_GESTURES", "1") != "0"
 TALK_GESTURES = os.getenv("TALK_GESTURES", "1") != "0"
+TALK_INTENSITY = max(0.0, min(1.0, float(os.getenv("TALK_INTENSITY", "1.0"))))  # how far fingers close while talking
 
 # --- Microphone source ---
 # "robot": the R1's mic array (multicast UDP, has echo cancellation).
@@ -833,10 +834,25 @@ class HandMotion(object):
         return out
 
     def _talk_frame(self):
-        """A slow drift to a random relaxed pose: small, natural 'talking hands' movement."""
+        """Next random 'talking hands' shape: each hand independently picks an expressive shape (with jitter)
+        and moves to it in 0.35-0.9 s. TALK_INTENSITY (0-1) scales how far the fingers close."""
         r = self.rng.uniform
-        pose = (r(0.1, 0.3), 0.1, r(0.05, 0.4), r(0.1, 0.45), r(0.15, 0.5), r(0.2, 0.55))
-        return pose, r(0.7, 1.1)
+        k = TALK_INTENSITY
+        style = self.rng.choice(("open", "curl", "curl", "half_point", "loose_fist", "random", "random", "beat"))
+        if style == "open":          # open palm, "you see..."
+            pose = (r(0.0, 0.15), r(0.0, 0.3), r(0.0, 0.1), r(0.0, 0.1), r(0.0, 0.15), r(0.0, 0.2))
+        elif style == "curl":        # relaxed, uneven curl
+            pose = (r(0.1, 0.4), r(0.1, 0.4), r(0.1, 0.5), r(0.2, 0.6), r(0.3, 0.7), r(0.3, 0.75))
+        elif style == "half_point":  # index out, others half closed
+            pose = (r(0.4, 0.7), r(0.3, 0.6), r(0.0, 0.15), r(0.5, 0.8), r(0.55, 0.85), r(0.55, 0.85))
+        elif style == "loose_fist":
+            pose = (r(0.5, 0.8), r(0.4, 0.7), r(0.6, 0.85), r(0.6, 0.85), r(0.6, 0.85), r(0.6, 0.85))
+        elif style == "beat":        # quick emphasis: snap to a firmer close
+            pose = (r(0.4, 0.6), r(0.3, 0.5), r(0.5, 0.8), r(0.55, 0.85), r(0.6, 0.85), r(0.6, 0.85))
+            return tuple(v * k for v in pose), r(0.25, 0.4)
+        else:                        # independent random fingers
+            pose = (r(0.0, 0.6), r(0.0, 0.6), r(0.0, 0.85), r(0.0, 0.85), r(0.0, 0.85), r(0.0, 0.85))
+        return tuple(v * k for v in pose), r(0.35, 0.9)
 
     def _send(self, side, pose, speed=None):
         msg = "%s %s %.2f" % (side, " ".join("%.3f" % v for v in pose), HAND_SPEED if speed is None else speed)

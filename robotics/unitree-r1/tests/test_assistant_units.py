@@ -631,11 +631,18 @@ class HandMotionTests(unittest.TestCase):
     def test_talking_hands_move_only_while_talking(self):
         hm = assistant.HandMotion(enabled=False, talk_gestures=True, seed=2)
         self.assertEqual(hm.step(1000.0), {})  # idle and silent: nothing to send
-        assistant._playback_run_start, assistant._playback_until = 0.0, 1003.0
-        t = self._run(hm, 1000.0, 2.5)
-        self.assertNotEqual(hm.pose["left"], assistant.HAND_POSES["open"])
-        for pose in hm.pose.values():
-            self.assertTrue(all(v <= 0.55 for v in pose))  # small, relaxed motion
+        assistant._playback_run_start, assistant._playback_until = 0.0, 1006.0
+        seen = {"left": [], "right": []}
+        t = 1000.0
+        while t < 1005.5:
+            for side, pose in hm.step(t).items():
+                seen[side].append(pose)
+            t += 0.02
+        for side, poses in seen.items():
+            self.assertTrue(all(max(p) <= 0.85 for p in poses))  # never a hard fist while talking
+            span = max(max(p[2:]) for p in poses) - min(min(p[2:]) for p in poses)
+            self.assertGreater(span, 0.5, side)  # clearly visible motion
+        self.assertNotEqual(seen["left"][-1], seen["right"][-1])  # hands move independently
         self._run(hm, t, 4.0)  # stopped talking -> settles to relax
         self.assertEqual(hm.pose["left"], assistant.HAND_POSES["relax"])
         self.assertEqual(hm.step(t + 5.0), {})

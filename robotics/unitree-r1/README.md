@@ -319,7 +319,9 @@ detects the end of each utterance and the request is sent automatically.
 The assistant moves the fingers in two ways:
 - **Voice gestures:** a request that is *only* a gesture command is answered by the hands plus a short line,
   without asking Gemma. Questions that merely contain the words ("what is the point of life") still go to Gemma.
-- **Talking hands:** while the robot speaks, the fingers drift slowly between relaxed poses, then settle.
+- **Talking hands:** while the robot speaks, each hand independently moves through random expressive shapes
+  (open palm, loose curl, half-point, loose fist, random fingers, quick emphasis beats) every 0.35-0.9 s,
+  then settles to relaxed. `TALK_INTENSITY` (0-1) scales how far the fingers close; `TALK_GESTURES=0` turns it off.
 
 | Say (after "Jason," in hands-free mode) | Hands | Robot says |
 |---|---|---|
@@ -338,6 +340,7 @@ thumb, thumb rotation, index, middle, ring, pinky. Gestures live in `HAND_POSES`
 bash /home/unitree/app.sh --services-only     # starts the hand server (hands open) and the bridge
 python3 /home/unitree/unitree-r1/tests/motion_hand_demo.py                    # full demo, asks first
 python3 /home/unitree/unitree-r1/tests/motion_hand_demo.py --gesture flex     # one gesture
+python3 /home/unitree/unitree-r1/tests/motion_hand_demo.py --talk 10          # preview talking hands (silent)
 ```
 If the hands are not connected the assistant says so at startup and works as before (no gestures).
 > [!CAUTION]
@@ -370,6 +373,7 @@ file (then use a USB keyboard on the robot as the talk key). Settings go in `/ho
 | `HANDS` | `1` | Hand gestures (`0` = off; `app.sh` then skips the hand services) |
 | `HAND_SPEED` | `0.8` | Finger motor speed limit (0-1) |
 | `VOICE_GESTURES` / `TALK_GESTURES` | `1` / `1` | Gesture voice commands / finger motion while talking |
+| `TALK_INTENSITY` | `1.0` | How far the fingers close while talking (0-1) |
 | `WAKE_WORDS` | `jason,jayson,jaysen,jaison` | Accepted spellings of the name; empty = respond to all speech |
 | `FOLLOW_UP_SEC` | `3` | Seconds after a reply during which no wake word is needed |
 | `MEMORY_TURNS` | `3` | Previous exchanges sent to Gemma, so follow-ups like "and Germany?" work (0 = off) |
