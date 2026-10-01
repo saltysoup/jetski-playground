@@ -176,6 +176,7 @@ cd /home/unitree/unitree_sdk2
 cp /home/unitree/unitree-r1/scripts/unitree_head_camera_daemon.cpp example/go2/
 cp /home/unitree/unitree-r1/scripts/unitree_audio_daemon.cpp example/g1/audio/
 cp /home/unitree/unitree-r1/scripts/unitree_play_wav.cpp example/g1/audio/
+cp /home/unitree/unitree-r1/scripts/unitree_led.cpp example/g1/audio/
 
 # Register the build targets (copying a .cpp alone does not create a make target).
 # Skip any line that is already present.
@@ -187,6 +188,10 @@ grep -q unitree_audio_daemon example/g1/CMakeLists.txt || cat >> example/g1/CMak
 add_executable(unitree_audio_daemon audio/unitree_audio_daemon.cpp)
 target_link_libraries(unitree_audio_daemon unitree_sdk2)
 EOF
+grep -q unitree_led example/g1/CMakeLists.txt || cat >> example/g1/CMakeLists.txt <<'EOF'
+add_executable(unitree_led audio/unitree_led.cpp)
+target_link_libraries(unitree_led unitree_sdk2)
+EOF
 grep -q unitree_head_camera_daemon example/go2/CMakeLists.txt || cat >> example/go2/CMakeLists.txt <<'EOF'
 add_executable(unitree_head_camera_daemon unitree_head_camera_daemon.cpp)
 target_link_libraries(unitree_head_camera_daemon unitree_sdk2)
@@ -195,8 +200,10 @@ EOF
 # Build daemons
 mkdir -p build && cd build
 cmake ..
-make unitree_head_camera_daemon unitree_audio_daemon unitree_play_wav -j$(nproc)
+make unitree_head_camera_daemon unitree_audio_daemon unitree_play_wav unitree_led -j$(nproc)
 ```
+The audio daemon also drives the head LED: it accepts `"R G B"` datagrams on `/tmp/unitree_led.sock`.
+`./bin/unitree_led 160 0 255` sets the LED directly (diagnostic).
 
 ---
 
@@ -232,12 +239,56 @@ python3 tests/integration_test.py       # silent: services, ASR/TTS, camera, Gem
 python3 tests/bench_latency.py          # silent: ASR/TTS/LLM/vision latency numbers
 python3 tests/e2e_injected.py /home/unitree/test_vision_voice_assistant.py   # push-to-talk loop, robot speaks
 python3 tests/e2e_vad_injected.py       # hands-free loop (VAD + wake word + follow-up), robot speaks
+python3 tests/e2e_tap_injected.py       # tap-to-talk in cafeteria noise (SNR_DB=10), robot speaks
+python3 tests/e2e_noise.py              # silent: VAD/tap accuracy vs crowd noise level and GATE_DB
 ```
+`e2e_noise.py` and `e2e_tap_injected.py` need crowd noise from the [DEMAND](https://zenodo.org/records/1227121)
+corpus (`PCAFETER_16k.zip`, `PRESTO_16k.zip`): copy one channel WAV of each to
+`/home/unitree/robot_assets/models/noise/` (e.g. `pcafeter_ch01.wav`, `presto_ch01.wav`).
 > [!NOTE]
 > The robot's mic array cancels the robot's own speaker output, so the E2E tests inject synthesized
 > questions in place of mic capture rather than having the robot ask itself out loud.
 
-### 5.1.2 Hands-free mode (VAD + wake word)
+### 5.1.2 Listening modes and head LED
+| Mode | Start | Best for | How a turn works |
+|---|---|---|---|
+| Push-to-talk (default) | `python3 test_vision_voice_assistant.py` | development over SSH | ENTER to start, ENTER to stop |
+| **Hands-free** | `--vad` or `ASSISTANT_MODE=vad` | quiet rooms | Say "Jason, ...". Silero VAD finds the end of the sentence |
+| **Tap-to-talk** | `--tap` or `ASSISTANT_MODE=tap` | loud rooms (conference booth) | Tap a button, speak. The turn ends when you stop talking |
+
+Head LED: **purple** = listening, **green** = talking, off otherwise (`LED_LISTEN`, `LED_TALK`, `LED_THINK`,
+`LED_IDLE` take `R,G,B`; `LED=0` disables). In hands-free mode the LED is purple whenever the robot is not talking.
+
+**Why two modes:** in a crowd, Silero (correctly) hears the people around the booth as speech, so the wake word
+gets triggered by passers-by and the end of the visitor's sentence never sounds like silence. Tap-to-talk
+removes the wake word, and a *proximity gate* only counts sound that is `GATE_DB` (6 dB) louder than the
+running background level, i.e. the person standing in front of the robot (`TAP_GATE_DB`, 3 dB, in tap mode).
+Measured with `tests/e2e_noise.py` (6 questions mixed with cafeteria / restaurant crowd noise):
+
+| Visitor vs crowd | Hands-free (gate 6 dB) | Tap-to-talk (gate 3 dB) |
+|---|---|---|
+| 10 dB louder | 6/6, wake word 6/6, 0 false triggers | 6/6, 0 % word errors |
+| 5 dB louder | 6/6 found but wake word mostly missed | 6/6, 0 % word errors |
+| equally loud | fails | 3-4 of 6 |
+| (no gate, cafeteria) | 3-7 false triggers per minute | - |
+
+Booth tips: have visitors stand close (about 50 cm) and speak towards the head; every 6 dB counts.
+
+**Tap-to-talk button:** any USB keyboard, numpad or wireless presenter clicker plugged into the robot works
+(Enter, Space, PageUp/PageDown, arrows, B, F5). It is found automatically and can be re-plugged at any time.
+**Esc** or **R** = new visitor (forgets the conversation). In a terminal, ENTER also works (`r` + ENTER = reset).
+A tap with nobody speaking is cancelled after 5 s; a second tap ends the question immediately.
+Reading `/dev/input` needs the `input` group: `sudo usermod -aG input unitree` and log in again
+(the systemd service already has it).
+
+**Booth preset:** `BOOTH_MODE=1` shortens answers (under 25 words), tells Gemma the transcript may contain
+recognition mistakes (ask a short question if unclear), focuses descriptions on the nearest person or object,
+caps questions at 8 s and forgets the conversation after 30 s.
+```bash
+BOOTH_MODE=1 python3 /home/unitree/test_vision_voice_assistant.py --tap
+```
+
+#### Hands-free setup (Silero VAD model)
 Instead of pressing ENTER, the assistant can listen continuously: [Silero VAD](https://github.com/snakers4/silero-vad)
 detects the end of each utterance and the request is sent automatically.
 
@@ -262,17 +313,28 @@ sudo systemctl restart r1-assistant             # restart after editing the scri
 sudo bash service/install_service.sh --remove   # uninstall
 ```
 `r1-services` starts the four backend services (via `app.sh --services-only`) and `r1-assistant` runs the
-assistant with `--vad`, restarting it if it crashes. Settings go in `/home/unitree/r1-assistant.env`
+assistant in hands-free mode, restarting it if it crashes. For a booth, put `ASSISTANT_MODE=tap` and
+`BOOTH_MODE=1` in the env file. Settings go in `/home/unitree/r1-assistant.env`
 (one `VAR=value` per line), for example:
 
 | Variable | Default | Meaning |
 |---|---|---|
+| `ASSISTANT_MODE` | `vad` (service) | `vad` = hands-free, `tap` = tap-to-talk, `ptt` = ENTER |
+| `BOOTH_MODE` | `0` | `1` = conference booth preset (see 5.1.2) |
+| `GATE_DB` | `6` | Speech must be this much louder than the background (0 = off) |
+| `TAP_GATE_DB` | `3` | Same, in tap-to-talk mode |
+| `BUTTON_DEVICE` | `auto` | Tap button input device, or a path like `/dev/input/event7` |
+| `BUTTON_KEYS` / `RESET_KEYS` | see script | Linux key codes for talk / new visitor |
+| `BUTTON_HOLD` | `0` | `1` = hold the button while speaking (release ends the turn) |
+| `TAP_NO_SPEECH_SEC` / `TAP_MAX_SEC` | `5` / `8` | Cancel if nobody speaks / longest question |
+| `LED` | `1` | Head LED status colours (`0` = off) |
 | `WAKE_WORDS` | `jason,jayson,jaysen,jaison` | Accepted spellings of the name; empty = respond to all speech |
 | `FOLLOW_UP_SEC` | `3` | Seconds after a reply during which no wake word is needed |
 | `MEMORY_TURNS` | `3` | Previous exchanges sent to Gemma, so follow-ups like "and Germany?" work (0 = off) |
 | `CONVERSATION_MEMORY_SEC` | `120` | Forget the conversation after this much silence |
 | `VAD_GAIN` | `2.0` | Mic boost before VAD (raise if quiet speech is missed) |
 | `VAD_END_SILENCE_SEC` | `0.6` | Pause length that ends an utterance |
+| `VAD_MAX_SPEECH_SEC` | `15` (`8` booth) | Longest utterance |
 | `GREETING` | `Hasta la vista, baby.` | Startup phrase |
 | `TTS_GAIN` | `2.0` | Speech volume (soft-limited, never clips) |
 | `TTS_STREAMING` | `1` | `0` = synthesize whole sentences (slower first audio) |

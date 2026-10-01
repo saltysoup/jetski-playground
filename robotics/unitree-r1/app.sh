@@ -21,7 +21,7 @@ stop_services() {
     echo "[CLEANUP] Stopping existing background processes..."
     killall -9 $SERVICES 2>/dev/null || true
     # Remove stale sockets so clients don't try to connect to dead daemons
-    rm -f /tmp/unitree_audio.sock /tmp/unitree_head_camera.sock
+    rm -f /tmp/unitree_audio.sock /tmp/unitree_led.sock /tmp/unitree_head_camera.sock
     sleep 1
 }
 

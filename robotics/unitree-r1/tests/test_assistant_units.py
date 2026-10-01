@@ -330,5 +330,219 @@ class FirstClauseTests(unittest.TestCase):
         self.assertEqual(ready, ["Sure thing,", "my friend,"])
 
 
+def _tone(level_db, n=512, seed=0):
+    """Noise frame at roughly the given dBFS RMS level."""
+    rng = np.random.RandomState(seed)
+    x = rng.randn(n)
+    x = x / np.sqrt(np.mean(x * x)) * (10 ** (level_db / 20.0) * 32768.0)
+    return np.clip(x, -32767, 32767).astype(np.int16)
+
+
+class ProximityGateTests(unittest.TestCase):
+    def test_level_db(self):
+        self.assertAlmostEqual(assistant.frame_level_db(_tone(-30)), -30, delta=0.5)
+        self.assertEqual(round(assistant.frame_level_db(np.zeros(512, np.int16))), -96)
+
+    def test_quiet_room_until_enough_background(self):
+        gate = assistant.ProximityGate(gate_db=6)
+        self.assertEqual(gate.floor_db(), -70.0)
+        self.assertTrue(gate.passes(-50))
+
+    def test_babble_rejected_close_voice_accepted(self):
+        gate = assistant.ProximityGate(gate_db=6)
+        for i in range(200):
+            gate.observe_background(-35 + (i % 5) - 2)  # crowd at ~-35 dBFS
+        self.assertAlmostEqual(gate.floor_db(), -35, delta=1)
+        self.assertFalse(gate.passes(-33))  # chatter a bit louder than average
+        self.assertTrue(gate.passes(-25))   # visitor in front of the robot
+
+    def test_gate_disabled(self):
+        gate = assistant.ProximityGate(gate_db=0)
+        for _ in range(100):
+            gate.observe_background(-20)
+        self.assertTrue(gate.passes(-60))
+
+    def test_scorer_zeroes_gated_frames_and_learns_only_outside_utterances(self):
+        class FakeVad(object):
+            def __call__(self, frame, gain=1.0):
+                return 0.9
+
+            def reset(self):
+                pass
+        scorer = assistant.VoiceFrameScorer(FakeVad(), assistant.ProximityGate(gate_db=6))
+        babble = _tone(-35).tobytes()
+        for _ in range(100):  # learn the crowd level
+            scorer(babble, False)
+        self.assertEqual(scorer(babble, False), 0.0)
+        self.assertEqual(scorer(_tone(-24).tobytes(), True), 0.9)
+        floor = scorer.gate.floor_db()
+        for _ in range(400):  # a long loud utterance must not raise the floor
+            scorer(_tone(-15).tobytes(), True)
+        self.assertEqual(scorer.gate.floor_db(), floor)
+
+
+PROC_INPUT_DEVICES = """I: Bus=0019 Vendor=0001 Product=0001 Version=0100
+N: Name="gpio-keys"
+H: Handlers=kbd event0
+B: KEY=10000000000000 0
+
+I: Bus=0003 Vendor=1234 Product=5678 Version=0111
+N: Name="Abham Image: Abham Image"
+H: Handlers=kbd event5
+B: KEY=10000000
+
+I: Bus=0003 Vendor=1d57 Product=ad03 Version=0110
+N: Name="Wireless Presenter Receiver"
+H: Handlers=sysrq kbd leds event7
+B: KEY=210000000000 0
+"""
+
+
+class ButtonDeviceTests(unittest.TestCase):
+    def test_parse_key_bitmap(self):
+        devs = assistant.parse_input_devices(PROC_INPUT_DEVICES)
+        self.assertEqual([d[1] for d in devs], ["/dev/input/event0", "/dev/input/event5", "/dev/input/event7"])
+        self.assertEqual(devs[0][2], {116})       # KEY_POWER
+        self.assertEqual(devs[1][2], {28})        # KEY_ENTER
+        self.assertEqual(devs[2][2], {104, 109})  # PageUp / PageDown
+
+    def test_finds_clicker_and_skips_cameras_and_gpio(self):
+        name, path = assistant.find_button_device(PROC_INPUT_DEVICES, assistant.BUTTON_KEYS)
+        self.assertEqual(path, "/dev/input/event7")
+        self.assertIn("Presenter", name)
+
+    def test_none_when_only_cameras(self):
+        text = PROC_INPUT_DEVICES.split("\n\nI: Bus=0003 Vendor=1d57")[0]
+        self.assertEqual(assistant.find_button_device(text, assistant.BUTTON_KEYS), (None, None))
+
+
+class TapRecorderTests(unittest.TestCase):
+    FRAME = b"\x00\x00" * 512
+
+    def make(self, hold=False):
+        ep = assistant.UtteranceEndpointer(frame_sec=0.032, start_threshold=0.5, end_threshold=0.35,
+                                           start_sec=0.15, end_silence_sec=0.6, pre_roll_sec=0.3,
+                                           min_speech_sec=0.4, max_speech_sec=15.0, keep_tail_sec=0.2)
+        return assistant.TapRecorder(ep, frame_sec=0.032, max_sec=8.0, no_speech_sec=5.0, hold=hold)
+
+    def run_probs(self, rec, probs):
+        events = []
+        for p in probs:
+            ev, payload = rec.feed(self.FRAME, p)
+            if ev:
+                events.append(ev)
+                if ev in ("end", "cancel"):
+                    return events, payload
+        return events, None
+
+    def test_ends_when_visitor_stops_talking(self):
+        events, audio = self.run_probs(self.make(), [0.0] * 20 + [0.9] * 40 + [0.0] * 40)
+        self.assertEqual(events, ["start", "end"])
+        self.assertGreater(len(audio), 40 * len(self.FRAME))
+
+    def test_cancel_when_nobody_speaks(self):
+        events, reason = self.run_probs(self.make(), [0.0] * 200)
+        self.assertEqual(events, ["cancel"])
+        self.assertIn("No speech", reason)
+
+    def test_second_tap_uses_everything_since_first(self):
+        rec = self.make()
+        self.run_probs(rec, [0.0] * 10 + [0.9] * 20)
+        ev, audio = rec.button("press")
+        self.assertEqual(ev, "end")
+        self.assertEqual(len(audio), 30 * len(self.FRAME))
+
+    def test_cough_does_not_end_turn(self):
+        events, _ = self.run_probs(self.make(), [0.9] * 8 + [0.0] * 30 + [0.9] * 40 + [0.0] * 40)
+        self.assertEqual(events, ["start", "start", "end"])
+
+    def test_short_first_word_is_kept(self):
+        # "Hi." (discarded as too short by the endpointer) + pause + the real question
+        rec = self.make()
+        events, audio = self.run_probs(rec, [0.0] * 5 + [0.9] * 8 + [0.0] * 25 + [0.9] * 40 + [0.0] * 40)
+        self.assertEqual(events, ["start", "start", "end"])
+        self.assertGreaterEqual(len(audio), (5 + 8 + 25 + 40) * len(self.FRAME))
+
+    def test_max_length(self):
+        events, audio = self.run_probs(self.make(), [0.9] * 400)
+        self.assertEqual(events[-1], "end")
+        self.assertEqual(len(audio), 250 * len(self.FRAME))  # 8 s / 32 ms
+
+    def test_hold_mode_ignores_pauses_and_ends_on_release(self):
+        rec = self.make(hold=True)
+        events, _ = self.run_probs(rec, [0.9] * 30 + [0.0] * 60 + [0.9] * 30 + [0.0] * 50)
+        self.assertNotIn("end", events)
+        self.assertNotIn("cancel", events)
+        self.assertEqual(rec.button("press"), (None, None))
+        ev, audio = rec.button("release")
+        self.assertEqual(ev, "end")
+        self.assertEqual(len(audio), 170 * len(self.FRAME))
+
+    def test_reset_cancels(self):
+        rec = self.make()
+        self.run_probs(rec, [0.9] * 10)
+        self.assertEqual(rec.button("reset")[0], "cancel")
+
+    def test_release_ignored_in_tap_mode(self):
+        rec = self.make()
+        self.run_probs(rec, [0.9] * 10)
+        self.assertEqual(rec.button("release"), (None, None))
+
+
+class LedTests(unittest.TestCase):
+    def setUp(self):
+        assistant._playback_until = 0.0
+        assistant._playback_run_start = 0.0
+
+    tearDown = setUp
+
+    def test_talking_window_includes_speaker_latency(self):
+        t0 = time.time()
+        assistant._register_playback(16000)  # 1 s of audio
+        lat = assistant.SPEAKER_LATENCY_SEC
+        self.assertFalse(assistant.robot_is_talking(t0 + lat - 0.1))  # not audible yet
+        self.assertTrue(assistant.robot_is_talking(t0 + lat + 0.1))
+        self.assertTrue(assistant.robot_is_talking(t0 + 1.0 + lat - 0.05))
+        self.assertFalse(assistant.robot_is_talking(t0 + 1.0 + lat + 0.1))
+
+    def test_state_colours_sent_to_daemon_socket(self):
+        import socket
+        import tempfile
+        path = os.path.join(tempfile.mkdtemp(), "led.sock")
+        daemon = socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM)
+        daemon.bind(path)
+        daemon.settimeout(1.0)
+        led = assistant.LedIndicator(enabled=True, path=path)
+
+        def latest():
+            msg = daemon.recv(64)
+            daemon.setblocking(False)
+            try:
+                while True:
+                    msg = daemon.recv(64)
+            except (BlockingIOError, socket.error):
+                pass
+            daemon.settimeout(1.0)
+            return tuple(int(v) for v in msg.decode().split())
+
+        led.set("listening")
+        self.assertEqual(latest(), assistant.LED_LISTEN)
+        assistant._register_playback(16000)
+        time.sleep(assistant.SPEAKER_LATENCY_SEC + 0.15)
+        self.assertEqual(latest(), assistant.LED_TALK)
+        led.enabled = False
+        daemon.close()
+
+
+class ModeSelectionTests(unittest.TestCase):
+    def test_modes(self):
+        self.assertEqual(assistant.select_mode([], {}), "ptt")
+        self.assertEqual(assistant.select_mode(["--vad"], {}), "vad")
+        self.assertEqual(assistant.select_mode(["--tap"], {"ASSISTANT_MODE": "vad"}), "tap")
+        self.assertEqual(assistant.select_mode([], {"ASSISTANT_MODE": "TAP"}), "tap")
+        self.assertEqual(assistant.select_mode([], {"ASSISTANT_MODE": "bogus"}), "ptt")
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
+

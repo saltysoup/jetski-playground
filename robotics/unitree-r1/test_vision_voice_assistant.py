@@ -11,7 +11,9 @@ Modes:
 """
 
 import sys
+import atexit
 import os
+import signal
 import time
 import socket
 import struct
@@ -72,10 +74,24 @@ MAX_RECORD_SEC = 30.0      # Safety cap for push-to-talk recording
 AGC_NOISE_FLOOR = 500      # Don't amplify recordings whose peak is below this (silence / noise)
 LLM_MAX_TOKENS = 80        # ~35 words + headroom so replies are not cut mid-sentence
 
+# BOOTH_MODE=1: preset for a noisy conference booth (each setting below can still be overridden).
+# Shorter answers for faster turn-taking, a prompt that expects ASR mistakes, and memory that resets
+# between visitors.
+BOOTH_MODE = os.getenv("BOOTH_MODE", "0") == "1"
+
 # Startup phrase spoken once the assistant is up (override with the GREETING env var)
 GREETING = os.getenv("GREETING", "Hasta la vista, baby.")
-SYSTEM_PROMPT = ("Your name is Jason. Don't use acronyms. You are a robot. For time or numbers spell them out "
-                 "in letters. Speak in smooth, complete sentences. Response must be under 35 words.")
+if BOOTH_MODE:
+    SYSTEM_PROMPT = ("Your name is Jason. You are a friendly robot at a conference booth, talking with visitors. "
+                     "Don't use acronyms. For time or numbers spell them out in letters. Speak in smooth, complete "
+                     "sentences. Response must be under 25 words. The visitor's words come from speech recognition "
+                     "in a noisy room and may contain mistakes: if a request is unclear, ask one short question. "
+                     "When describing what you see, focus on the person or object closest to you. Never guess who "
+                     "a person is. Politely decline inappropriate requests.")
+else:
+    SYSTEM_PROMPT = ("Your name is Jason. Don't use acronyms. You are a robot. For time or numbers spell them out "
+                     "in letters. Speak in smooth, complete sentences. Response must be under 35 words.")
+SYSTEM_PROMPT = os.getenv("SYSTEM_PROMPT", SYSTEM_PROMPT)
 
 # Streaming TTS: Magpie starts returning audio after ~0.25 s instead of synthesizing the whole sentence
 # first. The GPU is shared with the LLM, which slows offline synthesis ~3x while Gemma is decoding:
@@ -98,19 +114,61 @@ WAKE_ACK = "Yes?"
 # (vision time-to-first-token 1.6 s -> 0.19 s); otherwise it is simply not used.
 SPECULATIVE_PREFILL = os.getenv("SPECULATIVE_PREFILL", "1") != "0"
 
+# --- Head LED (set through the audio daemon's /tmp/unitree_led.sock) ---
+# Purple while the robot is listening, green while it is talking. Colours are "R,G,B" (0-255).
+def _rgb(name, default):
+    try:
+        r, g, b = [max(0, min(255, int(v))) for v in os.getenv(name, default).split(",")]
+        return (r, g, b)
+    except ValueError:
+        return tuple(int(v) for v in default.split(","))
+
+LED_ENABLED = os.getenv("LED", "1") != "0"
+LED_SOCKET = "/tmp/unitree_led.sock"
+LED_LISTEN = _rgb("LED_LISTEN", "160,0,255")  # purple
+LED_TALK = _rgb("LED_TALK", "0,255,0")        # green
+LED_THINK = _rgb("LED_THINK", "0,0,0")        # between end of speech and the first audio (off)
+LED_IDLE = _rgb("LED_IDLE", "0,0,0")          # tap mode, waiting for the button (off)
+SPEAKER_LATENCY_SEC = 0.3                     # audio handed to the daemon is heard ~0.3 s later
+
+# --- Microphone source ---
+# "robot": the R1's mic array (multicast UDP, has echo cancellation).
+# "usb": any ALSA capture device via arecord, e.g. a wireless handheld mic receiver (MIC_DEVICE, see `arecord -L`).
+MIC_SOURCE = os.getenv("MIC_SOURCE", "robot")
+MIC_DEVICE = os.getenv("MIC_DEVICE", "default")
+
 # --- Hands-free (VAD) mode ---
 VAD_MODEL_PATH = os.getenv("VAD_MODEL_PATH", "/home/unitree/robot_assets/models/vad/silero_vad.onnx")
 VAD_GAIN = float(os.getenv("VAD_GAIN", "2.0"))            # mic is quiet; boost before Silero
 VAD_START_THRESHOLD = float(os.getenv("VAD_START_THRESHOLD", "0.5"))
 VAD_END_THRESHOLD = float(os.getenv("VAD_END_THRESHOLD", "0.35"))
 VAD_END_SILENCE_SEC = float(os.getenv("VAD_END_SILENCE_SEC", "0.6"))  # silence that ends an utterance
+VAD_MAX_SPEECH_SEC = float(os.getenv("VAD_MAX_SPEECH_SEC", "8" if BOOTH_MODE else "15"))
 VAD_DEBUG = os.getenv("VAD_DEBUG", "0") == "1"
+# Proximity gate: background chatter IS speech to Silero, so in a crowd the end of the visitor's sentence is
+# never "silence". A frame only counts as the visitor's speech if it is also GATE_DB louder than the
+# running background level (median of the last ~10 s outside utterances). 0 disables the gate.
+GATE_DB = float(os.getenv("GATE_DB", "6"))
+# Tap mode knows someone is about to speak (and false triggers can't happen before a tap), so a lower margin
+# keeps more of a soft-spoken visitor. Measured in cafeteria / restaurant noise, see tests/e2e_noise.py.
+TAP_GATE_DB = float(os.getenv("TAP_GATE_DB", "3"))
 # Wake words: utterances must start with one of these unless inside the follow-up window.
 # ASR spells the name several ways. Set WAKE_WORDS="" to respond to everything.
 WAKE_WORDS = [w.strip().lower() for w in os.getenv("WAKE_WORDS", "jason,jayson,jaysen,jaison").split(",")
               if w.strip()]
 FOLLOW_UP_SEC = float(os.getenv("FOLLOW_UP_SEC", "3"))  # no wake word needed this long after a reply
 ECHO_GUARD_SEC = 0.5  # ignore the mic this long after playback ends (speaker latency is ~0.32 s)
+
+# --- Tap-to-talk (--tap) mode: a wireless presenter clicker / USB button starts listening ---
+# BUTTON_DEVICE: "auto" (first keyboard-like input device, hot-plug aware) or a /dev/input/eventN path.
+BUTTON_DEVICE = os.getenv("BUTTON_DEVICE", "auto")
+# Keys that act as the talk button. Defaults cover presenter clickers (PageUp/PageDown, arrows, B, F5)
+# and keyboards (Enter, Space). Codes from linux/input-event-codes.h.
+BUTTON_KEYS = [int(k) for k in os.getenv("BUTTON_KEYS", "28,57,104,109,105,106,48,63,96").split(",") if k.strip()]
+RESET_KEYS = [int(k) for k in os.getenv("RESET_KEYS", "1,19").split(",") if k.strip()]  # Esc, R: new visitor
+BUTTON_HOLD = os.getenv("BUTTON_HOLD", "0") == "1"   # 1 = hold to talk (release ends), 0 = tap to start
+TAP_MAX_SEC = float(os.getenv("TAP_MAX_SEC", "8"))               # longest question after a tap
+TAP_NO_SPEECH_SEC = float(os.getenv("TAP_NO_SPEECH_SEC", "5"))   # give up if nobody speaks after a tap
 
 
 # --- 1. MiniLM Dense Semantic Intent Router ---
@@ -325,16 +383,26 @@ playback_queue = queue.Queue()
 # The daemon accepts audio instantly, so queue.join() alone returns while the robot is still talking.
 _playback_lock = threading.Lock()
 _playback_until = 0.0
+_playback_run_start = 0.0  # when the current continuous stretch of audio was handed off
 
 def _register_playback(num_samples):
-    global _playback_until
+    global _playback_until, _playback_run_start
     with _playback_lock:
-        start = max(time.time(), _playback_until)
+        now = time.time()
+        if now >= _playback_until:
+            _playback_run_start = now
+        start = max(now, _playback_until)
         _playback_until = start + float(num_samples) / TTS_SAMPLE_RATE
 
 def playback_end_time():
     with _playback_lock:
         return _playback_until
+
+def robot_is_talking(now=None):
+    """True while the speaker is producing our audio (handoff + ~0.3 s speaker latency)."""
+    now = time.time() if now is None else now
+    with _playback_lock:
+        return _playback_run_start + SPEAKER_LATENCY_SEC <= now < _playback_until + SPEAKER_LATENCY_SEC
 
 def apply_tts_gain(audio_np, gain=None):
     """Fixed gain with a soft (tanh) limiter above TTS_LIMITER_KNEE, so loud peaks don't hard-clip."""
@@ -536,6 +604,60 @@ def wait_for_all_tts_to_finish():
     if remaining > 0:
         time.sleep(remaining)
 
+class LedIndicator(object):
+    """Head LED. The main loop sets the state ("listening" / "thinking" / "idle"); whenever the robot is
+    talking (greeting, fillers, answers) the LED is green regardless of the state.
+    Colours go to the audio daemon as "R G B" datagrams; only changes are sent (plus a refresh every 3 s)."""
+    STATES = {"listening": LED_LISTEN, "thinking": LED_THINK, "idle": LED_IDLE}
+
+    def __init__(self, enabled=LED_ENABLED, path=LED_SOCKET):
+        self.enabled = enabled
+        self.path = path
+        self.base = LED_IDLE
+        self._sent = None
+        self._last_send = 0.0
+        self._lock = threading.Lock()
+        self._warned = False
+        self.sock = socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM) if enabled else None
+        if enabled:
+            threading.Thread(target=self._loop, daemon=True).start()
+
+    def color(self, now=None):
+        return LED_TALK if robot_is_talking(now) else self.base
+
+    def set(self, state):
+        self.base = self.STATES[state]
+        self.update()
+
+    def update(self, force=False):
+        if not self.enabled:
+            return
+        with self._lock:
+            color = self.color()
+            now = time.time()
+            if not force and color == self._sent and now - self._last_send < 3.0:
+                return
+            try:
+                self.sock.sendto(("%d %d %d" % color).encode(), self.path)
+                self._sent, self._last_send = color, now
+            except (socket.error, OSError) as e:
+                self._sent, self._last_send = color, now  # don't retry in a tight loop
+                if not self._warned:
+                    self._warned = True
+                    print("[LED] Can't reach %s (%s) - restart the audio daemon with the LED-enabled build "
+                          "(bash app.sh --services-only). Continuing without LED." % (self.path, e))
+
+    def off(self):
+        self.base = (0, 0, 0)
+        self.enabled and self.update(force=True)
+
+    def _loop(self):
+        while True:
+            self.update()
+            time.sleep(0.05)
+
+led = LedIndicator(enabled=False)  # replaced in main(); a no-op for tests that import this module
+
 def speak_direct_via_riva(text_to_speak, tag="system"):
     """Synchronous speech for standalone announcements."""
     queue_text_for_streaming_tts(text_to_speak, tag)
@@ -718,8 +840,55 @@ def capture_camera_frame(verbose=True):
         return capture_head_camera_frame(verbose)
 
 # --- 6. Robust Audio Capture & Instant ASR ---
+class ArecordMic(object):
+    """ALSA capture (e.g. a wireless handheld mic's USB receiver) via `arecord`, exposing the subset of the
+    socket API the assistant uses (recv / settimeout / gettimeout / setblocking / close).
+    Note: unlike the robot's mic array there is no echo cancellation - the robot never listens while it
+    talks (echo guard), so this is fine without barge-in."""
+    def __init__(self, device):
+        self.proc = subprocess.Popen(["arecord", "-q", "-D", device, "-f", "S16_LE", "-r", "16000", "-c", "1",
+                                      "-t", "raw", "--buffer-time=200000"],
+                                     stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        self.fd = self.proc.stdout.fileno()
+        self.timeout = 0.1
+        time.sleep(0.1)
+        if self.proc.poll() is not None:
+            err = self.proc.stderr.read().decode("utf-8", "replace").strip()
+            raise RuntimeError("arecord failed on MIC_DEVICE=%s: %s (list devices with: arecord -L)" % (device, err))
+
+    def recv(self, n):
+        import select
+        ready, _, _ = select.select([self.fd], [], [], self.timeout)
+        if not ready:
+            if self.timeout == 0:
+                raise BlockingIOError()
+            raise socket.timeout()
+        data = os.read(self.fd, min(n, 5120))
+        if not data:
+            raise RuntimeError("arecord stopped (USB mic unplugged?)")
+        return data
+
+    def settimeout(self, t):
+        self.timeout = 0.1 if t is None else t
+
+    def gettimeout(self):
+        return self.timeout
+
+    def setblocking(self, flag):
+        self.timeout = 0.1 if flag else 0
+
+    def close(self):
+        try:
+            self.proc.kill()
+            self.proc.wait(1)
+        except Exception:
+            pass
+
 def open_mic_socket():
-    """Joins the robot's multicast microphone stream (16 kHz mono int16)."""
+    """Opens the configured microphone (MIC_SOURCE): robot multicast stream or a USB/ALSA mic.
+    Both deliver 16 kHz mono int16."""
+    if MIC_SOURCE == "usb":
+        return ArecordMic(MIC_DEVICE)
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP)
     sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     sock.bind((MCAST_GRP, MCAST_PORT))
@@ -852,9 +1021,15 @@ def split_speakable_text(buffer, min_clause_words=MIN_CLAUSE_WORDS):
 # Short-term memory so follow-ups ("And what about Germany?") work. Text only (no old images), last
 # MEMORY_TURNS exchanges, forgotten after CONVERSATION_MEMORY_SEC of silence.
 MEMORY_TURNS = int(os.getenv("MEMORY_TURNS", "3"))
-CONVERSATION_MEMORY_SEC = float(os.getenv("CONVERSATION_MEMORY_SEC", "120"))
+CONVERSATION_MEMORY_SEC = float(os.getenv("CONVERSATION_MEMORY_SEC", "30" if BOOTH_MODE else "120"))
 _history = []          # [(user_text, assistant_text), ...]
 _history_time = 0.0    # when the last exchange finished
+
+def reset_conversation():
+    """New visitor: forget the previous conversation."""
+    global _history, _history_time
+    _history = []
+    _history_time = 0.0
 
 def remember_exchange(user_text, assistant_text):
     global _history, _history_time
@@ -1062,7 +1237,7 @@ class UtteranceEndpointer(object):
     """
     def __init__(self, frame_sec=SileroVAD.FRAME / 16000.0, start_threshold=VAD_START_THRESHOLD,
                  end_threshold=VAD_END_THRESHOLD, start_sec=0.15, end_silence_sec=VAD_END_SILENCE_SEC,
-                 pre_roll_sec=0.3, min_speech_sec=0.4, max_speech_sec=15.0, keep_tail_sec=0.2):
+                 pre_roll_sec=0.3, min_speech_sec=0.4, max_speech_sec=VAD_MAX_SPEECH_SEC, keep_tail_sec=0.2):
         self.frame_sec = frame_sec
         self.start_threshold = start_threshold
         self.end_threshold = end_threshold
@@ -1076,6 +1251,7 @@ class UtteranceEndpointer(object):
 
     def reset(self):
         self.active = False
+        self.last_drop = 0  # trailing silence frames trimmed from the last "end" utterance
         self._pre = collections.deque(maxlen=self.pre_roll_frames + self.start_frames)
         self._run = 0
         self._frames = []
@@ -1109,10 +1285,238 @@ class UtteranceEndpointer(object):
             frames = self._frames[:len(self._frames) - drop] if drop else self._frames
             voiced = self._voiced
             self.reset()
+            self.last_drop = drop
             if voiced < self.min_voiced_frames:
                 return "discard", None
             return "end", b"".join(frames)
         return "speech", self._voiced * self.frame_sec
+
+def frame_level_db(frame_int16):
+    """RMS level of a frame in dBFS (-96 for digital silence)."""
+    x = frame_int16.astype(np.float64)
+    rms = np.sqrt(np.mean(x * x)) if len(x) else 0.0
+    return 20.0 * np.log10(max(rms, 0.5) / 32768.0)
+
+class ProximityGate(object):
+    """Counts a frame as the visitor's speech only if it is gate_db louder than the background.
+
+    In a crowd, Silero (correctly) reports the chatter as speech, so "silence" never arrives and the end of
+    the visitor's sentence can't be found. The visitor in front of the robot is louder than the crowd, so we
+    track the background level (median of recent frames outside utterances) and require a margin above it.
+    """
+    def __init__(self, gate_db=GATE_DB, window_sec=10.0, frame_sec=SileroVAD.FRAME / 16000.0,
+                 min_floor_db=-70.0):
+        self.gate_db = gate_db
+        self.min_floor_db = min_floor_db
+        self._levels = collections.deque(maxlen=max(1, int(window_sec / frame_sec)))
+        self._floor_cache = None
+
+    def observe_background(self, level_db):
+        self._levels.append(level_db)
+        self._floor_cache = None
+
+    def floor_db(self):
+        if self._floor_cache is None:
+            if len(self._levels) < 15:  # < 0.5 s of data: assume a quiet room
+                self._floor_cache = self.min_floor_db
+            else:
+                self._floor_cache = max(self.min_floor_db, float(np.median(self._levels)))
+        return self._floor_cache
+
+    def passes(self, level_db, margin_db=None):
+        margin = self.gate_db if margin_db is None else margin_db
+        return self.gate_db <= 0 or level_db >= self.floor_db() + margin
+
+class VoiceFrameScorer(object):
+    """Silero speech probability, zeroed when the frame is not clearly louder than the background.
+
+    Hysteresis: starting an utterance needs the full GATE_DB margin; continuing one only needs
+    continue_db (default half) on the loudest of the last ~160 ms, so soft syllables and word endings
+    aren't cut (measured at 5 dB SNR in cafeteria noise: full margin throughout clipped words, WER 0.42)."""
+    def __init__(self, vad, gate, continue_db=None, hold_frames=5):
+        self.vad = vad
+        self.gate = gate
+        self.continue_db = gate.gate_db / 2.0 if continue_db is None else continue_db
+        self._recent = collections.deque(maxlen=hold_frames)
+        self.last_level = -96.0
+
+    def __call__(self, frame_bytes, in_utterance):
+        frame = np.frombuffer(frame_bytes, dtype=np.int16)
+        prob = self.vad(frame, VAD_GAIN)
+        level = frame_level_db(frame)
+        self.last_level = level
+        self._recent.append(level)
+        if not in_utterance:
+            self.gate.observe_background(level)
+            return prob if self.gate.passes(level) else 0.0
+        return prob if self.gate.passes(max(self._recent), self.continue_db) else 0.0
+
+    def reset(self):
+        self.vad.reset()
+        self._recent.clear()
+
+# Linux input subsystem: struct input_event { struct timeval time; __u16 type; __u16 code; __s32 value; }
+INPUT_EVENT = struct.Struct("llHHi")
+EV_KEY = 0x01
+_NOT_A_BUTTON = re.compile(r"gpio-keys|HDMI|HDA|Image|Camera|Video|Webcam", re.IGNORECASE)
+
+def parse_input_devices(text):
+    """Parses /proc/bus/input/devices into [(name, event_path, key_codes_set)]."""
+    devices = []
+    for block in text.strip().split("\n\n"):
+        name, event, keys = "", None, set()
+        for line in block.splitlines():
+            if line.startswith("N: Name="):
+                name = line.split("=", 1)[1].strip().strip('"')
+            elif line.startswith("H: Handlers="):
+                m = re.search(r"\bevent(\d+)\b", line)
+                if m:
+                    event = "/dev/input/event%s" % m.group(1)
+            elif line.startswith("B: KEY="):
+                words = line.split("=", 1)[1].split()
+                for i, word in enumerate(reversed(words)):  # last word = bits 0..63
+                    value = int(word, 16)
+                    for bit in range(64):
+                        if value >> bit & 1:
+                            keys.add(i * 64 + bit)
+        if event:
+            devices.append((name, event, keys))
+    return devices
+
+def find_button_device(text, wanted_keys):
+    """First input device that can send one of the talk keys and isn't a known non-button (camera, HDMI...)."""
+    for name, event, keys in parse_input_devices(text):
+        if _NOT_A_BUTTON.search(name):
+            continue
+        if keys & set(wanted_keys):
+            return name, event
+    return None, None
+
+class ButtonListener(object):
+    """Reads a presenter clicker / USB button / keyboard directly from /dev/input (works under systemd with
+    no terminal; needs the 'input' group). Re-scans every 2 s, so the receiver can be plugged in any time.
+    Also accepts ENTER on stdin when run in a terminal. Events: "press", "release", "reset"."""
+    def __init__(self, device=BUTTON_DEVICE, talk_keys=BUTTON_KEYS, reset_keys=RESET_KEYS):
+        self.device = device
+        self.talk_keys = set(talk_keys)
+        self.reset_keys = set(reset_keys)
+        self.events = queue.Queue()
+        self._warned = set()
+        threading.Thread(target=self._input_loop, daemon=True).start()
+        if sys.stdin is not None and sys.stdin.isatty():
+            threading.Thread(target=self._stdin_loop, daemon=True).start()
+
+    def _stdin_loop(self):
+        while True:
+            line = sys.stdin.readline()
+            if not line:
+                return
+            cmd = line.strip().lower()
+            self.events.put("reset" if cmd in ("r", "reset") else "press")
+
+    def _open(self):
+        path, name = self.device, self.device
+        if self.device == "auto":
+            try:
+                with open("/proc/bus/input/devices") as f:
+                    name, path = find_button_device(f.read(), self.talk_keys)
+            except IOError:
+                path = None
+        if not path:
+            return None
+        try:
+            fd = os.open(path, os.O_RDONLY)
+            print("[BUTTON] 🔘 Using %s (%s)" % (name, path))
+            return fd
+        except OSError as e:
+            if path not in self._warned:
+                self._warned.add(path)
+                hint = " - add the user to the 'input' group (sudo usermod -aG input unitree, then log in again)" \
+                    if e.errno == 13 else ""
+                print("[BUTTON] Cannot open %s: %s%s" % (path, e.strerror, hint))
+            return None
+
+    def _input_loop(self):
+        while True:
+            fd = self._open()
+            if fd is None:
+                time.sleep(2.0)
+                continue
+            try:
+                while True:
+                    data = os.read(fd, INPUT_EVENT.size)
+                    if len(data) < INPUT_EVENT.size:
+                        break
+                    _, _, ev_type, code, value = INPUT_EVENT.unpack(data)
+                    if ev_type != EV_KEY or value == 2:  # 2 = auto-repeat
+                        continue
+                    if code in self.reset_keys and value == 1:
+                        self.events.put("reset")
+                    elif code in self.talk_keys:
+                        self.events.put("press" if value == 1 else "release")
+            except OSError:
+                print("[BUTTON] Button device disconnected - waiting for it to come back")
+            finally:
+                os.close(fd)
+
+    def get(self, timeout=0.0):
+        try:
+            return self.events.get(timeout=timeout) if timeout else self.events.get_nowait()
+        except queue.Empty:
+            return None
+
+    def clear(self):
+        while self.get() is not None:
+            pass
+
+class TapRecorder(object):
+    """One tap-to-talk turn (pure logic, no I/O - unit tested). Recording starts at the press.
+    feed(frame, prob) / button(event) return (None, None), ("start", None), ("end", audio_bytes) or
+    ("cancel", reason).
+
+    Tap mode (hold=False): ends when the visitor stops talking (endpointer), on a second tap (everything since
+    the first tap is used), after max_sec, or is cancelled if nobody speaks within no_speech_sec.
+    Hold mode (hold=True): records from press to release (max_sec cap); VAD end-of-speech is ignored.
+    """
+    def __init__(self, endpointer, frame_sec=SileroVAD.FRAME / 16000.0, max_sec=TAP_MAX_SEC,
+                 no_speech_sec=TAP_NO_SPEECH_SEC, hold=BUTTON_HOLD):
+        self.endpointer = endpointer
+        self.endpointer.reset()
+        self.frame_sec = frame_sec
+        self.max_frames = int(round(max_sec / frame_sec))
+        self.no_speech_frames = int(round(no_speech_sec / frame_sec))
+        self.hold = hold
+        self.frames = []
+        self.heard_speech = False
+
+    def feed(self, frame, prob):
+        self.frames.append(frame)
+        event, payload = self.endpointer.process(frame, prob)
+        result = (None, None)
+        if event == "start":
+            self.heard_speech = True
+            result = ("start", None)
+        elif event == "discard":  # cough / click: keep waiting for the real question
+            self.heard_speech = False
+        elif event == "end" and not self.hold:
+            # Everything since the tap (minus trailing silence), not just the endpointer's utterance: a short
+            # first word may have been discarded as a cough and must not be cut off the question.
+            return "end", b"".join(self.frames[:len(self.frames) - self.endpointer.last_drop])
+        if len(self.frames) >= self.max_frames:
+            return "end", b"".join(self.frames)
+        if not self.hold and not self.heard_speech and not self.endpointer.active \
+                and len(self.frames) >= self.no_speech_frames:
+            return "cancel", "No speech heard after the tap - cancelled."
+        return result
+
+    def button(self, event):
+        if event == "reset":
+            return "cancel", "Reset - turn cancelled."
+        if (event == "press" and not self.hold) or (event == "release" and self.hold):
+            if not self.frames:
+                return "cancel", "Button released before any audio arrived - cancelled."
+            return "end", b"".join(self.frames)
+        return None, None
 
 # --- 9. One conversational turn (shared by push-to-talk and VAD modes) ---
 def process_turn(audio_bytes, t_end_of_speech, require_wake=False, prefill=None):
@@ -1224,14 +1628,17 @@ def run_push_to_talk():
         prefill = SpeculativePrefill() if SPECULATIVE_PREFILL else None
             
         # Push to talk audio capture with AGC
+        led.set("listening")
         audio_bytes = record_push_to_talk()
+        led.set("thinking")
         process_turn(audio_bytes, time.time(), require_wake=False, prefill=prefill)
+        led.set("idle")
 
 def run_vad_mode():
     if not os.path.exists(VAD_MODEL_PATH):
         print("[FATAL] Silero VAD model not found at %s (see README: Hands-free mode)" % VAD_MODEL_PATH)
         sys.exit(1)
-    vad = SileroVAD(VAD_MODEL_PATH)
+    scorer = VoiceFrameScorer(SileroVAD(VAD_MODEL_PATH), ProximityGate())
     endpointer = UtteranceEndpointer()
     sock = open_mic_socket()
     frame_bytes = SileroVAD.FRAME * 2
@@ -1241,6 +1648,9 @@ def run_vad_mode():
               % (WAKE_WORDS[0].capitalize(), FOLLOW_UP_SEC))
     else:
         print("[VAD] 👂 Hands-free mode, wake word disabled - responding to all speech.")
+    if GATE_DB > 0:
+        print("[VAD] Proximity gate on: speech must be %.0f dB above the background." % GATE_DB)
+    led.set("listening")  # always listening in hands-free mode (green while talking)
 
     follow_up_until = 0.0
     ignore_until = 0.0
@@ -1264,10 +1674,11 @@ def run_vad_mode():
         pending += data
         while len(pending) >= frame_bytes:
             frame, pending = pending[:frame_bytes], pending[frame_bytes:]
-            prob = vad(np.frombuffer(frame, dtype=np.int16), VAD_GAIN)
+            prob = scorer(frame, endpointer.active)
             if VAD_DEBUG and time.time() - last_debug > 0.25:
                 last_debug = time.time()
-                print("[VAD] p=%.2f %s" % (prob, "#" * int(prob * 40)))
+                print("[VAD] p=%.2f level=%.0fdB floor=%.0fdB %s" % (
+                    prob, scorer.last_level, scorer.gate.floor_db(), "#" * int(prob * 40)))
             event, payload = endpointer.process(frame, prob)
 
             if event == "start":
@@ -1286,6 +1697,7 @@ def run_vad_mode():
                 prefill = None
             elif event == "end":
                 t_end = time.time()
+                led.set("thinking")
                 answered = process_turn(apply_agc(payload), t_end, require_wake=not no_wake_needed(), prefill=prefill)
                 prefill = None
                 if answered:
@@ -1294,17 +1706,126 @@ def run_vad_mode():
                 # Everything recorded while we were busy is stale (and may contain the robot's own voice)
                 drain_socket(sock)
                 pending = b""
-                vad.reset()
+                scorer.reset()
                 endpointer.reset()
                 ignore_until = time.time() + ECHO_GUARD_SEC
+                led.set("listening")
                 break
 
+def run_tap_mode(buttons=None, sock=None, max_turns=None):
+    """Booth mode: a presenter clicker / USB button (or ENTER in a terminal) starts listening; the turn ends
+    when the visitor stops talking. No wake word, so crowd chatter can't trigger the robot.
+    buttons / sock / max_turns are for the injected end-to-end test."""
+    scorer = None
+    if os.path.exists(VAD_MODEL_PATH):
+        scorer = VoiceFrameScorer(SileroVAD(VAD_MODEL_PATH), ProximityGate(gate_db=TAP_GATE_DB))
+    else:
+        print("[TAP] Silero VAD model not found at %s - a turn ends on the second tap (or after %.0fs)."
+              % (VAD_MODEL_PATH, TAP_MAX_SEC))
+    buttons = buttons or ButtonListener()
+    sock = sock or open_mic_socket()
+    endpointer = UtteranceEndpointer()
+    frame_bytes = SileroVAD.FRAME * 2
+    ready_msg = "[TAP] 🔘 Ready - %s (Esc / R = new visitor)." % (
+        "hold the button while speaking" if BUTTON_HOLD else "tap the button, then speak")
+    print(ready_msg)
+    if sys.stdin is not None and sys.stdin.isatty():
+        print("[TAP] (In this terminal: ENTER = button, r + ENTER = new visitor)")
+
+    turn = None
+    prefill = None
+    pending = b""
+    ignore_until = 0.0
+    turns = 0
+    led.set("idle")
+
+    def cancel(reason):
+        if prefill:
+            prefill.cancel()
+        print("[TAP] %s" % reason)
+
+    while max_turns is None or turns < max_turns:
+        # 1. Button events
+        result = (None, None)
+        event = buttons.get()
+        while event is not None and result[0] is None:
+            if turn is not None:
+                result = turn.button(event)
+            elif event == "reset":
+                reset_conversation()
+                print("[TAP] 🔄 New visitor - conversation memory cleared.")
+            elif event == "press":
+                print("[TAP] 🎙️ Listening...")
+                led.set("listening")
+                prefill = SpeculativePrefill() if SPECULATIVE_PREFILL else None
+                turn = TapRecorder(endpointer)
+            event = buttons.get() if result[0] is None else None
+
+        # 2. Microphone
+        if result[0] is None:
+            try:
+                data = sock.recv(MIC_RECV_BYTES)
+            except socket.timeout:
+                data = b""
+            if time.time() < max(ignore_until, playback_end_time() + ECHO_GUARD_SEC):
+                pending = b""  # echo guard: never listen to the robot's own voice
+                data = b""
+            pending += data
+            while len(pending) >= frame_bytes and result[0] is None:
+                frame, pending = pending[:frame_bytes], pending[frame_bytes:]
+                # Idle frames teach the gate the booth's background level
+                prob = scorer(frame, endpointer.active) if scorer else 1.0
+                if turn is not None:
+                    result = turn.feed(frame, prob)
+                    if result[0] == "start":
+                        print("[TAP] 🗣️ Speech started")
+                        result = (None, None)
+
+        # 3. End of turn
+        if result[0] == "cancel":
+            cancel(result[1])
+            if "Reset" in result[1]:
+                reset_conversation()
+                print("[TAP] 🔄 New visitor - conversation memory cleared.")
+        elif result[0] == "end":
+            led.set("thinking")
+            process_turn(apply_agc(result[1]), time.time(), require_wake=False, prefill=prefill)
+            turns += 1
+        if result[0] is not None:
+            turn = None
+            prefill = None
+            drain_socket(sock)  # stale audio, may contain the robot's own voice
+            pending = b""
+            if scorer:
+                scorer.reset()
+            endpointer.reset()
+            buttons.clear()  # taps while the robot was talking don't start a new turn
+            ignore_until = time.time() + ECHO_GUARD_SEC
+            led.set("idle")
+            print(ready_msg)
+
+def select_mode(argv, env):
+    """--tap / --vad flags, else ASSISTANT_MODE (ptt | vad | tap), else push-to-talk."""
+    for flag, mode in (("--tap", "tap"), ("--vad", "vad"), ("--ptt", "ptt")):
+        if flag in argv:
+            return mode
+    mode = env.get("ASSISTANT_MODE", "").strip().lower()
+    return mode if mode in ("ptt", "vad", "tap") else "ptt"
+
+MODE_NAMES = {"ptt": "Push-to-talk (ENTER to start / stop)",
+              "vad": "Hands-free (Silero VAD + wake word)",
+              "tap": "Tap-to-talk (button starts, VAD ends)"}
+
 def main():
-    vad_mode = "--vad" in sys.argv[1:] or os.getenv("ASSISTANT_MODE", "").lower() == "vad"
+    global led
+    mode = select_mode(sys.argv[1:], os.environ)
+    led = LedIndicator()
+    atexit.register(led.off)  # LED off when the assistant exits (Ctrl+C, or systemd stop via SIGTERM)
+    signal.signal(signal.SIGTERM, lambda *_: sys.exit(0))
     print("=" * 60)
     print("[SYSTEM] Unitree R1 Multimodal Assistant (Natural Continuous Flow)")
     print("[AUDIO] Non-Blocking Gapless Audio Daemon (/tmp/unitree_audio.sock)")
-    print("[MODE] %s" % ("Hands-free (Silero VAD + wake word)" if vad_mode else "Push-to-talk"))
+    print("[MODE] %s%s, mic: %s" % (MODE_NAMES[mode], " - booth preset" if BOOTH_MODE else "", MIC_SOURCE))
     print("=" * 60)
     
     # 1. Robot greeting (warm-up starts once the greeting is synthesized, so they don't compete for the GPU)
@@ -1317,8 +1838,10 @@ def main():
     # (~5 s with cached fillers, mostly hidden behind the greeting)
     warmup.join(60)
 
-    if vad_mode:
+    if mode == "vad":
         run_vad_mode()
+    elif mode == "tap":
+        run_tap_mode()
     else:
         run_push_to_talk()
 

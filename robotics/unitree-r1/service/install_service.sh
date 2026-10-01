@@ -26,6 +26,9 @@ install -m 644 "$HERE/r1-services.service" "$UNIT_DIR/r1-services.service"
 install -m 644 "$HERE/r1-assistant.service" "$UNIT_DIR/r1-assistant.service"
 systemctl daemon-reload
 systemctl enable r1-services.service r1-assistant.service
+# So manual runs (python3 test_vision_voice_assistant.py --tap) can also read the clicker; the service
+# itself gets the group via SupplementaryGroups. Takes effect at the next login.
+usermod -aG input unitree || true
 
 if [ "$1" != "--no-start" ]; then
   # A manually started assistant would fight over the mic/speaker

@@ -11,11 +11,15 @@
 #include <cstring>
 #include <sys/socket.h>
 #include <sys/un.h>
+#include <sys/stat.h>
+#include <cstdio>
 #include <unistd.h>
 #include <unitree/common/time/time_tool.hpp>
 #include <unitree/robot/g1/audio/g1_audio_client.hpp>
 
 #define SOCKET_PATH "/tmp/unitree_audio.sock"
+// Head LED: datagrams "R G B" (0-255) sent to this socket set the LED colour (latest wins)
+#define LED_SOCKET_PATH "/tmp/unitree_led.sock"
 #define STREAM_CHUNK_SIZE 32000 // 1 sec at 16kHz 16-bit mono
 #define BYTES_PER_SEC (16000.0 * 2.0)
 
@@ -35,13 +39,11 @@ std::mutex g_queue_mutex;
 std::condition_variable g_queue_cv;
 std::atomic<bool> g_running(true);
 
-void dds_player_thread(const char* net_interface) {
-  unitree::robot::ChannelFactory::Instance()->Init(0, net_interface);
-  unitree::robot::g1::AudioClient client;
-  client.Init();
-  client.SetTimeout(5.0f);
-  client.SetVolume(100);
+// One AudioClient shared by the player and LED threads; RPC calls are serialized
+unitree::robot::g1::AudioClient* g_client = nullptr;
+std::mutex g_client_mutex;
 
+void dds_player_thread() {
   std::string current_stream_id = "";
   bool is_streaming = false;
   // Estimated time at which the speaker finishes everything sent so far on this stream
@@ -54,7 +56,10 @@ void dds_player_thread(const char* net_interface) {
       if (g_audio_queue.empty()) {
         if (is_streaming && Clock::now() >= playback_end + kStopGrace) {
           // Speaker has finished and no more audio arrived: gracefully end stream
-          client.PlayStop(current_stream_id);
+          {
+            std::lock_guard<std::mutex> rpc(g_client_mutex);
+            g_client->PlayStop(current_stream_id);
+          }
           is_streaming = false;
         }
         g_queue_cv.wait_for(lock, std::chrono::milliseconds(20));
@@ -84,7 +89,10 @@ void dds_player_thread(const char* net_interface) {
       size_t remaining = total_size - offset;
       size_t chunk_size = std::min(static_cast<size_t>(STREAM_CHUNK_SIZE), remaining);
       std::vector<uint8_t> chunk(pcm.begin() + offset, pcm.begin() + offset + chunk_size);
-      client.PlayStream("tts_output", current_stream_id, chunk);
+      {
+        std::lock_guard<std::mutex> rpc(g_client_mutex);
+        g_client->PlayStream("tts_output", current_stream_id, chunk);
+      }
       offset += chunk_size;
       std::this_thread::sleep_for(std::chrono::milliseconds(2));
     }
@@ -96,8 +104,50 @@ void dds_player_thread(const char* net_interface) {
   }
 
   if (is_streaming) {
-    client.PlayStop(current_stream_id);
+    std::lock_guard<std::mutex> rpc(g_client_mutex);
+    g_client->PlayStop(current_stream_id);
   }
+}
+
+void led_thread() {
+  unlink(LED_SOCKET_PATH);
+  int fd = socket(AF_UNIX, SOCK_DGRAM, 0);
+  if (fd < 0) return;
+  struct sockaddr_un addr;
+  memset(&addr, 0, sizeof(addr));
+  addr.sun_family = AF_UNIX;
+  strncpy(addr.sun_path, LED_SOCKET_PATH, sizeof(addr.sun_path) - 1);
+  if (bind(fd, (struct sockaddr*)&addr, sizeof(addr)) < 0) {
+    std::cerr << "[AUDIO DAEMON] LED socket bind failed" << std::endl;
+    close(fd);
+    return;
+  }
+  chmod(LED_SOCKET_PATH, 0666);
+  char buf[64];
+  // Unitree docs: LedControl calls must be at least 200 ms apart
+  const auto kMinLedInterval = std::chrono::milliseconds(200);
+  Clock::time_point last_call = Clock::now() - kMinLedInterval;
+  while (g_running) {
+    ssize_t n = recv(fd, buf, sizeof(buf) - 1, 0);
+    if (n <= 0) continue;
+    std::this_thread::sleep_until(last_call + kMinLedInterval);
+    // Coalesce: colours that queued up while waiting / during an RPC - only the newest matters
+    ssize_t m;
+    char newer[64];
+    while ((m = recv(fd, newer, sizeof(newer) - 1, MSG_DONTWAIT)) > 0) {
+      memcpy(buf, newer, m);
+      n = m;
+    }
+    buf[n] = 0;
+    int r = 0, g = 0, b = 0;
+    if (sscanf(buf, "%d %d %d", &r, &g, &b) != 3) continue;
+    std::lock_guard<std::mutex> rpc(g_client_mutex);
+    g_client->LedControl(static_cast<uint8_t>(std::max(0, std::min(255, r))),
+                         static_cast<uint8_t>(std::max(0, std::min(255, g))),
+                         static_cast<uint8_t>(std::max(0, std::min(255, b))));
+    last_call = Clock::now();
+  }
+  close(fd);
 }
 
 int main(int argc, char const *argv[]) {
@@ -118,8 +168,16 @@ int main(int argc, char const *argv[]) {
   if (bind(server_fd, (struct sockaddr*)&addr, sizeof(addr)) < 0) return 1;
   if (listen(server_fd, 20) < 0) return 1;
 
-  std::thread player_worker(dds_player_thread, net_interface);
+  unitree::robot::ChannelFactory::Instance()->Init(0, net_interface);
+  g_client = new unitree::robot::g1::AudioClient();
+  g_client->Init();
+  g_client->SetTimeout(5.0f);
+  g_client->SetVolume(100);
+
+  std::thread player_worker(dds_player_thread);
   player_worker.detach();
+  std::thread led_worker(led_thread);
+  led_worker.detach();
 
   std::cout << "[AUDIO DAEMON] ✅ Non-blocking Gapless Unitree Audio Daemon ready on " << SOCKET_PATH << std::endl;
 

@@ -1,5 +1,5 @@
 [Unit]
-Description=Unitree R1 hands-free voice & vision assistant (VAD + wake word)
+Description=Unitree R1 voice & vision assistant (ASSISTANT_MODE: vad = wake word, tap = button)
 After=r1-services.service network-online.target
 Requires=r1-services.service
 
@@ -8,11 +8,15 @@ Type=simple
 User=unitree
 Environment=HOME=/home/unitree
 Environment=PYTHONUNBUFFERED=1
+# Default mode; override in r1-assistant.env (e.g. ASSISTANT_MODE=tap and BOOTH_MODE=1 for a conference booth)
+Environment=ASSISTANT_MODE=vad
 EnvironmentFile=-/etc/environment
 # Optional overrides (WAKE_WORDS, GREETING, FOLLOW_UP_SEC, VAD_GAIN, ...), one VAR=value per line
 EnvironmentFile=-/home/unitree/r1-assistant.env
 WorkingDirectory=/home/unitree
-ExecStart=/usr/bin/python3 -u /home/unitree/test_vision_voice_assistant.py --vad
+# Tap mode reads the presenter clicker / USB button from /dev/input (root:input)
+SupplementaryGroups=input audio
+ExecStart=/usr/bin/python3 -u /home/unitree/test_vision_voice_assistant.py
 Restart=on-failure
 RestartSec=5
 
