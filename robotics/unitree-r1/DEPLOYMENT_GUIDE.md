@@ -264,7 +264,7 @@ corpus (`PCAFETER_16k.zip`, `PRESTO_16k.zip`): copy one channel WAV of each to
 | Mode | Start | Best for | How a turn works |
 |---|---|---|---|
 | Push-to-talk (default) | `python3 test_vision_voice_assistant.py` | development over SSH | ENTER to start, ENTER to stop |
-| **Hands-free** | `--vad` or `ASSISTANT_MODE=vad` | quiet rooms | Just talk (no wake word by default). Silero VAD finds the end of the sentence |
+| **Hands-free** | `--vad` or `ASSISTANT_MODE=vad` | quiet rooms | Start with "Jason, ...", then just keep talking. Silero VAD finds the end of each sentence |
 | **Tap-to-talk** | `--tap` or `ASSISTANT_MODE=tap` | noisy rooms (conference booth) | Press a key, speak. The turn ends when you stop talking |
 
 Head LED: **purple** = listening, **green** = talking, off otherwise (`LED_LISTEN`, `LED_TALK`, `LED_THINK`,
@@ -313,10 +313,11 @@ detects the end of each utterance and the request is sent automatically.
    scp ~/robot_assets/models/vad/silero_vad.onnx unitree@192.168.123.164:/home/unitree/robot_assets/models/vad/
    ```
 2. Try it in a terminal: `python3 /home/unitree/test_vision_voice_assistant.py --vad`
-3. Say **"What do you see?"**. Every sentence it hears is answered (there is no wake word by default),
-   so it suits a quiet room with one person talking to the robot. The mic is muted while the robot talks.
-   To require the name, set `WAKE_WORDS=jason,jayson,jaysen,jaison`: then speech that doesn't start with
-   "Jason" is ignored, except for follow-ups within 3 s of a reply.
+3. Say **"Jason, what do you see?"**. The name is only needed for the **first** request: after each reply
+   the conversation stays open, so further questions need no name, until nobody has spoken to the robot
+   for 30 s (`FOLLOW_UP_SEC`). Then it needs "Jason" again. While no conversation is open, speech that
+   doesn't start with the name is ignored. The mic is muted while the robot talks.
+   `WAKE_WORDS=` (empty) answers all speech without the name.
 
 ### 5.1.3 Hands (BrainCo Revo2)
 The assistant moves the fingers in two ways:
@@ -377,8 +378,8 @@ file (then use a USB keyboard on the robot as the talk key). Settings go in `/ho
 | `HAND_SPEED` | `0.8` | Finger motor speed limit (0-1) |
 | `VOICE_GESTURES` / `TALK_GESTURES` | `1` / `1` | Gesture voice commands / finger motion while talking |
 | `TALK_INTENSITY` | `1.0` | How far the fingers close while talking (0-1) |
-| `WAKE_WORDS` | (empty) | Empty = respond to all speech. `jason,jayson,jaysen,jaison` = require the name |
-| `FOLLOW_UP_SEC` | `3` | With `WAKE_WORDS` set: seconds after a reply during which no wake word is needed |
+| `WAKE_WORDS` | `jason,jayson,jaysen,jaison` | Name that starts a conversation (ASR spellings); empty = respond to all speech |
+| `FOLLOW_UP_SEC` | `30` | A conversation stays open (no name needed) this long after each reply |
 | `MEMORY_TURNS` | `3` | Previous exchanges sent to Gemma, so follow-ups like "and Germany?" work (0 = off) |
 | `CONVERSATION_MEMORY_SEC` | `120` (`30` tap) | Forget the conversation after this much silence |
 | `VAD_GAIN` | `2.0` | Mic boost before VAD (raise if quiet speech is missed) |

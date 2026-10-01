@@ -216,6 +216,34 @@ class WakeWordTests(unittest.TestCase):
         self.assertEqual(assistant.match_wake_word(" hello there ", []), (True, "hello there"))
 
 
+class WakeSessionTests(unittest.TestCase):
+    def test_first_request_needs_wake_word_then_conversation_stays_open(self):
+        s = assistant.WakeSession(["jason"], follow_up_sec=30)
+        self.assertFalse(s.is_open(100.0))           # first request: say the name
+        s.answered(100.0)
+        self.assertTrue(s.is_open(110.0))            # follow-ups: no name needed
+        s.answered(125.0)                            # each reply extends the conversation
+        self.assertTrue(s.is_open(150.0))
+        self.assertFalse(s.is_open(155.0))           # 30 s of quiet: name needed again
+
+    def test_closed_reported_once(self):
+        s = assistant.WakeSession(["jason"], follow_up_sec=30)
+        self.assertFalse(s.just_closed(50.0))        # never opened: nothing to report
+        s.answered(100.0)
+        self.assertFalse(s.just_closed(120.0))
+        self.assertTrue(s.just_closed(131.0))
+        self.assertFalse(s.just_closed(140.0))
+
+    def test_no_wake_words_always_open(self):
+        s = assistant.WakeSession([], follow_up_sec=30)
+        self.assertTrue(s.is_open(0.0))
+        self.assertFalse(s.just_closed(1000.0))
+
+    def test_defaults(self):
+        self.assertEqual(assistant.WAKE_WORDS[0], "jason")
+        self.assertEqual(assistant.FOLLOW_UP_SEC, 30)
+
+
 class EndpointerTests(unittest.TestCase):
     FRAME = b"\x01\x00" * 512
 

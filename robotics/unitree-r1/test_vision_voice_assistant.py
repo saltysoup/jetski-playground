@@ -160,12 +160,12 @@ GATE_DB = float(os.getenv("GATE_DB", "6"))
 # Tap mode knows someone is about to speak (and false triggers can't happen before a tap), so a lower margin
 # keeps more of a soft-spoken visitor. Measured in cafeteria / restaurant noise, see tests/e2e_noise.py.
 TAP_GATE_DB = float(os.getenv("TAP_GATE_DB", "3"))
-# Wake words: utterances must start with one of these unless inside the follow-up window.
-# Off by default (hands-free mode answers all speech). To require the name, set
-# WAKE_WORDS=jason,jayson,jaysen,jaison (ASR spells the name several ways).
-WAKE_WORDS = [w.strip().lower() for w in os.getenv("WAKE_WORDS", "").split(",")
+# Wake word: only needed to START a conversation. After each reply, further requests need no wake word
+# until FOLLOW_UP_SEC of quiet; then the next request needs the name again.
+# ASR spells the name several ways. WAKE_WORDS="" = never needed (answer all speech).
+WAKE_WORDS = [w.strip().lower() for w in os.getenv("WAKE_WORDS", "jason,jayson,jaysen,jaison").split(",")
               if w.strip()]
-FOLLOW_UP_SEC = float(os.getenv("FOLLOW_UP_SEC", "3"))  # no wake word needed this long after a reply
+FOLLOW_UP_SEC = float(os.getenv("FOLLOW_UP_SEC", "30"))  # conversation stays open this long after a reply
 ECHO_GUARD_SEC = 0.5  # ignore the mic this long after playback ends (speaker latency is ~0.32 s)
 
 # --- Tap-to-talk (--tap) mode: a wireless presenter clicker / USB button starts listening ---
@@ -1481,6 +1481,31 @@ def match_wake_word(transcript, wake_words=None, max_leading_words=3):
         return False, ""
     return True, transcript[m.end():].strip()
 
+class WakeSession(object):
+    """The wake word only starts a conversation. Every answered request keeps the conversation open for
+    another follow_up_sec (counted from the end of the reply); after that much quiet the next request needs
+    the wake word again. A request that STARTED while the conversation was open still counts as inside it."""
+
+    def __init__(self, wake_words=None, follow_up_sec=None):
+        self.required = bool(WAKE_WORDS if wake_words is None else wake_words)
+        self.follow_up_sec = FOLLOW_UP_SEC if follow_up_sec is None else follow_up_sec
+        self.until = 0.0
+        self._closed_reported = True
+
+    def is_open(self, now):
+        return (not self.required) or now < self.until
+
+    def answered(self, now):
+        self.until = now + self.follow_up_sec
+        self._closed_reported = False
+
+    def just_closed(self, now):
+        """True once when an open conversation times out (for a log line)."""
+        if self.required and not self._closed_reported and now >= self.until:
+            self._closed_reported = True
+            return True
+        return False
+
 class SileroVAD(object):
     """Silero VAD v5 (ONNX, CPU, <1 ms per 32 ms frame). Input: 512 int16 samples at 16 kHz."""
     FRAME = 512
@@ -1946,29 +1971,33 @@ def run_vad_mode():
     sock = open_mic_socket()
     frame_bytes = SileroVAD.FRAME * 2
 
+    wake_name = WAKE_WORDS[0].capitalize() if WAKE_WORDS else ""
     if WAKE_WORDS:
-        print("[VAD] 👂 Hands-free mode. Say \"%s, ...\" (no wake word needed for %.0fs after each reply)."
-              % (WAKE_WORDS[0].capitalize(), FOLLOW_UP_SEC))
+        print("[VAD] 👂 Hands-free mode. Start with \"%s, ...\" - then no wake word is needed until %.0fs of quiet."
+              % (wake_name, FOLLOW_UP_SEC))
     else:
         print("[VAD] 👂 Hands-free mode, wake word disabled - responding to all speech.")
     if GATE_DB > 0:
         print("[VAD] Proximity gate on: speech must be %.0f dB above the background." % GATE_DB)
     led.set("listening")  # always listening in hands-free mode (green while talking)
 
-    follow_up_until = 0.0
+    session = WakeSession()
+    started_in_conversation = False
     ignore_until = 0.0
     pending = b""
     prefill = None
     wake_checked = False
     last_debug = 0.0
 
-    def no_wake_needed():
-        return (not WAKE_WORDS) or time.time() < follow_up_until
-
     while True:
         try:
             data = sock.recv(MIC_RECV_BYTES)
         except socket.timeout:
+            data = b""
+        if not endpointer.active and session.just_closed(time.time()):
+            print("[VAD] 💤 Conversation closed after %.0fs of quiet - say \"%s, ...\" to start again."
+                  % (FOLLOW_UP_SEC, wake_name))
+        if not data:
             continue
         # Echo guard: never listen to the robot's own voice
         if time.time() < max(ignore_until, playback_end_time() + ECHO_GUARD_SEC):
@@ -1986,7 +2015,8 @@ def run_vad_mode():
 
             if event == "start":
                 print("[VAD] 🗣️ Speech started")
-                wake_checked = no_wake_needed()
+                started_in_conversation = session.is_open(time.time())
+                wake_checked = started_in_conversation
                 prefill = SpeculativePrefill() if (SPECULATIVE_PREFILL and wake_checked) else None
             elif event == "speech" and not wake_checked and payload >= 0.9:
                 # Peek at the first ~second: only spend GPU on an image prefill if it starts with the wake word
@@ -2001,11 +2031,13 @@ def run_vad_mode():
             elif event == "end":
                 t_end = time.time()
                 led.set("thinking")
-                answered = process_turn(apply_agc(payload), t_end, require_wake=not no_wake_needed(), prefill=prefill)
+                in_conversation = started_in_conversation or session.is_open(t_end)
+                answered = process_turn(apply_agc(payload), t_end, require_wake=not in_conversation, prefill=prefill)
                 prefill = None
                 if answered:
-                    follow_up_until = time.time() + FOLLOW_UP_SEC
-                    print("[VAD] 👂 Listening (follow-up open for %.0fs)..." % FOLLOW_UP_SEC)
+                    session.answered(time.time())
+                    if WAKE_WORDS:
+                        print("[VAD] 👂 Listening - no wake word needed for the next %.0fs." % FOLLOW_UP_SEC)
                 # Everything recorded while we were busy is stale (and may contain the robot's own voice)
                 drain_socket(sock)
                 pending = b""
