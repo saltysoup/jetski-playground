@@ -1,0 +1,20 @@
+[Unit]
+Description=Unitree R1 hands-free voice & vision assistant (VAD + wake word)
+After=r1-services.service network-online.target
+Requires=r1-services.service
+
+[Service]
+Type=simple
+User=unitree
+Environment=HOME=/home/unitree
+Environment=PYTHONUNBUFFERED=1
+EnvironmentFile=-/etc/environment
+# Optional overrides (WAKE_WORDS, GREETING, FOLLOW_UP_SEC, VAD_GAIN, ...), one VAR=value per line
+EnvironmentFile=-/home/unitree/r1-assistant.env
+WorkingDirectory=/home/unitree
+ExecStart=/usr/bin/python3 -u /home/unitree/test_vision_voice_assistant.py --vad
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

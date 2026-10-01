@@ -1,0 +1,19 @@
+[Unit]
+Description=Unitree R1 AI services (Riva ASR/TTS, llama-server, audio + head camera daemons)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+User=unitree
+Environment=HOME=/home/unitree
+EnvironmentFile=-/etc/environment
+WorkingDirectory=/home/unitree
+# Starts all four services and returns once Riva + llama-server are healthy (up to READY_TIMEOUT)
+ExecStart=/bin/bash /home/unitree/app.sh --services-only
+ExecStop=/bin/bash /home/unitree/app.sh --stop
+TimeoutStartSec=300
+
+[Install]
+WantedBy=multi-user.target

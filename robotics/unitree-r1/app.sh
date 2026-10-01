@@ -47,9 +47,12 @@ echo "============================================================"
 stop_services
 
 # 2. Launch Riva Speech Server (ASR + Magpie TTS) in Background
+#    setsid: run services in their own session so Ctrl-C in this terminal (e.g. to quit the
+#    assistant) does not reach them - riva_server/llama-server install SIGINT handlers that
+#    override the ignore that background jobs normally inherit, so they would shut down.
 echo "[1/4] Launching Riva Speech Server (ASR + Magpie TTS)..."
 export LD_LIBRARY_PATH=/home/unitree/NeMo-Speech.cpp/build-cuda/bin:$LD_LIBRARY_PATH
-nohup /home/unitree/NeMo-Speech.cpp/build-cuda/bin/riva_server \
+setsid nohup /home/unitree/NeMo-Speech.cpp/build-cuda/bin/riva_server \
   --asr.model.path /home/unitree/robot_assets/models/nemotron-speech-streaming-en-0.6b.q8_0.gguf \
   --tts.magpie-model /home/unitree/robot_assets/models/magpie_tts_multilingual_357m.v2602.f16.gguf \
   --tts.codec-model /home/unitree/robot_assets/models/nemo_nano_codec_22khz_1.89kbps_21.5fps.decoder.f16.gguf \
@@ -59,7 +62,7 @@ nohup /home/unitree/NeMo-Speech.cpp/build-cuda/bin/riva_server \
 # 3. Launch Native CUDA Gemma-4 Multimodal Server in Background
 echo "[2/4] Launching Gemma-4 Multimodal VLM Server (Port 8000)..."
 export LD_LIBRARY_PATH=/home/unitree/NeMo-Speech.cpp/llama.cpp/build-cuda/bin:$LD_LIBRARY_PATH
-nohup /home/unitree/NeMo-Speech.cpp/llama.cpp/build-cuda/bin/llama-server \
+setsid nohup /home/unitree/NeMo-Speech.cpp/llama.cpp/build-cuda/bin/llama-server \
   -m /home/unitree/robot_assets/models/gemma-4-E2B-it-q8_0.gguf \
   --mmproj /home/unitree/robot_assets/models/mmproj-gemma-4-E2B-f16.gguf \
   --host 127.0.0.1 \
@@ -75,10 +78,10 @@ nohup /home/unitree/NeMo-Speech.cpp/llama.cpp/build-cuda/bin/llama-server \
 
 # 4. Launch Persistent Gapless Audio Daemon & Head Camera Daemon
 echo "[3/4] Launching Persistent Unitree Audio Daemon..."
-nohup /home/unitree/unitree_sdk2/build/bin/unitree_audio_daemon eth10 > /home/unitree/audio_daemon.log 2>&1 &
+setsid nohup /home/unitree/unitree_sdk2/build/bin/unitree_audio_daemon eth10 > /home/unitree/audio_daemon.log 2>&1 &
 
 echo "[4/4] Launching Persistent Unitree Head Eye Camera Daemon (DDS eth10)..."
-nohup /home/unitree/unitree_sdk2/build/bin/unitree_head_camera_daemon eth10 > /home/unitree/head_camera_daemon.log 2>&1 &
+setsid nohup /home/unitree/unitree_sdk2/build/bin/unitree_head_camera_daemon eth10 > /home/unitree/head_camera_daemon.log 2>&1 &
 
 # 5. Wait for GPU memory initialization & server readiness
 #    Riva: gRPC port accepting connections. llama-server: /health returns 200 only after the
