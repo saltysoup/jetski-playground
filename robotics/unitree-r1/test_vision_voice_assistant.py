@@ -72,8 +72,8 @@ MAX_RECORD_SEC = 30.0      # Safety cap for push-to-talk recording
 AGC_NOISE_FLOOR = 500      # Don't amplify recordings whose peak is below this (silence / noise)
 LLM_MAX_TOKENS = 80        # ~35 words + headroom so replies are not cut mid-sentence
 
-# "Mister Roboto" (not "Mr. robot. oh."): Magpie reads it as one phrase without the pause
-GREETING = os.getenv("GREETING", "My name is Jason. Domo arigato, Mister Roboto.")
+# Startup phrase spoken once the assistant is up (override with the GREETING env var)
+GREETING = os.getenv("GREETING", "Hasta la vista, baby.")
 SYSTEM_PROMPT = ("Your name is Jason. Don't use acronyms. You are a robot. For time or numbers spell them out "
                  "in letters. Speak in smooth, complete sentences. Response must be under 35 words.")
 

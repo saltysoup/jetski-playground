@@ -273,7 +273,7 @@ assistant with `--vad`, restarting it if it crashes. Settings go in `/home/unitr
 | `CONVERSATION_MEMORY_SEC` | `120` | Forget the conversation after this much silence |
 | `VAD_GAIN` | `2.0` | Mic boost before VAD (raise if quiet speech is missed) |
 | `VAD_END_SILENCE_SEC` | `0.6` | Pause length that ends an utterance |
-| `GREETING` | `My name is Jason. Domo arigato, Mister Roboto.` | Startup phrase |
+| `GREETING` | `Hasta la vista, baby.` | Startup phrase |
 | `TTS_GAIN` | `2.0` | Speech volume (soft-limited, never clips) |
 | `TTS_STREAMING` | `1` | `0` = synthesize whole sentences (slower first audio) |
 | `SPECULATIVE_PREFILL` | `1` | Pre-encode the camera frame while the user talks |
