@@ -269,6 +269,8 @@ assistant with `--vad`, restarting it if it crashes. Settings go in `/home/unitr
 |---|---|---|
 | `WAKE_WORDS` | `jason,jayson,jaysen,jaison` | Accepted spellings of the name; empty = respond to all speech |
 | `FOLLOW_UP_SEC` | `10` | Seconds after a reply during which no wake word is needed |
+| `MEMORY_TURNS` | `3` | Previous exchanges sent to Gemma, so follow-ups like "and Germany?" work (0 = off) |
+| `CONVERSATION_MEMORY_SEC` | `120` | Forget the conversation after this much silence |
 | `VAD_GAIN` | `2.0` | Mic boost before VAD (raise if quiet speech is missed) |
 | `VAD_END_SILENCE_SEC` | `0.6` | Pause length that ends an utterance |
 | `GREETING` | `My name is Jason. Domo arigato, Mister Roboto.` | Startup phrase |

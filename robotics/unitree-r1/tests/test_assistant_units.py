@@ -297,6 +297,33 @@ class StreamChunkerTests(unittest.TestCase):
         self.assertGreater(int(y[3]), int(y[2]))                # still monotonic above the knee
 
 
+class MemoryTests(unittest.TestCase):
+    def tearDown(self):
+        assistant._history = []
+        assistant._history_time = 0.0
+
+    def test_history_included_then_expires(self):
+        assistant.remember_exchange("What is the capital of France?", "Paris.")
+        msgs = assistant.build_llm_messages("And Germany?")
+        self.assertEqual([m["role"] for m in msgs], ["system", "user", "assistant", "user"])
+        assistant._history_time -= assistant.CONVERSATION_MEMORY_SEC + 1
+        self.assertEqual([m["role"] for m in assistant.build_llm_messages("x")], ["system", "user"])
+
+    def test_memory_bounded(self):
+        for i in range(10):
+            assistant.remember_exchange("q%d" % i, "a%d" % i)
+        self.assertEqual(len(assistant._history), assistant.MEMORY_TURNS)
+        self.assertEqual(assistant._history[-1], ("q9", "a9"))
+
+    def test_prefill_prompt_is_prefix_of_final_prompt(self):
+        assistant.remember_exchange("Hi", "Hello there.")
+        hist = assistant.history_messages()
+        pre = assistant.build_llm_messages(None, "IMG", hist)
+        final = assistant.build_llm_messages("What is this?", "IMG", hist)
+        self.assertEqual(pre[:-1], final[:-1])
+        self.assertEqual(pre[-1]["content"][0], final[-1]["content"][0])  # image first in both
+
+
 class FirstClauseTests(unittest.TestCase):
     def test_min_clause_words_parameter(self):
         ready, rest = assistant.split_speakable_text("Sure thing, my friend, here", min_clause_words=2)

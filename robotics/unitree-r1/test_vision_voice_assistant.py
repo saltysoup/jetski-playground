@@ -849,9 +849,32 @@ def split_speakable_text(buffer, min_clause_words=MIN_CLAUSE_WORDS):
             start = i + 1
     return ready, buffer[start:]
 
-def build_llm_messages(user_text, image_b64=None):
+# Short-term memory so follow-ups ("And what about Germany?") work. Text only (no old images), last
+# MEMORY_TURNS exchanges, forgotten after CONVERSATION_MEMORY_SEC of silence.
+MEMORY_TURNS = int(os.getenv("MEMORY_TURNS", "3"))
+CONVERSATION_MEMORY_SEC = float(os.getenv("CONVERSATION_MEMORY_SEC", "120"))
+_history = []          # [(user_text, assistant_text), ...]
+_history_time = 0.0    # when the last exchange finished
+
+def remember_exchange(user_text, assistant_text):
+    global _history, _history_time
+    if MEMORY_TURNS <= 0 or not assistant_text.strip():
+        return
+    _history = (_history + [(user_text, assistant_text.strip())])[-MEMORY_TURNS:]
+    _history_time = time.time()
+
+def history_messages():
+    if not _history or time.time() - _history_time > CONVERSATION_MEMORY_SEC:
+        return []
+    msgs = []
+    for user_text, assistant_text in _history:
+        msgs.append({"role": "user", "content": user_text})
+        msgs.append({"role": "assistant", "content": assistant_text})
+    return msgs
+
+def build_llm_messages(user_text, image_b64=None, history=None):
     """Prefill and final request must produce byte-identical prompts up to the end of the image,
-    otherwise llama-server can't reuse the cached image: same system prompt, image before text."""
+    otherwise llama-server can't reuse the cached image: same system prompt, same history, image before text."""
     content = []
     if image_b64:
         content.append({
@@ -860,10 +883,9 @@ def build_llm_messages(user_text, image_b64=None):
         })
     if user_text:
         content.append({"type": "text", "text": user_text})
-    return [
-        {"role": "system", "content": SYSTEM_PROMPT},
-        {"role": "user", "content": content}
-    ]
+    return ([{"role": "system", "content": SYSTEM_PROMPT}]
+            + (history_messages() if history is None else history)
+            + [{"role": "user", "content": content}])
 
 class SpeculativePrefill(object):
     """Captures a camera frame and has llama-server encode it (max_tokens=1) while the user is still talking.
@@ -874,6 +896,7 @@ class SpeculativePrefill(object):
     def __init__(self):
         self.image_b64 = None
         self.elapsed = None
+        self.history = history_messages()  # frozen, so the final query has the identical prefix
         self._cancelled = threading.Event()
         self._done = threading.Event()
         self._t0 = time.time()
@@ -887,7 +910,7 @@ class SpeculativePrefill(object):
                 return
             payload = {
                 "model": MODEL_NAME,
-                "messages": build_llm_messages(None, self.image_b64),
+                "messages": build_llm_messages(None, self.image_b64, self.history),
                 "max_tokens": 1,
                 "temperature": 0.1,
                 "stream": True,
@@ -911,8 +934,9 @@ class SpeculativePrefill(object):
     def wait(self, timeout=6.0):
         return self._done.wait(timeout)
 
-def query_gemma4_and_stream_tts(user_text, image_b64=None):
-    """Streams tokens from Gemma-4 and dispatches complete, natural sentence chunks to parallel TTS pipeline."""
+def query_gemma4_and_stream_tts(user_text, image_b64=None, history=None):
+    """Streams tokens from Gemma-4 and dispatches complete, natural sentence chunks to parallel TTS pipeline.
+    Returns the full reply text ("" on error)."""
     if image_b64:
         print("[GEMMA] Sending Multimodal Query (Image + Text)...")
     else:
@@ -920,7 +944,7 @@ def query_gemma4_and_stream_tts(user_text, image_b64=None):
     
     payload = {
         "model": MODEL_NAME,
-        "messages": build_llm_messages(user_text, image_b64),
+        "messages": build_llm_messages(user_text, image_b64, history),
         "max_tokens": LLM_MAX_TOKENS,
         "temperature": 0.1,
         "stream": True,
@@ -974,10 +998,12 @@ def query_gemma4_and_stream_tts(user_text, image_b64=None):
             
         # Wait for pipelined audio playback to complete cleanly
         wait_for_all_tts_to_finish()
+        return full_text
             
     except Exception as e:
         print("[ERROR] Connection Error: %s" % e)
         speak_direct_via_riva("I encountered an error connecting to my intelligence engine.")
+        return ""
 
 # --- 8. Wake word, Voice Activity Detection & end-of-speech detection ---
 def match_wake_word(transcript, wake_words=None, max_leading_words=3):
@@ -1124,6 +1150,7 @@ def process_turn(audio_bytes, t_end_of_speech, require_wake=False, prefill=None)
         timer_mark("route")
 
         image_b64 = None
+        history = None  # None = current conversation memory
         if has_visual_intent:
             print("[ROUTE] 🎯 Vision Route Triggered (MiniLM Score: %.2f >= %.2f)!" % (similarity_score, ROUTER_THRESHOLD))
             # Pre-rendered visual filler: plays instantly while the image is processed
@@ -1135,6 +1162,7 @@ def process_turn(audio_bytes, t_end_of_speech, require_wake=False, prefill=None)
                 timer_mark("prefill_ready")
                 image_b64 = prefill.image_b64
                 if image_b64:
+                    history = prefill.history
                     print("[CAMERA] Using frame captured when you started talking (pre-encoded%s)." % (
                         " in %.1fs" % prefill.elapsed if prefill.elapsed else ""))
             if not image_b64:
@@ -1148,7 +1176,9 @@ def process_turn(audio_bytes, t_end_of_speech, require_wake=False, prefill=None)
             speak_filler(TEXT_FILLERS)
 
         # Stream tokens from Gemma-4 & speak via Magpie TTS
-        query_gemma4_and_stream_tts(transcript, image_b64)
+        reply = query_gemma4_and_stream_tts(transcript, image_b64, history)
+        if reply:
+            remember_exchange(transcript, reply)
         print("[TIMING] after end of speech: %s (+~0.3s speaker latency)" % _turn_timer.summary())
         return True
     finally:
