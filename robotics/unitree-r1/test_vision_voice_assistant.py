@@ -2124,7 +2124,7 @@ def select_mode(argv, env):
     return mode if mode in ("ptt", "vad", "tap") else "ptt"
 
 MODE_NAMES = {"ptt": "Push-to-talk (ENTER to start / stop)",
-              "vad": "Hands-free (Silero VAD + wake word)",
+              "vad": "Hands-free (Silero VAD%s)" % (", wake word" if WAKE_WORDS else ""),
               "tap": "Tap-to-talk for noisy rooms (button starts, VAD ends, booth prompt)"}
 
 def main():
