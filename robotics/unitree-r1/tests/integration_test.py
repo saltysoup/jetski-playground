@@ -49,7 +49,7 @@ def record_mic(duration, out):
     end = time.time() + duration
     while time.time() < end:
         try:
-            buf.extend(sock.recv(4096))
+            buf.extend(sock.recv(65536))  # datagrams are 5120 bytes; smaller buffers truncate
         except socket.timeout:
             pass
     sock.close()

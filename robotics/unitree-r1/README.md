@@ -229,11 +229,64 @@ cd /home/unitree/unitree-r1
 python3 tests/test_assistant_units.py   # offline unit tests (no services needed)
 python3 tests/calibrate_router.py       # MiniLM router accuracy vs threshold
 python3 tests/integration_test.py       # silent: services, ASR/TTS, camera, Gemma, router load
-python3 tests/e2e_injected.py /home/unitree/test_vision_voice_assistant.py   # real main loop, robot speaks
+python3 tests/bench_latency.py          # silent: ASR/TTS/LLM/vision latency numbers
+python3 tests/e2e_injected.py /home/unitree/test_vision_voice_assistant.py   # push-to-talk loop, robot speaks
+python3 tests/e2e_vad_injected.py       # hands-free loop (VAD + wake word + follow-up), robot speaks
 ```
 > [!NOTE]
-> The robot's mic array cancels the robot's own speaker output, so the E2E test injects synthesized
+> The robot's mic array cancels the robot's own speaker output, so the E2E tests inject synthesized
 > questions in place of mic capture rather than having the robot ask itself out loud.
+
+### 5.1.2 Hands-free mode (VAD + wake word)
+Instead of pressing ENTER, the assistant can listen continuously: [Silero VAD](https://github.com/snakers4/silero-vad)
+detects the end of each utterance and the request is sent automatically.
+
+1. On the laptop, download the model (2.3 MB) and copy it to the robot:
+   ```bash
+   mkdir -p ~/robot_assets/models/vad
+   curl -L -o ~/robot_assets/models/vad/silero_vad.onnx \
+     https://github.com/snakers4/silero-vad/raw/v5.1.2/src/silero_vad/data/silero_vad.onnx
+   scp ~/robot_assets/models/vad/silero_vad.onnx unitree@192.168.123.164:/home/unitree/robot_assets/models/vad/
+   ```
+2. Try it in a terminal: `python3 /home/unitree/test_vision_voice_assistant.py --vad`
+3. Say **"Jason, what do you see?"**. For 10 s after each reply, follow-up questions need no wake word.
+   Speech that doesn't start with the wake word is ignored. The mic is muted while the robot talks.
+
+### 5.1.3 Run in the background at boot (systemd)
+```bash
+cd /home/unitree/unitree-r1
+sudo bash service/install_service.sh            # install, enable at boot, start now
+journalctl -u r1-assistant -f                   # live assistant log
+sudo systemctl stop r1-assistant                # stop (e.g. to use push-to-talk in a terminal)
+sudo systemctl restart r1-assistant             # restart after editing the script / env
+sudo bash service/install_service.sh --remove   # uninstall
+```
+`r1-services` starts the four backend services (via `app.sh --services-only`) and `r1-assistant` runs the
+assistant with `--vad`, restarting it if it crashes. Settings go in `/home/unitree/r1-assistant.env`
+(one `VAR=value` per line), for example:
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `WAKE_WORDS` | `jason,jayson,jaysen,jaison` | Accepted spellings of the name; empty = respond to all speech |
+| `FOLLOW_UP_SEC` | `10` | Seconds after a reply during which no wake word is needed |
+| `VAD_GAIN` | `2.0` | Mic boost before VAD (raise if quiet speech is missed) |
+| `VAD_END_SILENCE_SEC` | `0.6` | Pause length that ends an utterance |
+| `GREETING` | `My name is Jason. Domo arigato, Mister Roboto.` | Startup phrase |
+| `TTS_GAIN` | `2.0` | Speech volume (soft-limited, never clips) |
+| `TTS_STREAMING` | `1` | `0` = synthesize whole sentences (slower first audio) |
+| `SPECULATIVE_PREFILL` | `1` | Pre-encode the camera frame while the user talks |
+| `IMAGE_MAX_SIDE` | `768` | Longest side of the frame sent to Gemma |
+| `ROUTER_THRESHOLD` | `0.35` | Vision-intent threshold |
+
+### 5.1.4 Latency design
+Each turn prints a `[TIMING]` line (milliseconds after the end of your speech). What makes it fast:
+- **Instant fillers:** "Hmm." / "Let me take a look." are synthesized at startup and played from memory.
+- **Streaming TTS:** Magpie and Gemma share the GPU, and offline synthesis slows ~3x while Gemma is
+  decoding. Streaming starts playback after ~0.25 s of audio (first answer audio 4.0-4.2 s -> 1.2-1.7 s).
+- **Speculative image prefill:** when you start talking, a frame is captured and llama-server encodes it
+  (max_tokens=1). If the request is visual, the final query hits the prompt cache (TTFT 1.6 s -> ~0.2 s).
+  Note the frame is from the *start* of your sentence; set `SPECULATIVE_PREFILL=0` to capture it at the end.
+- **Warm-up:** ASR, text and vision paths are exercised once at startup (first calls are 1.4-3 s slower).
 
 ---
 

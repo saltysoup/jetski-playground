@@ -43,6 +43,9 @@ MODEL_NAME = "gemma"
 
 MCAST_GRP = "239.168.123.161"
 MCAST_PORT = 5555
+# Each mic datagram is 5120 bytes (160 ms). A smaller recv() buffer silently truncates the datagram:
+# the old recv(4096) dropped 20% of all audio (32 ms out of every 160 ms) before it reached ASR.
+MIC_RECV_BYTES = 65536
 NET_INTERFACE_IP = "192.168.123.164"
 NET_INTERFACE_NAME = "eth10"
 CAMERA_SOURCE = os.getenv("CAMERA_SOURCE", "head")  # "head" (DDS eyes), "wrist0" (/dev/video0), "wrist2" (/dev/video2)
@@ -539,16 +542,36 @@ def speak_direct_via_riva(text_to_speak, tag="system"):
     wait_for_all_tts_to_finish()
 
 _filler_cache = {}
+FILLER_CACHE_DIR = os.path.expanduser("~/.cache/r1_assistant/fillers")
+
+def _filler_cache_path(text):
+    import hashlib
+    key = "%s|%s|%s|%.3f|%d" % (text, TTS_VOICE, TTS_SAMPLE_RATE, TTS_GAIN, TTS_SILENCE_LEVEL)
+    return os.path.join(FILLER_CACHE_DIR, hashlib.sha1(key.encode("utf-8")).hexdigest() + ".npy")
 
 def prepare_filler_cache():
-    """Pre-renders filler phrases so they can be played with zero synthesis latency."""
+    """Pre-renders filler phrases so they can be played with zero synthesis latency.
+    Rendered audio is kept on disk (keyed by text/voice/gain), so only the first start pays for synthesis."""
     for text in TEXT_FILLERS + VISION_FILLERS + [WAKE_ACK]:
         if text in _filler_cache:
             continue
+        path = _filler_cache_path(text)
+        try:
+            if os.path.exists(path):
+                _filler_cache[text] = np.load(path)
+                continue
+        except Exception:
+            pass
         try:
             audio_np = synthesize_offline(text)
             if audio_np is not None:
                 _filler_cache[text] = audio_np
+                try:
+                    if not os.path.isdir(FILLER_CACHE_DIR):
+                        os.makedirs(FILLER_CACHE_DIR)
+                    np.save(path, audio_np)
+                except Exception:
+                    pass
         except Exception as e:
             print("[WARN] Could not pre-render filler %r: %s" % (text, e))
 
@@ -713,7 +736,7 @@ def drain_socket(sock, max_sec=0.5):
     try:
         while time.time() < end:
             try:
-                sock.recv(4096)
+                sock.recv(MIC_RECV_BYTES)
             except (BlockingIOError, socket.error):
                 break
     finally:
@@ -752,7 +775,7 @@ def record_push_to_talk():
     drain_end = time.time() + 0.05
     while time.time() < drain_end:
         try:
-            sock.recv(4096)
+            sock.recv(MIC_RECV_BYTES)
         except socket.timeout:
             break
             
@@ -763,7 +786,7 @@ def record_push_to_talk():
             stop_event.wait()  # Still consume the pending ENTER so it doesn't leak into the next prompt
             break
         try:
-            data = sock.recv(4096)
+            data = sock.recv(MIC_RECV_BYTES)
             if data:
                 audio_frames.append(data)
         except socket.timeout:
@@ -1201,7 +1224,7 @@ def run_vad_mode():
 
     while True:
         try:
-            data = sock.recv(4096)
+            data = sock.recv(MIC_RECV_BYTES)
         except socket.timeout:
             continue
         # Echo guard: never listen to the robot's own voice
@@ -1257,8 +1280,12 @@ def main():
     # 1. Robot greeting (warm-up starts once the greeting is synthesized, so they don't compete for the GPU)
     queue_text_for_streaming_tts(GREETING, "greeting")
     synthesis_queue.join()
-    threading.Thread(target=warm_up_models, daemon=True).start()
+    warmup = threading.Thread(target=warm_up_models, daemon=True)
+    warmup.start()
     wait_for_all_tts_to_finish()
+    # Listen only once warm: otherwise the first question competes with the warm-up for the GPU
+    # (~5 s with cached fillers, mostly hidden behind the greeting)
+    warmup.join(60)
 
     if vad_mode:
         run_vad_mode()
