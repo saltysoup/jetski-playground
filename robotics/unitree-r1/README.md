@@ -249,7 +249,7 @@ detects the end of each utterance and the request is sent automatically.
    scp ~/robot_assets/models/vad/silero_vad.onnx unitree@192.168.123.164:/home/unitree/robot_assets/models/vad/
    ```
 2. Try it in a terminal: `python3 /home/unitree/test_vision_voice_assistant.py --vad`
-3. Say **"Jason, what do you see?"**. For 10 s after each reply, follow-up questions need no wake word.
+3. Say **"Jason, what do you see?"**. For 3 s after each reply, follow-up questions need no wake word.
    Speech that doesn't start with the wake word is ignored. The mic is muted while the robot talks.
 
 ### 5.1.3 Run in the background at boot (systemd)
@@ -268,7 +268,7 @@ assistant with `--vad`, restarting it if it crashes. Settings go in `/home/unitr
 | Variable | Default | Meaning |
 |---|---|---|
 | `WAKE_WORDS` | `jason,jayson,jaysen,jaison` | Accepted spellings of the name; empty = respond to all speech |
-| `FOLLOW_UP_SEC` | `10` | Seconds after a reply during which no wake word is needed |
+| `FOLLOW_UP_SEC` | `3` | Seconds after a reply during which no wake word is needed |
 | `MEMORY_TURNS` | `3` | Previous exchanges sent to Gemma, so follow-ups like "and Germany?" work (0 = off) |
 | `CONVERSATION_MEMORY_SEC` | `120` | Forget the conversation after this much silence |
 | `VAD_GAIN` | `2.0` | Mic boost before VAD (raise if quiet speech is missed) |

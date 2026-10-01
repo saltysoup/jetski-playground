@@ -109,7 +109,7 @@ VAD_DEBUG = os.getenv("VAD_DEBUG", "0") == "1"
 # ASR spells the name several ways. Set WAKE_WORDS="" to respond to everything.
 WAKE_WORDS = [w.strip().lower() for w in os.getenv("WAKE_WORDS", "jason,jayson,jaysen,jaison").split(",")
               if w.strip()]
-FOLLOW_UP_SEC = float(os.getenv("FOLLOW_UP_SEC", "10"))  # no wake word needed this long after a reply
+FOLLOW_UP_SEC = float(os.getenv("FOLLOW_UP_SEC", "3"))  # no wake word needed this long after a reply
 ECHO_GUARD_SEC = 0.5  # ignore the mic this long after playback ends (speaker latency is ~0.32 s)
 
 
