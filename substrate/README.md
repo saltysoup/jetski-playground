@@ -51,6 +51,32 @@ Each reply shown in the ticker came from inside an agent's sandbox. The agent's 
 
 ## 2. Results
 
+> [!IMPORTANT]
+> **Repair update (2026-10-02).** "Suspend all" hung on the light fleet: 255 agents were stuck PAUSING or DELETING.
+> - **Cause:**
+>   - The old driver retried a failed LLM call up to 35 times, 100 ms apart, with no per-agent cap on overload traffic.
+>   - When llm-d shed calls (an EPP in-flight leak, then EPP liveness restarts under load), the retries piled processes into the 256 MiB workers. 255 workers were OOM-killed in three waves (09-29, 10-01, 10-02), and each left its agent stuck.
+>   - Two snapshots taken during an OOM wave could never be restored.
+> - **Second cause, slow wakes:**
+>   - The sandbox's PID 1 never reaps orphaned processes. A `/process` call cut off mid-flight (atenet's 10 s route timeout, or a pause during a call) left its `wget` behind as a zombie inside the snapshot.
+>   - The 684 agents created before 10-02 had 3.5–14.2 MiB checkpoints (p50 5.7 MiB), against 1.4–3.0 MiB for fresh agents, and wakes had slowed to 2.7–3.1 s.
+> - **Fixes:**
+>   - **Driver `4d45c260` (§6.3):**
+>     - backoff retries: 4 tries for the first joke, 3 for duty-cycle calls, 1 for overload traffic;
+>     - at most 2 LLM calls in flight per agent;
+>     - `wget -T 8`, so a call ends before atenet's timeout;
+>     - waits up to 10 s for an agent's calls before pausing it;
+>     - marks an agent whose restore fails, and `reconcile` re-creates it.
+>   - **Cluster:**
+>     - replaced the 255 OOM-restarted worker pods;
+>     - re-created all 1,000 agents from the golden snapshot (zombie-free);
+>     - rebalanced placement to 32–41 agents per node (§7).
+> - **Measured after the repair (light fleet, 2026-10-02):**
+>   - Wake 1,000: **1,893–1,905 ms** over 3 warm wakes, 0 failed; per-agent p50 1,084–1,135 ms. Suspend all with 1,000 up: 1,528–1,582 ms. ate-api showed 1,000 RUNNING, then 1,000 PAUSED, after every step.
+>   - Stage flow (30 s Default 50:50, then 60 s Priority, then **Suspend all straight from Priority**): 10,176 LLM calls, 0 failed. **Suspend all took 956 ms** (57 agents up).
+>   - After that run: 0 worker restarts, no new EPP restarts, every checkpoint ≤ 3.0 MiB, flow-control saturation back to 0.00.
+> - **Priority now delivers ~130 req/s, not 300.** The per-agent cap turns the excess into skipped requests instead of OOMs, and vLLM latency is about 2× the 09-26 level (§9, "vLLM is about half as fast").
+
 > [!NOTE]
 > **C4 update (2026-09-28).** The workers moved from 25 × c3-standard-4 to 25 × c4-standard-4, and the TPU cluster's CPU node from e2-standard-4 to c4-standard-4. The 1,000 light agents were re-created on the new nodes.
 > - Wake 1,000 (dashboard's Wake, no LLM calls): **1,907–1,953 ms** over 4 warm wakes, 0 failures; per-agent p50 1,045–1,084 ms. On C3 the median was 2,988 ms (below).
@@ -269,6 +295,10 @@ substrate/
 │       ├── gaie-values-flowctl.yaml   llm-d EPP Helm values (deployed)
 │       ├── gaie-values-kvaware.yaml   earlier values, not deployed
 │       └── llmd-envoy-gateway.yaml    in-cluster Envoy gateway
+├── ops/                               repair and rehearsal tools (§7)
+│   ├── ck_scan.py                     per-agent checkpoint sizes from every node
+│   ├── rebalance.py                   evens out agents per node after re-creations
+│   └── demo_soak.py                   replays the stage flow and samples the driver's state
 ├── patches/
 │   ├── ateapi-atelet-fast-wake.patch  against agent-substrate/substrate@fa6d949 (v0.1.0)
 │   ├── runsc_fast_sync.c              runsc wrapper embedded in atelet (deployed)
@@ -400,9 +430,9 @@ With go1.27.0 (linux/amd64) and gcc 15.2.0 these builds are byte-for-byte reprod
 | `runsc_fast` | `403b8d3d` |
 | `ateapi` | `c53a6b41` |
 | `atelet` | `c24d7425` |
-| `keynote_driver` | `a709458a` (source as of the C4 move, 2026-09-28) |
+| `keynote_driver` | `4d45c260` (source as of the 2026-10-02 repair) |
 
-Other toolchains produce different bytes but the same code. The driver row changed with the Hermes variant: the light driver in the cluster still runs the earlier build `fdef79b4`, and the Hermes driver there was built from the current source without `-trimpath`, so its bytes differ.
+Other toolchains produce different bytes but the same code. The light driver in the cluster runs `4d45c260`. The Hermes driver there still runs `a709458a`, built from the source as of the C4 move (before the repair). Its 1,080 workers (namespace `keynote-hermes`) showed 0 restarts on 2026-10-02, when the light fleet was repaired.
 
 ### 6.4 Size and tune the Substrate cluster
 
@@ -562,15 +592,28 @@ post strategy '{"mode":"balanced"}'
 post burst '{"hold":true,"wake_only":true}'; sleep 8; state     # expect: running {'2': 1000} all_running_ms ~2000 wake_failed 0 ...
 kubectl ate --context="${CTX_SUB}" get actors -a ate-demo-sandbox -o json \
   | python3 -c 'import json,sys,collections; d=json.load(sys.stdin); d=d if isinstance(d,list) else d.get("actors",[]); print(collections.Counter(a["status"]["state"] for a in d))'   # expect: Counter({'ACTOR_STATE_RUNNING': 1000})
-post suspend; sleep 6; state                                     # expect: idle {'0': 1000} ... all_suspended_ms ~2500
+post suspend; sleep 6; state                                     # expect: idle {'0': 1000} ... all_suspended_ms ~1600
 kubectl ate --context="${CTX_SUB}" get actors -a ate-demo-sandbox -o json \
   | python3 -c 'import json,sys,collections; d=json.load(sys.stdin); d=d if isinstance(d,list) else d.get("actors",[]); print(collections.Counter(a["status"]["state"] for a in d))'   # expect: Counter({'ACTOR_STATE_PAUSED': 1000})
 ```
 
 **If an agent does not reach RUNNING:**
-1. Look for `inconsistent private memory files on restore` in the driver log: `kubectl --context="${CTX_SUB}" -n keynote-demo exec keynote-driver -- tail -n 200 /work/driver.log`.
-2. Delete that agent: `kubectl ate --context="${CTX_SUB}" delete actor --any-state agent-NNNN -a ate-demo-sandbox`.
-3. Re-create it: `post reconcile`, then wait until `state` prints `idle` again.
+1. The driver's note (yellow dot on **LIVE**) reads `agent-NNNN wake failed: … runsc restore …`. The full error, typically `inconsistent private memory files on restore`, is in the driver log: `kubectl --context="${CTX_SUB}" -n keynote-demo exec keynote-driver -- tail -n 200 /work/driver.log`.
+2. Run `post reconcile` and wait until `state` prints `idle`. The driver re-creates every agent whose restore failed, and every agent that is not at rest.
+3. Run this health check again. A re-created agent's first wake restores from the golden snapshot in GCS, so it is slower.
+
+**If Suspend all hangs, or Wake 1,000 gets slower than about 2.1 s:**
+1. **OOM-restarted workers.** An agent whose worker restarted is stuck PAUSING or DELETING, and Suspend all waits for it. Replace the restarted workers (the WorkerPool recreates them), then reconcile:
+   ```bash
+   kubectl --context="${CTX_SUB}" -n ate-demo-sandbox get pods -o json \
+     | python3 -c 'import json,sys; [print(p["metadata"]["name"]) for p in json.load(sys.stdin)["items"] if any(c.get("restartCount",0) for c in p["status"].get("containerStatuses",[]))]' \
+     | xargs -r kubectl --context="${CTX_SUB}" -n ate-demo-sandbox delete pod --grace-period=10
+   post reconcile
+   until curl -s localhost:8090/api/state | python3 -c 'import json,sys; sys.exit(json.load(sys.stdin)["phase"]!="idle")'; do sleep 5; done
+   curl -s localhost:8090/api/state | python3 -c 'import json,sys; print(json.load(sys.stdin).get("note"))'   # expect: preflight: … re-created N (0 failed) … 0 not at rest
+   ```
+2. **Bloated snapshots.** Run `CTX_SUB=… python3 ops/ck_scan.py`. A fresh agent checkpoints at 1.4 MiB and at 2–4 MiB after it has served traffic. Bigger checkpoints restore more slowly; on 2026-10-02 they came from zombie processes (§9). Re-create those agents: delete them with `kubectl ate … delete actor --any-state`, then `post reconcile`.
+3. **Uneven placement.** Every re-created agent lands on a random node, and the node with the most agents sets the wake time. `CTX_SUB=… python3 ops/rebalance.py 40 10` evens it out. On 2026-10-02 it took 10 rounds, about 80 s, and left 32–41 agents per node. It wakes and suspends the fleet every round, so run it only while the stage is not in use.
 4. Run this health check again.
 
 ## 8. Stage runbook
@@ -578,8 +621,11 @@ kubectl ate --context="${CTX_SUB}" get actors -a ate-demo-sandbox -o json \
 1. **Before walking on:** the health check passed; the dashboard shows 0 / 1,000 and **Default 50:50** is highlighted in the llm-d header.
 2. **Wake Agents:** the counter races to 1,000 in about 2 s. It sends no LLM calls.
 3. **Simulate Traffic:** agents cycle at about 90% idle and jokes scroll. Click a joke to magnify it.
-4. **Priority:** raises the load to 300 req/s and tags requests by band; the Priority Flow Control panel at the top of the llm-d side lights up. On the live pool, queues and waits stay near zero (§2.2), so talk to the bands rather than to a latency gap.
-5. **Default 50:50**, then **Suspend all:** suspend takes about 0.6 s from Default 50:50. From Priority it takes 1.3–3.8 s, because it waits for queued calls.
+4. **Priority:** raises the offered load to 300 req/s and tags requests by band; the Priority Flow Control panel at the top of the llm-d side lights up.
+   - The pool delivers about 130 req/s: each agent runs at most 2 LLM calls at once, and the excess is counted as skipped.
+   - Per-pod latency reads 0.8–1.9 s (§9, "vLLM is about half as fast").
+   - Queues and waits stay near zero (§2.2), so talk to the bands rather than to a latency gap.
+5. **Suspend all:** about 1 s from either mode. On 2026-10-02 it took 956 ms straight from Priority and 1,024 ms from Default 50:50.
 6. After any reconcile (operator menu: click **LIVE**, then **reconcile agents** twice) or agent re-creation, do one warm-up wake + suspend (the health check) before the next show.
 
 ## 9. Known issues and disclosures
@@ -603,13 +649,29 @@ kubectl ate --context="${CTX_SUB}" get actors -a ate-demo-sandbox -o json \
 - **Priority** does not show a latency gap on the live pool (§2.2).
 
 **Operational risks:**
-- **Unrestorable snapshot.** Once in about 13,000 pause/restore cycles, an agent's app died just before a pause. gVisor checkpointed it with no error, and every later restore failed (`inconsistent private memory files on restore`). "Wake 1,000" then stops at 999 until that agent is re-created (see the §7 repair steps).
+- **Unrestorable snapshot.** Once in about 13,000 pause/restore cycles, an agent's app died just before a pause. gVisor checkpointed it with no error, and every later restore failed (`inconsistent private memory files on restore`). "Wake 1,000" then stops at 999. Two more appeared on 2026-10-02, taken while their workers were being OOM-killed. The driver now marks such an agent, and `reconcile` re-creates it (§7).
+- **Worker memory headroom is small.** Each worker has a 256 MiB limit.
+  - The old driver's retries hit it: 255 workers were OOM-killed in three waves. An agent whose worker dies is stuck PAUSING or DELETING, and Suspend all waits for it.
+  - With at most 2 calls in flight per agent, worker peaks reached 187 MiB on 2026-10-02.
+  - Raising the per-agent cap or the retry budget needs bigger workers. Changing the WorkerPool's memory recreates all 1,600 workers.
+- **Zombie processes in snapshots.** The sandbox's PID 1 (the upstream `sandbox` binary, BusyBox userland) does not reap orphaned processes.
+  - Two things cut off a `/process` call: atenet's route timeout (10 s by default, not overridden here) and a pause during a call. Either way the shell is killed, its `wget` becomes a zombie, and the zombie is checkpointed with the agent.
+  - Agents collected up to about 75 zombies, checkpoints grew to 14 MiB, and Wake 1,000 slowed from about 1.9 s to 2.7–3.1 s.
+  - The driver now avoids both triggers (`wget -T 8`, and it waits for an agent's calls before pausing it). `ops/ck_scan.py` shows checkpoint growth.
+- **EPP in-flight leak and restarts.** The endpoint picker's in-flight count can leak. Flow-control saturation then stays high with no traffic (0.99 was seen), and llm-d sheds or queues calls. Its liveness probe (1 s timeout) also restarted it under load. If saturation stays above 0 while idle, restart it with `kubectl --context="${CTX_TPU}" rollout restart deployment/gaie-pd-epp`. The pod IP changes, so re-run §6.10.
+- **Failed resumes hold workers.** After a failed resume, the patched ate-api's worker cache can keep that worker marked as taken until its next relist (every 5 minutes). Repeated failed wakes can therefore use up a node's free workers. This is why the driver no longer retries a failed restore.
+- **vLLM is about half as fast as on 2026-09-26.** The vLLM pods were restarted on 2026-09-28 with `--max-model-len 65536` for the Hermes variant. Before that they ran 2048; the image digest and every other flag are unchanged.
+  - Measured directly against each pod on 2026-10-02, with the driver's exact request: inter-token latency 6.0 ms at 1 request in flight, 15.4 ms at 32 and 30.5 ms at 64. At 64 a pod served 81.5 req/s with 752 ms mean latency. Both pods measured the same.
+  - On 2026-09-26, with 2048, each pod served 124 req/s at 345 ms (§2.2).
+  - The likely cause is the context length: vllm-torchtpu sizes the attention kernel's per-sequence page table and its tuned block sizes from `--max-model-len`. This has not been confirmed by an A/B test.
+  - Every request since 2026-09-28 had under 5,000 prompt tokens, so a smaller `--max-model-len` (for example 8192) would serve both variants. Hermes reads its 64k window from the driver's proxy (`-context-length`), not from vLLM. A request longer than vLLM's limit would be rejected.
+- **Stale checkpoints.** Deleting an actor leaves its local checkpoint on the node. After the 2026-10-02 re-creations there were 1,299 such directories (6.7 GiB across the 25 nodes). The node tuner's page-cache warmer still reads them every 20 s.
 - **Node recreation destroys node-local snapshots.** This includes auto-upgrade, auto-repair and maintenance. Agents paused on the affected node can no longer be restored and must be re-created. Upstream also warns that actors awake when their worker dies go `CRASHED`.
   - **Auto-upgrade is on for every pool in both demo clusters, and there is no maintenance exclusion.** The TPU cluster already moved from 1.35.7 to 1.35.8.
   - Consider `--no-enable-autoupgrade` on the Substrate pools, and a maintenance exclusion, through the show.
 - **Spot TPU nodes can be preempted.** The vLLM pod then restarts on a new node, which takes minutes. The pod IPs change, so re-run §6.10.
 - **`postgres-0` restarts** stop `http_srv`. Re-run §6.5 before anything restarts ate-api or atelet.
-- **Wake-time margin is thin.** It depends on the per-node placement imbalance (§2.1).
+- **Wake-time margin is thin.** The node with the most agents sets the wake time (§2.1). Every re-created agent lands on a random node, so rebalance after re-creating many (§7).
 
 ## 10. How this guide was verified
 

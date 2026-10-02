@@ -102,7 +102,10 @@ set -- --header="Content-Type: application/json" --header="x-request-id: $REQ_ID
 # (steady traffic above 100 req/s), and shared paths let one request's
 # rm/wget clobber another request's response.
 R=/tmp/llmd_resp.$$.json E=/tmp/llmd_wget_err.$$
-wget -qO "$R" "$@" --post-data="$PAYLOAD" "$LLM_URL" 2>"$E"
+# -T 8: finish before atenet's 10 s route timeout. A /process call cut off
+# there gets this shell killed, and the orphaned wget becomes a zombie that the
+# sandbox's PID 1 never reaps; zombies pile up in the snapshot and slow restores.
+wget -qO "$R" -T 8 "$@" --post-data="$PAYLOAD" "$LLM_URL" 2>"$E"
 rc=$?
 if [ $rc -ne 0 ] || [ ! -s "$R" ]; then
   echo "LLM_CALL_FAILED rc=$rc $(head -c 300 "$E" 2>/dev/null)"
@@ -238,8 +241,9 @@ type totals struct {
 	PromptTokens     int64 `json:"prompt_tokens"`
 	CompletionTokens int64 `json:"completion_tokens"`
 	UniqueReplies    int   `json:"unique_replies"`
-	// askJoke retries failed attempts (up to 35), so "failed" only counts
-	// requests that never succeeded; these make the hidden retries visible.
+	// askJoke retries failed attempts (a small, per-caller budget with
+	// backoff), so "failed" only counts requests that never succeeded; these
+	// make the hidden retries visible.
 	Retried        int64 `json:"retried"`         // requests that needed more than one attempt
 	FailedAttempts int64 `json:"failed_attempts"` // attempts that failed before a later success
 	// Requests whose retries were stopped because the driver was putting the
@@ -385,6 +389,10 @@ type driver struct {
 	reqBusy []int32
 	// retryReasons buckets why LLM requests needed a retry (reset per burst).
 	retryReasons map[string]int
+	// badSnap holds agents whose last wake failed inside `runsc restore` (a
+	// snapshot that can never be restored). preflight re-creates them, so the
+	// next Wake or reconcile heals the fleet instead of stopping at 999.
+	badSnap map[int]bool
 
 	mmu       sync.Mutex
 	vHist     [][]vllmRaw
@@ -485,6 +493,7 @@ func main() {
 		phase:   "idle",
 		states:  bytes.Repeat([]byte{stSuspended}, c.agents),
 		reqBusy: make([]int32, c.agents),
+		badSnap: map[int]bool{},
 		uniq:    map[string]struct{}{},
 		tr:      trafficState{Strategy: "balanced"},
 		httpc: &http.Client{
@@ -670,15 +679,27 @@ func (d *driver) preflight(ctx context.Context) string {
 			return "preflight re-list failed: " + err.Error()
 		}
 	}
+	d.mu.Lock()
+	bad := make(map[int]bool, len(d.badSnap))
+	for idx := range d.badSnap {
+		bad[idx] = true
+	}
+	d.mu.Unlock()
 	var toCreate []int
 	for i := 1; i <= d.cfg.agents; i++ {
-		if s, ok := st[agentName(i)]; !clean(s, ok) {
+		if s, ok := st[agentName(i)]; !clean(s, ok) || bad[i] {
 			toCreate = append(toCreate, i)
 		}
 	}
 	createFailed := d.forEachLimited(toCreate, func(idx int) error {
 		_, existed := st[agentName(idx)]
-		return d.recreate(ctx, idx, existed)
+		if err := d.recreate(ctx, idx, existed); err != nil {
+			return err
+		}
+		d.mu.Lock()
+		delete(d.badSnap, idx)
+		d.mu.Unlock()
+		return nil
 	})
 	var st2 map[string]ateapipb.ActorState
 	if len(toRest) == 0 && len(toCreate) == 0 {
@@ -795,6 +816,13 @@ func retryable(err error) bool {
 	return true
 }
 
+// restoreFailed reports a wake that failed inside `runsc restore`, e.g. a
+// snapshot taken while the agent's app was dying ("inconsistent private
+// memory files on restore"); such a snapshot fails every later restore too.
+func restoreFailed(err error) bool {
+	return status.Code(err) == codes.Internal && strings.Contains(err.Error(), "runsc restore")
+}
+
 // wakeRPC resumes one actor; ResumeActor returns once the sandbox is RUNNING.
 func (d *driver) wakeRPC(ctx context.Context, idx int) (int, error) {
 	cli := d.cliFor(idx)
@@ -808,6 +836,14 @@ func (d *driver) wakeRPC(ctx context.Context, idx int) (int, error) {
 		cancel()
 		if err == nil {
 			d.memWoke(idx)
+		}
+		if err != nil && restoreFailed(err) {
+			// The snapshot itself is bad: retrying cannot help, and every try
+			// books another worker on the snapshot's node in ate-api's cache.
+			d.mu.Lock()
+			d.badSnap[idx] = true
+			d.mu.Unlock()
+			return attempt, err
 		}
 		if err == nil || !retryable(err) || time.Now().After(deadline) || attempt >= 40 {
 			return attempt, err
@@ -868,8 +904,11 @@ func (d *driver) strategyHeaders(strategy string) (target, objective, tag string
 	return "", "", ""
 }
 
-// askJoke makes the agent call the llm-d gateway from inside its sandbox.
-func (d *driver) askJoke(ctx context.Context, idx int, strategy string) jokeRes {
+// askJoke makes the agent call the llm-d gateway from inside its sandbox, with
+// at most maxAttempts tries. Every try runs a new process in the agent's
+// 256 MiB worker, so the budget stays small: under overload, unbounded retries
+// pile up processes and OOM-kill workers (their agents then cannot pause).
+func (d *driver) askJoke(ctx context.Context, idx int, strategy string, maxAttempts int) jokeRes {
 	if d.h != nil {
 		return d.askHermes(ctx, idx, strategy)
 	}
@@ -911,11 +950,17 @@ func (d *driver) askJoke(ctx context.Context, idx int, strategy string) jokeRes 
 			res.firstErr = msg
 		}
 	}
-	for attempt := 1; attempt <= 35; attempt++ {
-		if attempt > 1 && d.agentResting(idx) {
-			res.abandoned = true
-			res.err = "agent is being put to rest; retry skipped (atenet would wake it again)"
-			break
+	if maxAttempts < 1 {
+		maxAttempts = 1
+	}
+	for attempt := 1; attempt <= maxAttempts; attempt++ {
+		if attempt > 1 {
+			if d.agentResting(idx) {
+				res.abandoned = true
+				res.err = "agent is being put to rest; retry skipped (atenet would wake it again)"
+				break
+			}
+			time.Sleep(retryBackoff(attempt - 1))
 		}
 		res.attempts = attempt
 		req, _ := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
@@ -924,14 +969,12 @@ func (d *driver) askJoke(ctx context.Context, idx int, strategy string) jokeRes 
 		resp, err := d.httpc.Do(req)
 		if err != nil {
 			fail(err.Error())
-			time.Sleep(100 * time.Millisecond)
 			continue
 		}
 		raw, _ := io.ReadAll(resp.Body)
 		resp.Body.Close()
 		if resp.StatusCode != http.StatusOK {
 			fail(fmt.Sprintf("process HTTP %d: %.200s", resp.StatusCode, string(raw)))
-			time.Sleep(100 * time.Millisecond)
 			continue
 		}
 		var pr processResponse
@@ -951,10 +994,19 @@ func (d *driver) askJoke(ctx context.Context, idx int, strategy string) jokeRes 
 			break
 		}
 		fail(fmt.Sprintf("agent stdout: %.200s stderr: %.120s", out, strings.TrimSpace(pr.Stderr)))
-		time.Sleep(100 * time.Millisecond)
+		if retryReason(res.err) == "llm HTTP 429" {
+			break // shed by llm-d flow control: a retry would defeat it
+		}
 	}
 	res.latencyMs = msSince(t0)
 	return res
+}
+
+// retryBackoff is the pause after the n-th failed attempt: 100 ms doubling,
+// capped at 1 s, with +-25% jitter so retries from many agents spread out.
+func retryBackoff(n int) time.Duration {
+	ms := math.Min(100*math.Pow(2, float64(n-1)), 1000)
+	return time.Duration(ms*(0.75+rand.Float64()/2)) * time.Millisecond
 }
 
 var httpStatusRe = regexp.MustCompile(`HTTP/1\.[01] (\d{3})|HTTP (\d{3})`)
@@ -1252,7 +1304,8 @@ func (d *driver) runFirstJoke(ctx context.Context, b *burst, idx int) {
 	strategy := d.tr.Strategy
 	r.LLMStartMs = msSince(b.t0)
 	d.mu.Unlock()
-	res := d.askJoke(ctx, idx, strategy)
+	// Up to 4 tries: right after a wake, atenet can briefly answer 503.
+	res := d.askJoke(ctx, idx, strategy, 4)
 	d.mu.Lock()
 	d.reqBusy[i]--
 	atomic.AddInt64(&d.inflight, -1)
@@ -1271,10 +1324,13 @@ func (d *driver) runFirstJoke(ctx context.Context, b *burst, idx int) {
 	d.mu.Unlock()
 }
 
-// waitNotBusy blocks (up to 5 s) until agent idx has no LLM request in flight.
+// waitNotBusy blocks (up to 10 s) until agent idx has no LLM request in flight.
 // Callers first mark the agent stSuspending so no new request can target it.
+// 10 s is atenet's route timeout, so every call has ended by then; pausing
+// mid-call breaks the agent's /process connection, its shell gets killed and
+// the orphaned wget is left as a zombie in the snapshot (see jokeScript).
 func (d *driver) waitNotBusy(idx int) {
-	for w := 0; w < 500; w++ {
+	for w := 0; w < 1000; w++ {
 		d.mu.Lock()
 		n := d.reqBusy[idx-1]
 		d.mu.Unlock()
@@ -1283,7 +1339,7 @@ func (d *driver) waitNotBusy(idx int) {
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
-	log.Printf("%s still has requests in flight after 5 s; pausing anyway", agentName(idx))
+	log.Printf("%s still has requests in flight after 10 s; pausing anyway", agentName(idx))
 }
 
 // agentResting reports whether the driver has started putting agent idx
@@ -1484,7 +1540,7 @@ func (d *driver) dutyWakeAndRequest(ctx context.Context, b *burst) {
 	d.tr.Sent++
 	d.mu.Unlock()
 
-	res := d.askJoke(ctx, idx, strategy)
+	res := d.askJoke(ctx, idx, strategy, 3)
 
 	d.mu.Lock()
 	d.reqBusy[idx-1]--
@@ -1867,24 +1923,37 @@ func (d *driver) pickIdle(duty bool) int {
 		d.tr.Sent++
 		return i + 1
 	}
+	// In the duty cycle only ~10% of agents are up, so overload traffic
+	// shares them; cap it per agent so a slow pool turns into skipped
+	// requests instead of a pile of processes in one 256 MiB worker.
+	eligible := func(i int) bool {
+		if d.reqBusy[i] >= maxReqPerAgent {
+			return false
+		}
+		return d.states[i] == stRunning || (duty && d.states[i] == stRequesting)
+	}
 	for try := 0; try < 64; try++ {
-		i := rand.Intn(n)
-		if d.states[i] == stRunning || (duty && d.states[i] == stRequesting) {
+		if i := rand.Intn(n); eligible(i) {
 			return take(i)
 		}
 	}
 	start := rand.Intn(n)
 	for k := 0; k < n; k++ {
-		i := (start + k) % n
-		if d.states[i] == stRunning || (duty && d.states[i] == stRequesting) {
+		if i := (start + k) % n; eligible(i) {
 			return take(i)
 		}
 	}
 	return -1
 }
 
+// maxReqPerAgent caps concurrent LLM requests per agent (its own duty-cycle
+// request plus overload traffic).
+const maxReqPerAgent = 2
+
 func (d *driver) trafficRequest(idx int, strategy string, duty bool) {
-	res := d.askJoke(context.Background(), idx, strategy)
+	// Overload traffic is never retried: retries would multiply the load the
+	// strategy demo is meant to show being shed or queued.
+	res := d.askJoke(context.Background(), idx, strategy, 1)
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	d.reqBusy[idx-1]--
