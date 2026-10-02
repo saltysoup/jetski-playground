@@ -134,7 +134,7 @@ The Helm values are in [`manifests/tpu/gaie-values-flowctl.yaml`](./manifests/tp
 - `prefix-cache-scorer` (3), fed by the `precise-prefix-cache-producer`, which indexes vLLM's KV-cache events (ZMQ, port 5557);
 - `active-request-scorer` (2);
 - `kv-cache-utilization-scorer` (2);
-- `header-label-affinity-scorer`, named `target-pod-affinity` (100). It scores 1 for the pod whose `llm-d.ai/replica` label equals the `x-target-pod` header, and the weight outvotes all the others combined. In Steer mode the driver labels 80% of requests `pod-1` and 20% `pod-2`.
+- `header-label-affinity-scorer`, named `target-pod-affinity` (100). It scores 1 for the pod whose `llm-d.ai/replica` label equals the `x-target-pod` header, and the weight outvotes all the others combined. In Steer mode (driver API `steer8020`; the dashboard no longer has a button for it) the driver labels 80% of requests `pod-1` and 20% `pod-2`.
 
 **Why not `queue-scorer`:** it reads vLLM's waiting-queue gauge, which lags. During a 1,000-request burst it kept choosing the same pod and sent about 750 requests in a row there (86.5/13.5). `active-request-scorer` counts requests the EPP itself has dispatched, so it reacts immediately.
 

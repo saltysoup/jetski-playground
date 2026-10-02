@@ -3,7 +3,7 @@
 A keynote demo:
 - **Agent Substrate** wakes 1,000 sandboxed agents from zero in about 2 seconds on GKE (C4 nodes; about 3 s on the original C3 nodes).
 - The agents call **Gemma 4 12B**, served by vLLM on **Cloud TPU v6e** behind the **llm-d** router.
-- The stage dashboard shows both sides live, and lets the presenter switch llm-d's routing (balanced, header-steered 80/20, priority flow control).
+- The stage dashboard shows both sides live, and lets the presenter switch llm-d between its default cache-aware routing (about 50:50) and priority flow control.
 
 This folder has the dashboard, the orchestrator ("keynote driver"), the patches, the manifests, and a step-by-step guide. The guide was re-verified against the running clusters on 2026-09-26 (see [How this guide was verified](#10-how-this-guide-was-verified)).
 
@@ -34,15 +34,18 @@ The dashboard is one 1920×1080 page with a draggable divider.
 
 **Right panel, "llm-d":** two vLLM replicas (`pod-1`, `pod-2`) of `google/gemma-4-12B-it` on TPU v6e.
 - They sit behind the llm-d endpoint picker (EPP).
-- Shown per pod: live split, request rate, tokens/s, latency, prefix-cache hit rate and KV usage.
-- A flow-control panel shows the three priority bands.
+- At the top, the Priority Flow Control panel shows the three priority bands (queue depth, queue wait, dispatch rate) and pool saturation.
+- Below it, per pod: live split, request rate, tokens/s, latency, prefix-cache hit rate and KV usage.
+- The panel header holds the strategy switch (**Default 50:50** / **Priority**) and the **LIVE** pill. Clicking LIVE opens a small operator menu with traffic counters, the driver's last error note, keyboard keys and the admin actions (reconcile agents; reset memory in the Hermes variant). A yellow dot on LIVE means the driver has a note.
 
 | Button | What happens |
 |---|---|
 | **Wake Agents** | All 1,000 paused agents are resumed at once (`ResumeActor`). The clock stops when all 1,000 are RUNNING. No LLM calls are made yet. |
 | **Simulate Traffic** | Starts the duty cycle at 100 requests/s. Random agents wake, run a script inside their sandbox that asks the LLM for a short PyTorch joke, and pause again. About 90% of the fleet is paused at any moment ("fleet idle rate"). |
-| **Balanced / Steer 80/20 / Priority** | Changes how the agents' requests are labelled:<br>• Balanced: no routing header.<br>• Steer 80/20: `x-target-pod: pod-1` on 80% of requests and `pod-2` on 20%.<br>• Priority: 300 req/s, split 20% premium / 60% standard / 20% best-effort via `x-llm-d-inference-objective`. |
+| **Default 50:50 / Priority** | Changes how the agents' requests are labelled (driver modes `balanced` and `priority`):<br>• Default 50:50: no routing header; the EPP's cache- and load-aware scoring splits traffic about evenly across the two pods. Traffic returns to 100 req/s.<br>• Priority: 300 req/s, split 20% premium / 60% standard / 20% best-effort via `x-llm-d-inference-objective`.<br>The driver API also accepts `steer8020` (`x-target-pod` header steering, measured in §2.2), but the dashboard no longer has a button for it. |
 | **Suspend all** | Pauses every running agent back to zero compute. |
+
+Keyboard: `W` wake, `T` traffic, `S` suspend, `B` Default 50:50, `P` Priority, `Esc` closes the operator menu or a magnified joke.
 
 Each reply shown in the ticker came from inside an agent's sandbox. The agent's script POSTs to the llm-d gateway with `wget`, saves the reply to `/tmp/agent_memory.json` in the sandbox, and returns it.
 
@@ -115,6 +118,7 @@ Every run was checked against **ground truth**, not only the dashboard's own cou
 **Setup:** medians over each phase, excluding the first 8 s after each switch.
 - Traffic comes from the agents' sandboxes, through the gateway, to the EPP and then vLLM.
 - Every request uses the same 286-token system prompt, a per-agent user prompt, and `max_tokens` 50.
+- "Balanced" is the mode the dashboard now labels **Default 50:50**. The Steer 80/20 row was measured with a dashboard button that has since been removed (2026-10-02); the driver API still accepts `steer8020`.
 
 | Strategy (offered load) | Split pod-1 / pod-2 | Per-pod req/s | Output tok/s per pod | E2E latency per pod | Prefix-cache hit | Flow control |
 |---|---|---|---|---|---|---|
@@ -144,13 +148,17 @@ These images were rendered against the **mock backend** (`dashboard/mock_server.
 |---|---|
 | ![Idle](./docs/images/01_idle.png) | ![All awake](./docs/images/02b_all_awake_ready_for_traffic.png) |
 
-| Balanced | Steer 80/20 |
+| Default 50:50 | Priority (mock numbers) |
 |---|---|
-| ![Balanced](./docs/images/03_all_running_balanced.png) | ![Steer 80/20](./docs/images/04_steer_8020.png) |
+| ![Default 50:50](./docs/images/03_all_running_balanced.png) | ![Priority](./docs/images/05_priority.png) |
 
-| Priority (mock numbers) | Suspended |
+| llm-d focus (30/70 split) | Operator menu (click LIVE) |
 |---|---|
-| ![Priority](./docs/images/05_priority.png) | ![Suspended](./docs/images/06b_suspended.png) |
+| ![llm-d focus](./docs/images/04b_llmd_focus_30_70.png) | ![Operator menu](./docs/images/04_operator_menu.png) |
+
+| Suspended | One vLLM pod down |
+|---|---|
+| ![Suspended](./docs/images/06b_suspended.png) | ![Pod down](./docs/images/09b_pod_down.png) |
 
 More states, including errors, reconnect and 1440×900, are in [`docs/images/`](./docs/images/).
 
@@ -190,7 +198,7 @@ flowchart LR
 **Wake path:** the driver calls `ResumeActor` for all 1,000 agents at once, over 32 gRPC connections. ate-api binds each actor to a pre-warmed worker pod on the node that holds its snapshot. That node's atelet restores the gVisor sandbox with `runsc restore`, through the `runsc_fast` wrapper. `ResumeActor` returns when the actor is RUNNING.
 
 **LLM path:** the driver POSTs to `atenet-router` `/process`, addressed to the actor's DNS name. The agent's sandbox runs a shell script that calls the gateway with `wget`, adding:
-- `x-target-pod` in Steer mode;
+- `x-target-pod` in Steer mode (driver API `steer8020` only; no dashboard button);
 - `x-llm-d-inference-objective` in Priority mode.
 
 Envoy asks the EPP (`ext_proc`) which pod to use:
@@ -567,13 +575,12 @@ kubectl ate --context="${CTX_SUB}" get actors -a ate-demo-sandbox -o json \
 
 ## 8. Stage runbook
 
-1. **Before walking on:** the health check passed; the dashboard shows 0 / 1,000 and Balanced.
+1. **Before walking on:** the health check passed; the dashboard shows 0 / 1,000 and **Default 50:50** is highlighted in the llm-d header.
 2. **Wake Agents:** the counter races to 1,000 in about 2 s. It sends no LLM calls.
 3. **Simulate Traffic:** agents cycle at about 90% idle and jokes scroll. Click a joke to magnify it.
-4. **Steer 80/20:** the split bar moves to 80/20 within seconds.
-5. **Priority:** raises the load to 300 req/s and tags requests by band. On the live pool, queues and waits stay near zero (§2.2), so talk to the bands rather than to a latency gap.
-6. **Balanced**, then **Suspend all:** suspend takes about 0.6 s from Balanced. From Priority it takes 1.3–3.8 s, because it waits for queued calls.
-7. After any reconcile or agent re-creation, do one warm-up wake + suspend (the health check) before the next show.
+4. **Priority:** raises the load to 300 req/s and tags requests by band; the Priority Flow Control panel at the top of the llm-d side lights up. On the live pool, queues and waits stay near zero (§2.2), so talk to the bands rather than to a latency gap.
+5. **Default 50:50**, then **Suspend all:** suspend takes about 0.6 s from Default 50:50. From Priority it takes 1.3–3.8 s, because it waits for queued calls.
+6. After any reconcile (operator menu: click **LIVE**, then **reconcile agents** twice) or agent re-creation, do one warm-up wake + suspend (the health check) before the next show.
 
 ## 9. Known issues and disclosures
 

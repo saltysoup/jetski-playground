@@ -11,7 +11,7 @@ The demo works end to end on the live clusters, and the guide was re-verified st
 | Wake 1,000 agents | Median 2,988 ms over 10 wakes (2,902–3,286 ms). 4 of the 10 took longer than 3.0 s. 0 wake failures. |
 | Simulate Traffic | Fleet idle rate about 91%. 998–1,000 distinct agents complete a wake → LLM call → pause cycle per minute. 0 failed LLM requests. |
 | Suspend all | 0.60–0.74 s from Balanced; 2.4–2.6 s with all 1,000 up; 1.3–3.8 s from Priority. Always ends at 1,000 PAUSED and 0 sandboxes. |
-| llm-d | Balanced about 53/47. Steer 80/20 reaches 80/20 within seconds. About 90% of prompt tokens come from the prefix cache. |
+| llm-d | Balanced (now labelled Default 50:50) about 53/47. Steer 80/20 reached 80/20 within seconds (button removed from the dashboard on 2026-10-02; the driver API still accepts it). About 90% of prompt tokens come from the prefix cache. |
 | Hermes Agent variant (2026-09-28, [hermes/](./hermes/README.md)) | 1,000 Hermes agents on 18 × c4d-standard-16:<br>• wake in 2,444–2,854 ms;<br>• Simulate Traffic at 90.4–91.0% idle, 14,681 turns with 0 failed;<br>• 14,679 of 14,681 codename recalls correct after up to 28 suspends;<br>• Suspend all in 1,441 ms. |
 | Move to C4 (2026-09-28) | Light workers: 25 × c3-standard-4 → 25 × c4-standard-4. TPU cluster CPU node: e2-standard-4 → c4-standard-4. Control-plane pool stays on N2 (C4 can't attach the pd-balanced Postgres volume).<br>• Light wake 1,907–1,953 ms (was median 2,988 ms on C3), 0 failures;<br>• 40 s of traffic: 6,993 requests, 0 failed;<br>• Hermes re-check: wakes 2,500–2,923 ms, 1,702 replies with 0 failed, all recalls correct. |
 

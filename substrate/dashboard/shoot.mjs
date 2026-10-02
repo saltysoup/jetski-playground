@@ -84,6 +84,8 @@ const CHECK = `(() => {
     viewSplit: lw + ' / ' + (100 - lw),
     kvSummary: document.getElementById('kvSummary').innerText.replace(/\\s+/g, ' '),
     tickerRows: rows.length, tickerVisible: visible, live: document.getElementById('liveText').textContent,
+    strategy: [...document.querySelectorAll('.sbtn.active')].map((b) => b.textContent).join(',') || 'none',
+    ops: document.getElementById('ops').classList.contains('on') ? 'open' : 'closed',
     buttons: 'wake ' + btn('btnWake') + ' · traffic ' + btn('btnTraffic') + ' · suspend ' + btn('btnSuspend') + ' · reconcile ' + btn('btnRecon'),
     toast: document.getElementById('toast').classList.contains('show') ? document.getElementById('toast').textContent : '',
     note: document.getElementById('rmsg').textContent};
@@ -109,7 +111,7 @@ async function shot(name, w = 1920, h = 1080) {
   const srv = s ? `phase=${s.phase} running=${s.burst.running} rate=${s.traffic.rate} elapsed=${s.burst.elapsed_ms} suspend_elapsed=${s.burst.suspend_elapsed_ms}` : 'unreachable';
   console.log(`\n[shot] ${file}  (capture ${took} ms)\n  server: ${srv}` +
     `\n  hero: ${info.hero}\n  viewSplit: ${info.viewSplit}  podSplit: ${info.split}  kv: ${info.kvSummary}` +
-    `\n  ticker rows: ${info.tickerRows} (${info.tickerVisible} fully visible)  live: ${info.live}` +
+    `\n  ticker rows: ${info.tickerRows} (${info.tickerVisible} fully visible)  live: ${info.live}  strategy: ${info.strategy}  ops menu: ${info.ops}` +
     `\n  buttons: ${info.buttons}${info.toast ? '\n  toast: ' + info.toast : ''}${info.note ? '\n  note: ' + info.note : ''}`);
   for (const i of info.issues) console.log('  ! ' + i);
   if (w !== 1920 || h !== 1080) await setViewport(1920, 1080);
@@ -136,7 +138,7 @@ async function mainScenario() {
   console.log('simulate traffic:', await click('#btnTraffic'));
   await waitFor(firstRepliesDone, 20000, 'first replies');
   await sleep(5500);
-  await shot('03_all_running_balanced');
+  await shot('03_all_running_balanced');             // strategy "Default 50:50" (driver mode "balanced")
   console.log('magnify joke:', await click('#ticker .trow'));
   await sleep(300);
   await shot('03c_joke_magnified');
@@ -145,15 +147,15 @@ async function mainScenario() {
   await evaluate('window.__setViewSplit(70)');
   await sleep(400);
   await shot('03b_agents_focus_70_30');
-  await evaluate('window.__setViewSplit(50)');
-  await sleep(250);
-  console.log('steer:', await click('.sbtn[data-mode="steer8020"]'));
-  await sleep(4800);
-  await shot('04_steer_8020');
   await evaluate('window.__setViewSplit(30)');
   await sleep(400);
   await shot('04b_llmd_focus_30_70');
   await evaluate('window.__setViewSplit(50)');
+  await sleep(250);
+  console.log('operator menu:', await click('#live'));
+  await sleep(300);
+  await shot('04_operator_menu');
+  console.log('close operator menu:', await click('#live'));
   await sleep(250);
   console.log('priority (auto 300 req/s):', await click('.sbtn[data-mode="priority"]'));
   await sleep(5500);
@@ -168,6 +170,62 @@ async function mainScenario() {
   await waitFor((s) => s.phase === 'idle', 30000, 'suspended');
   await sleep(900);
   await shot('06b_suspended');
+  // admin reconcile lives in the operator menu and needs two clicks
+  console.log('reconcile:', await click('#live'), await click('#btnRecon'), await click('#btnRecon'), await click('#live'));
+  await sleep(600);
+  await shot('08_reconciling');
+  await waitFor((s) => s.phase === 'idle', 20000, 'reconciled');
+  await sleep(700);
+  await shot('08b_after_reconcile');
+}
+
+async function edgeScenario() {
+  await open({reset: true, fail_rate: 0.004, suspend_fail_rate: 0.03, pod_up: [true, true]});
+  console.log('\nwake agents:', await click('#btnWake'));
+  await sleep(200);
+  await shot('01b_starting');                           // Wake accepted; the driver's preflight runs while phase is idle
+  await waitFor((s) => s.phase === 'running', 20000, 'running');
+  await sleep(600);
+  // The page disables Wake outside idle. Re-enable it to stand in for a second console racing this one:
+  // the driver answers 409 "busy (phase running)" and the page shows the error toast.
+  console.log('second wake (forced):', await evaluate(`(() => { const b = document.getElementById('btnWake');
+    b.disabled = false; b.click(); return 'clicked'; })()`));
+  await sleep(450);
+  await shot('09a_busy_toast');
+  console.log('simulate traffic:', await click('#btnTraffic'));
+  await waitFor(firstRepliesDone, 20000, 'first replies');
+  await api('api/mock', {pod_up: [true, false]});
+  await sleep(5000);
+  await shot('09b_pod_down');
+  await api('api/mock', {pod_up: [true, true]});
+  await sleep(1500);
+  console.log('suspend:', await click('#btnSuspend'));
+  await waitFor((s) => s.phase === 'idle', 30000, 'suspend done');
+  await sleep(900);
+  await shot('09c_suspend_incomplete');
+  console.log('operator menu (driver note):', await click('#live'));
+  await sleep(300);
+  await shot('09d_operator_note');
+  await click('#live');
+  await api('api/mock', {reset: true, fail_rate: 0, suspend_fail_rate: 0, pod_up: [true, true]});
+}
+
+// Backend outage mid-demo: stop the backend when prompted, then restart it (an external helper can watch for the prompts).
+async function offlineScenario() {
+  await open({reset: true, fail_rate: 0, suspend_fail_rate: 0, pod_up: [true, true]});
+  console.log('\nwake agents:', await click('#btnWake'));
+  await waitFor((s) => s.phase === 'running' && s.burst.woke >= 1000, 20000, 'all awake');
+  console.log('simulate traffic:', await click('#btnTraffic'));
+  await waitFor(firstRepliesDone, 20000, 'first replies');
+  await sleep(4000);
+  console.log('>>> STOP THE BACKEND NOW (waiting up to 90 s for the page to notice)');
+  await waitForPage(`document.getElementById('liveText').textContent.startsWith('RECONNECTING')`, 90000, 'reconnecting pill');
+  await sleep(2500);
+  await shot('10a_backend_down');
+  console.log('>>> RESTART THE BACKEND NOW (waiting up to 90 s)');
+  await waitForPage(`document.getElementById('liveText').textContent === 'LIVE'`, 90000, 'LIVE again');
+  await sleep(2500);
+  await shot('10b_backend_back');
 }
 
 async function main() {
@@ -187,7 +245,9 @@ async function main() {
   });
   await send('Runtime.enable'); await send('Log.enable'); await send('Page.enable');
   await setViewport(1920, 1080);
-  await mainScenario();
+  const scenario = args.scenario || 'main';
+  if (scenario === 'edge') await edgeScenario(); else if (scenario === 'offline') await offlineScenario(); else await mainScenario();
+  // 409s from deliberate busy clicks and fetches during an outage show up as network errors; anything else is a real problem
   console.log('\n[logs] ' + (logs.length ? '\n' + logs.join('\n') : 'no console errors / exceptions'));
 }
 main().catch((e) => { console.error(e); process.exitCode = 1; }).finally(async () => {

@@ -136,6 +136,8 @@ body.stale .data{opacity:.4;filter:saturate(.3);transition:opacity .3s,filter:sa
 .tile{min-height:0;padding:0 16px;display:flex;flex-direction:column;justify-content:center;gap:1px;overflow:hidden}
 .tl{font-size:12px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--dim);line-height:1.1;white-space:nowrap}
 .tl small{font-weight:500;letter-spacing:.02em;text-transform:none;color:var(--dim2);font-size:12px;margin-left:6px}
+.tl small.tfail{color:var(--red-l);font-weight:600}
+.tl small.tfail:empty{display:none}
 .tv{font-size:25px;font-weight:600;line-height:1.05;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .tv .of{color:var(--dim);font-size:.8em}
 .rampCard{min-height:0;padding:9px 14px 6px;display:flex;flex-direction:column}
@@ -234,8 +236,24 @@ body.stale .data{opacity:.4;filter:saturate(.3);transition:opacity .3s,filter:sa
 #left.compact .jspot-body{font-size:20px}
 
 /* ---------- RIGHT ---------- */
-#right{display:grid;grid-template-columns:minmax(0,1fr) 204px;min-height:0}
-.rmain{display:flex;flex-direction:column;gap:12px;padding:14px 20px 16px 24px;min-width:0;min-height:0}
+#right{display:flex;flex-direction:column;min-height:0}
+.rmain{flex:1;display:flex;flex-direction:column;gap:12px;padding:14px 26px 16px 24px;min-width:0;min-height:0}
+/* header controls (replace the old side rail): flow-control strategy switch + live pill that opens the operator menu */
+.rctl{display:flex;align-items:center;gap:10px;flex:none}
+.seg{display:flex;align-items:center;gap:2px;height:42px;padding:3px;border-radius:21px;border:1px solid var(--line2);background:#0d1117}
+.sbtn{height:34px;padding:0 16px;border-radius:17px;border:0;background:transparent;color:var(--dim);font-size:16px;font-weight:600;
+  cursor:pointer;white-space:nowrap;transition:background .25s,color .25s,box-shadow .25s}
+.sbtn:hover:not(.active){color:var(--text);background:rgba(255,255,255,.07)}
+.sbtn.active{background:var(--blue);color:#fff;box-shadow:0 0 14px rgba(66,133,244,.5)}
+.live{position:relative;flex:none;height:42px;padding:0 12px 0 15px;display:flex;align-items:center;gap:8px;border:1px solid var(--line);
+  border-radius:21px;background:transparent;color:var(--green-l);font-size:13px;font-weight:700;letter-spacing:.12em;white-space:nowrap;cursor:pointer;
+  transition:border-color .2s}
+.live i{flex:none;width:9px;height:9px;border-radius:50%;background:currentColor;box-shadow:0 0 8px currentColor}
+.live .caret{font-size:10px;letter-spacing:0;color:var(--dim2)}
+.live:hover,.live.open{border-color:#56606c}
+.live.bad{color:var(--yellow);border-color:rgba(251,188,4,.6);background:rgba(251,188,4,.1);animation:pend 1s ease-in-out infinite;
+  letter-spacing:.04em;gap:7px}
+.live.note::after{content:"";position:absolute;top:-2px;right:-2px;width:11px;height:11px;border-radius:50%;background:var(--yellow);border:2px solid var(--bg)}
 .splitCard{flex:none;height:154px;padding:10px 18px 12px;display:flex;flex-direction:column;transition:opacity .4s}
 .splitCard.quiet .sbar,.splitCard.quiet .srow{opacity:.42}
 .srow{display:grid;grid-template-columns:1fr auto 1fr;align-items:end;transition:opacity .4s}
@@ -317,42 +335,33 @@ canvas.chart{flex:1 1 0px;min-height:0;width:100%;display:block}
   border-radius:6px;padding:0 10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .fhint.sla{background:rgba(251,188,4,.13);border:1px solid rgba(251,188,4,.45);color:var(--yellow-l);font-weight:600}
 
-.rail{border-left:1px solid var(--line);background:#0a0c10;padding:14px 14px 16px;display:flex;flex-direction:column;gap:10px;min-height:0}
-.live{flex:none;height:44px;display:flex;align-items:center;justify-content:center;gap:9px;font-size:14px;font-weight:700;
-  letter-spacing:.12em;color:var(--green-l);border:1px solid var(--line);border-radius:12px;white-space:nowrap}
-.live i{flex:none;width:9px;height:9px;border-radius:50%;background:currentColor;box-shadow:0 0 8px currentColor}
-.live.bad{color:var(--yellow);border-color:rgba(251,188,4,.6);background:rgba(251,188,4,.1);animation:pend 1s ease-in-out infinite;
-  font-size:13px;letter-spacing:.04em;gap:7px}
-.rlabel{margin-top:8px;font-size:12.5px;font-weight:700;letter-spacing:.04em;color:var(--text2);line-height:1.25}
-.sbtn{flex:none;height:86px;border-radius:14px;border:1px solid var(--line2);background:#12161c;color:var(--text2);text-align:left;
-  padding:9px 14px 9px 16px;cursor:pointer;display:flex;flex-direction:column;justify-content:center;gap:4px;position:relative;
-  transition:background .25s,border-color .25s}
-.sbtn:hover{border-color:#56606c}
-.sbtn .b1{font-size:20px;font-weight:700;color:var(--text);white-space:nowrap}
-.sbtn .b2{font-size:12.5px;color:var(--dim);white-space:nowrap}
-.sbtn.active{background:rgba(66,133,244,.2);border-color:var(--blue);box-shadow:inset 0 0 0 1px var(--blue)}
-.sbtn.active::before{content:"";position:absolute;left:-1px;top:14px;bottom:14px;width:5px;border-radius:0 4px 4px 0;background:var(--blue-l)}
-.sbtn.active .b2{color:var(--blue-l)}
-
-.rnote{min-height:18px;font-size:13px;color:var(--green-l);font-weight:600;text-align:center;white-space:nowrap}
-.rmsg{margin-top:auto;font-size:12px;line-height:1.35;color:var(--dim2);overflow-wrap:anywhere;
-  display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
-.rstats{margin-top:6px;display:grid;grid-template-columns:1fr auto;row-gap:5px;font-size:13.5px;color:var(--dim);
-  border-top:1px solid var(--line);padding-top:10px}
+/* operator menu: opened from the LIVE pill; holds what used to sit in the side rail (traffic stats, driver note, keys, admin) */
+.ops{position:absolute;z-index:16;top:62px;right:26px;width:330px;display:none;flex-direction:column;gap:9px;padding:12px 16px 13px;
+  background:#0c1016;border:1px solid var(--line2);border-radius:14px;box-shadow:0 14px 40px rgba(0,0,0,.72)}
+.ops.on{display:flex;animation:jpop .16s ease-out}
+.ops-h{font-size:12px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--dim)}
+.rstats{display:grid;grid-template-columns:1fr auto;row-gap:5px;font-size:14px;color:var(--dim)}
 .rstats b{color:var(--text2);font-weight:600;text-align:right}
-.rkeys{margin-top:4px;font-size:11.5px;line-height:1.45;color:#4d545e;text-align:center}
-.radmin{flex:none;align-self:center;margin-top:2px;background:none;border:0;padding:2px 6px;font-family:inherit;font-size:11.5px;color:#565d67;
-  cursor:pointer;text-decoration:underline dotted;text-underline-offset:3px;white-space:nowrap}
-.radmin:hover:not(:disabled){color:var(--dim)}
-.radmin.arm{color:var(--yellow);text-decoration:none}
+.rmsg{font-size:12.5px;line-height:1.35;color:var(--yellow-l);overflow-wrap:anywhere;border-top:1px solid var(--line);padding-top:8px}
+.rmsg:empty{display:none}
+.rkeys{font-size:12px;line-height:1.45;color:var(--dim2);border-top:1px solid var(--line);padding-top:8px}
+.radrow{display:flex;gap:8px;border-top:1px solid var(--line);padding-top:9px}
+.radmin{flex:none;height:30px;padding:0 12px;border-radius:8px;border:1px solid var(--line2);background:#161c24;color:var(--text2);
+  font-family:inherit;font-size:13px;font-weight:600;cursor:pointer;white-space:nowrap}
+.radmin:hover:not(:disabled){border-color:#56606c;color:var(--text)}
+.radmin.arm{color:var(--yellow);border-color:rgba(251,188,4,.6);background:rgba(251,188,4,.1)}
 .radmin:disabled{opacity:.45;cursor:default}
 
 /* ---------- RIGHT COMPACT (70/30 split) ---------- */
-#right.compact{grid-template-columns:minmax(0,1fr) 148px}
-#right.compact .rmain{padding:14px 12px 16px 14px}
+#right.compact .rmain{padding:14px 14px 16px 14px}
 #right.compact .phead{gap:8px}
 #right.compact .ptitle{font-size:15.5px}
 #right.compact .ptitle .pdot{width:9px;height:9px;margin-right:7px}
+#right.compact .rctl{gap:6px}
+#right.compact .seg{height:36px}
+#right.compact .sbtn{height:28px;padding:0 10px;font-size:13px}
+#right.compact .live{height:36px;padding:0 9px 0 11px;font-size:11.5px;letter-spacing:.06em;gap:6px}
+#right.compact .ops{right:14px;top:56px}
 #right.compact .splitCard{padding:9px 12px 10px}
 #right.compact .spn{font-size:14px;gap:6px}
 #right.compact .spc{font-size:44px}
@@ -378,23 +387,13 @@ canvas.chart{flex:1 1 0px;min-height:0;width:100%;display:block}
 #right.compact .sat{gap:6px;font-size:11.5px}
 #right.compact .satbar{width:68px;height:10px}
 #right.compact .satv{font-size:16px;min-width:38px}
-#right.compact .fcols,#right.compact .frow{grid-template-columns:138px minmax(24px,1fr) 38px 62px 68px;column-gap:5px}
-#right.compact .fcols{font-size:9px;letter-spacing:.03em}
-#right.compact .fname{font-size:12px;gap:4px}
+#right.compact .fcols,#right.compact .frow{grid-template-columns:150px minmax(24px,1fr) 44px 70px 78px;column-gap:6px}
+#right.compact .fcols{font-size:9.5px;letter-spacing:.03em}
+#right.compact .fname{font-size:12.5px;gap:5px}
 #right.compact .fname i{width:8px;height:8px}
 #right.compact .fname small{display:none}
-#right.compact .fv{font-size:14px}
-#right.compact .fhint{font-size:10.5px}
-#right.compact .rail{padding:12px 8px 14px;gap:7px}
-#right.compact .live{height:38px;font-size:11.5px;letter-spacing:.06em;gap:6px}
-#right.compact .rlabel{font-size:11px;letter-spacing:.02em;margin-top:5px}
-#right.compact .sbtn{height:68px;padding:7px 9px 7px 11px}
-#right.compact .sbtn .b1{font-size:16px}
-#right.compact .sbtn .b2{font-size:10.5px}
-#right.compact .rnote{font-size:11.5px}
-#right.compact .rstats{font-size:12px;row-gap:4px;padding-top:8px}
-#right.compact .rkeys{font-size:10px}
-#right.compact .radmin{font-size:10.5px}
+#right.compact .fv{font-size:15px}
+#right.compact .fhint{font-size:11px}
 
 /* ---------- Hermes Agent memory (only used when config.harness == "hermes") ---------- */
 .gridCard{position:relative}
@@ -457,7 +456,6 @@ mark.cn.given{background:rgba(138,180,248,.14);color:inherit;box-shadow:inset 0 
 .ai-rep:nth-child(n+2){color:var(--text2)}
 .ai-none{font-size:14px;color:var(--dim2)}
 .ai-ft{flex:none;font-size:11.5px;color:var(--dim2);font-family:var(--mono);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.radrow{flex:none;display:flex;justify-content:center;gap:2px}
 
 #toast{position:absolute;left:50%;bottom:26px;transform:translate(-50%,16px);opacity:0;pointer-events:none;z-index:20;
   background:#3b1b19;border:1px solid var(--red);color:#fce8e6;font-size:19px;padding:12px 22px;border-radius:12px;
@@ -519,7 +517,7 @@ mark.cn.given{background:rgba(138,180,248,.14);color:inherit;box-shadow:inset 0 
     </div>
     <div class="mid data" id="mid">
       <div class="tiles">
-        <div class="card tile"><div class="tl">LLM requests</div><div class="tv" id="tReq">0</div></div>
+        <div class="card tile"><div class="tl">LLM requests<small class="tfail" id="tFail"></small></div><div class="tv" id="tReq">0</div></div>
         <div class="card tile"><div class="tl">tokens<small>prompt + completion</small></div><div class="tv" id="tTok">0</div></div>
         <div class="card tile" id="uniqTile"><div class="tl">unique replies</div><div class="tv"><span id="tUniq">0</span><span class="of"> / <span id="tRep">0</span></span></div></div>
         <div class="card tile mtile none" id="memTile" style="display:none" title="Correct codename recalls after the agent was suspended to zero compute and restored">
@@ -562,13 +560,27 @@ mark.cn.given{background:rgba(138,180,248,.14);color:inherit;box-shadow:inset 0 
   <section id="right" class="panel">
     <div class="rmain">
       <header class="phead">
-        <div class="ptitle"><span class="pdot" style="background:var(--blue)"></span><b>LLM-D</b> · Gemma 4 12B on llm-d + vllm + TPUs</div>
+        <div class="ptitle"><span class="pdot" style="background:var(--blue)"></span><b>LLM-D</b><span class="opt"> · Gemma 4 12B on llm-d + vllm + TPUs</span></div>
+        <div class="rctl">
+          <div class="seg" role="group" aria-label="llm-d flow control strategy">
+            <button class="sbtn" data-mode="balanced" title="Default: KV-cache &amp; load-aware routing, about 50:50 across both pods (B)">Default 50:50</button>
+            <button class="sbtn" data-mode="priority" title="Priority-based flow control: 💎 Paid jump ahead of 🆓 Free; raises traffic to 300 req/s (P)">Priority</button>
+          </div>
+          <button class="live" id="live" title="Connection to the driver · click for the operator menu"><i></i><span id="liveText">CONNECTING…</span><span class="caret">▾</span></button>
+        </div>
       </header>
+      <div class="card flowCard data quiet" id="flowCard">
+        <div class="ctitle"><span>llm-d Priority Flow Control<span class="opt"> · Paid vs Free</span></span>
+          <span class="sat">pool saturation<span class="satbar"><b id="satb"></b></span><span class="satv" id="satv">0%</span></span></div>
+        <div class="fcols"><span>user tier (priority)</span><span>queue depth</span><span>queued</span><span>queue wait</span><span>dispatched</span></div>
+        <div id="frows"></div>
+        <div class="fhint" id="fhint">Viral spike protection: 💎 Paid Members jump ahead of 🆓 Free Users</div>
+      </div>
       <div class="card splitCard data" id="splitCard">
         <div class="srow">
           <div class="sp1"><div class="spn"><i style="background:var(--blue)"></i><span id="spn1">pod-1</span></div><div class="spc" id="spc1">50%</div></div>
           <div class="smode">
-            <div class="m1" id="smode">Balanced</div>
+            <div class="m1" id="smode">Default 50:50</div>
             <div class="kvpill" id="kvSummary"><i></i><span>KV CACHE</span><b id="kvSumUse">0%</b><span class="opt">used</span><span>·</span><b id="kvSumHit">—</b><span>hit</span></div>
             <div class="m2" id="scap">share of requests · last 3 s</div>
           </div>
@@ -591,35 +603,23 @@ mark.cn.given{background:rgba(138,180,248,.14);color:inherit;box-shadow:inset 0 
           <span class="leg"><span><i style="background:var(--blue)"></i><span class="lp1">pod-1</span></span><span><i style="background:var(--green)"></i><span class="lp2">pod-2</span></span></span></div>
         <canvas class="chart" id="latChart"></canvas>
       </div>
-      <div class="card flowCard data quiet" id="flowCard">
-        <div class="ctitle"><span>llm-d Priority Flow Control<span class="opt"> · Paid vs Free</span></span>
-          <span class="sat">pool saturation<span class="satbar"><b id="satb"></b></span><span class="satv" id="satv">0%</span></span></div>
-        <div class="fcols"><span>user tier (priority)</span><span>queue depth</span><span>queued</span><span>queue wait</span><span>dispatched</span></div>
-        <div id="frows"></div>
-        <div class="fhint" id="fhint">Viral spike protection: 💎 Paid Members jump ahead of 🆓 Free Users</div>
-      </div>
     </div>
-    <nav class="rail">
-      <div class="live" id="live"><i></i><span id="liveText">CONNECTING…</span></div>
-      <div class="rlabel">llm-d: Flow Control Strategy</div>
-      <button class="sbtn" data-mode="balanced" title="Balanced (B)"><span class="b1">Balanced</span><span class="b2">cache-aware 50/50</span></button>
-      <button class="sbtn" data-mode="steer8020" title="Steer 80/20 (E)"><span class="b1">Steer 80/20</span><span class="b2">request header</span></button>
-      <button class="sbtn" data-mode="priority" title="Priority (P)"><span class="b1">Priority</span><span class="b2">💎 Paid vs 🆓 Free</span></button>
-      <div class="rnote" id="rnote"></div>
-      <div class="rmsg" id="rmsg"></div>
+    <div class="ops" id="ops" aria-hidden="true">
+      <div class="ops-h">Operator</div>
       <div class="rstats data">
-        <span>rate</span><b id="rsRate">—</b>
+        <span>traffic rate</span><b id="rsRate">—</b>
         <span>in flight</span><b id="rsInf">—</b>
         <span>sent</span><b id="rsSent">—</b>
         <span>replies</span><b id="rsRep">—</b>
         <span>failed</span><b id="rsFail">—</b>
       </div>
-      <div class="rkeys">keys: W wake · T traffic · S suspend<br>B / E / P strategy</div>
+      <div class="rmsg" id="rmsg"></div>
+      <div class="rkeys">Keys: W wake · T traffic · S suspend<br>B default 50:50 · P priority · Esc close</div>
       <div class="radrow">
         <button class="radmin" id="btnRecon" title="Admin: POST api/reconcile (heal all agents back to suspended). Click twice.">reconcile agents</button>
         <button class="radmin" id="btnMemReset" style="display:none" title="Admin: POST api/memory/reset (new codenames + fresh Hermes sessions, idle only). Click twice.">reset memory</button>
       </div>
-    </nav>
+    </div>
   </section>
   <div id="toast"></div>
 </div>
@@ -639,10 +639,11 @@ const TICKER_EVERY_MS = 250;    // release at most 4 ticker lines per second
 const TICKER_BACKLOG = 12;
 const TICKER_DOM_MAX = 10;
 const SPAN_MS = 60000;          // time-series window
+// The two strategies the dashboard offers. The driver API also accepts 'steer8020' (header steering); if something
+// else sets it, the split card and chart markers show the raw mode name and no button is highlighted.
 const STRAT = {
-  balanced: {label: 'Balanced', cap: 'KV-cache & load-aware routing', target: 50},
-  steer8020: {label: 'Steer 80/20', cap: 'router honors a request header', target: 80},
-  priority: {label: 'Priority', cap: 'flow control by request priority', target: 50},
+  balanced: {label: 'Default 50:50', target: 50},   // KV-cache & load-aware routing, no routing header
+  priority: {label: 'Priority', target: 50},        // flow control by request priority (Paid vs Free)
 };
 const CELL = {48: '#262c35', 49: '#FBBC04', 50: '#34A853', 51: '#4285F4', 52: '#A142F4', 57: '#EA4335'};
 const CELL_OTHER = '#5f6368';
@@ -1006,6 +1007,7 @@ const PROMPT_TEACH = 'Your codename is {codename}, remember it. Now tell me a sh
 const PROMPT_RECALL = "hello from {agent}, what's your codename? Say it first, then tell me a short joke about pytorch.";
 const UI = {
   wake: $('btnWake'), traf: $('btnTraffic'), susp: $('btnSuspend'), recon: $('btnRecon'), memReset: $('btnMemReset'),
+  live: $('live'), ops: $('ops'), note: $('rmsg'), tFail: $('tFail'),
   hero: $('hero'), counter: $('counter'), hlabel: $('hlabel'), hstats: $('hstats'),
   idleBox: $('idleBox'), idlePct: $('idlePct'), idleSub: $('idleSub'),
   densIdle: $('densIdle'), gridNote: $('gridNote'),
@@ -1157,11 +1159,14 @@ function updateFromState(st) {
   if (!pendingBtn.has(UI.memReset)) UI.memReset.disabled = ph !== 'idle' || st.busy || starting;
   UI.tReq.set(st.totals.requests); UI.tTok.set(st.totals.tokens);
   UI.tUniq.set(st.totals.unique); UI.tRep.set(st.totals.replies);
+  const nFail = num(st.totals.failed, 0);
+  setText(UI.tFail, nFail > 0 ? `· ${fInt(nFail)} failed` : '');
   document.querySelectorAll('.lp1').forEach((e) => setText(e, podName(0)));
   document.querySelectorAll('.lp2').forEach((e) => setText(e, podName(1)));
-  const msg = $('rmsg');
-  setText(msg, st.note); if (msg.title !== st.note) msg.title = st.note;
-  updateCluster(); updateHermes(st); updatePods(st); updateSplit(st); updateFlow(st); updateRail(st);
+  // driver note (errors / repair summaries): shown in the operator menu, flagged by a dot on the LIVE pill
+  setText(UI.note, st.note); if (UI.note.title !== st.note) UI.note.title = st.note;
+  setCls(UI.live, 'note', !!st.note);
+  updateCluster(); updateHermes(st); updatePods(st); updateSplit(st); updateFlow(st); updateOps(st);
 }
 function updatePods(st) {
   let useSum = 0, useN = 0, hitSum = 0, hitN = 0;
@@ -1198,6 +1203,7 @@ function updateSplit(st) {
   setText($('scap'), quiet ? 'no traffic right now' : `share of requests · last ${fInt(L.window)} s`);
   const tgt = info ? info.target : 50, star = $('star');
   if (star.__l !== tgt) { star.__l = tgt; star.style.left = tgt + '%'; setCls(star, 'flip', tgt >= 85); }
+  if (star.__v !== !!info) { star.__v = !!info; star.style.display = info ? '' : 'none'; }   // no known target for other modes
   setText($('starl'), tgt === 50 ? 'target 50 / 50' : `target ${tgt} / ${100 - tgt}`);
   setText($('spn1'), podName(0)); setText($('spn2'), podName(1));
 }
@@ -1232,12 +1238,11 @@ function updateFlow(st) {
     setText(fh, 'Viral spike protection: 💎 Paid Members jump ahead of 🆓 Free Users');
   }
 }
-function updateRail(st) {
+function updateOps(st) {
   const tr = st.traffic;
   for (const b of sBtns) setCls(b, 'active', b.dataset.mode === tr.strategy);
   const r = num(tr.rate, 0);
   setText($('rsRate'), tr.rate == null ? '—' : r > 0 ? fInt(r) + ' req/s' : 'off');
-  setText($('rnote'), r > 0 && st.phase === 'running' ? `traffic active · ${fInt(r)} req/s` : st.phase === 'running' ? 'click Simulate Traffic' : '');
   UI.rsInf.set(tr.inflight); UI.rsSent.set(tr.sent); UI.rsRep.set(tr.replies); UI.rsFail.set(tr.failed);
 }
 
@@ -2063,12 +2068,24 @@ UI.memReset.addEventListener('click', () => {
   setText(UI.memReset, 'click again to reset'); UI.memReset.classList.add('arm');
   setTimeout(() => { if (memArm && performance.now() >= memArm) disarmMem(); }, 3100);
 });
+// operator menu (traffic stats, driver note, keys, admin): opened from the LIVE pill, closed by Esc or a click outside
+function setOps(on) {
+  setCls(UI.ops, 'on', on); setCls(UI.live, 'open', on);
+  UI.ops.setAttribute('aria-hidden', on ? 'false' : 'true');
+  if (!on) { disarmRecon(); disarmMem(); }
+}
+UI.live.addEventListener('click', () => setOps(!UI.ops.classList.contains('on')));
+document.addEventListener('pointerdown', (e) => {
+  if (UI.ops.classList.contains('on') && !UI.ops.contains(e.target) && !UI.live.contains(e.target)) setOps(false);
+});
+window.__setOps = setOps;
 document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && UI.ops.classList.contains('on')) { e.preventDefault(); setOps(false); return; }
   if (e.key === 'Escape' && INS.open) { e.preventDefault(); closeInspector(); return; }
   if (e.key === 'Escape' && spotEl && spotEl.classList.contains('on')) { e.preventDefault(); hideSpotlight(); return; }
   if (e.ctrlKey || e.metaKey || e.altKey || e.repeat) return;
   const k = e.key.toLowerCase();
-  const map = {w: act.wake, t: act.traffic, s: act.suspend, b: () => act.strategy('balanced'), e: () => act.strategy('steer8020'),
+  const map = {w: act.wake, t: act.traffic, s: act.suspend, b: () => act.strategy('balanced'), d: () => act.strategy('balanced'),
     p: () => act.strategy('priority')};
   if (map[k]) { e.preventDefault(); map[k](); }
 });

@@ -44,7 +44,7 @@ llm-d gateway ──▶ vLLM pod-1 / pod-2 (Gemma 4 12B, TPU v6e, --max-model-le
 
 - **One agent turn** is one Hermes API call. The driver sends the user message; Hermes adds its system prompt and the session history, then calls the model.
 - **The model call goes through the driver's LLM proxy**, not straight to llm-d. The proxy:
-  - applies the dashboard's routing strategy (Steer 80/20 and Priority headers);
+  - applies the dashboard's routing strategy (the Priority header; `x-target-pod` too if the API-only `steer8020` mode is set);
   - caps `max_tokens` at 50;
   - counts tokens for the dashboard;
   - answers the image's warm-up turns itself.
