@@ -189,14 +189,15 @@ type config struct {
 	hermesKeyFile, llmListen      string
 	memory                        bool
 	contextLength                 int
-	nodes, nodeVCPUs              int    // display only: the dashboard groups the grid into one tile per node
-	nodeType                      string // display only
-	agentContextLines             int    // context notes on steady-traffic requests (0 = none)
-	contexts                      int    // shared team contexts (0 = one per agent)
-	tierMix                       [3]int // flow: % of requests premium / standard / best-effort
-	maxInflight                   int    // cap on LLM requests in flight for overload traffic (0 = none, -1 = duty target + 20)
-	fleetIdlePct                  int    // duty cycle: % of the fleet kept at rest (the rest cycle wake -> request -> pause)
-	strategy                      string // initial routing strategy
+	nodes, nodeVCPUs              int     // display only: the dashboard groups the grid into one tile per node
+	nodeType                      string  // display only
+	agentContextLines             int     // context notes on steady-traffic requests (0 = none)
+	contexts                      int     // shared team contexts (0 = one per agent)
+	tierMix                       [3]int  // flow: % of requests premium / standard / best-effort
+	maxInflight                   int     // cap on LLM requests in flight for overload traffic (0 = none, -1 = duty target + 20)
+	overloadRate                  float64 // open-loop req/s added on top of the duty cycle, the same in every stage (0 = none)
+	fleetIdlePct                  int     // duty cycle: % of the fleet kept at rest (the rest cycle wake -> request -> pause)
+	strategy                      string  // initial routing strategy
 }
 
 // agentRec is one agent's lifecycle in a burst. All times are ms since burst T0.
@@ -479,14 +480,13 @@ func (d *driver) baseRate() float64 {
 	return float64(d.dutyTarget())
 }
 
-// autoRateForStrategy is the rate Simulate Traffic and the stage buttons set:
-// the duty cycle's base rate, plus 200 req/s of overload traffic in Stage 3
-// (100 / 300 at 90% idle, 200 / 400 at 80%).
+// autoRateForStrategy is the rate Simulate Traffic and the stage buttons set.
+// It is the same in every stage, so the three stages compare at the same
+// offered load: the duty cycle's base rate plus -overload-rate (default 0),
+// i.e. 200 req/s in every stage at 80% idle. Until 2026-10-03 Stage 3 added
+// 200 req/s of overload traffic (100 / 300 at 90% idle, 200 / 400 at 80%).
 func (d *driver) autoRateForStrategy(strategy string) float64 {
-	if strategy == stratFlow {
-		return d.baseRate() + 200
-	}
-	return d.baseRate()
+	return d.baseRate() + d.cfg.overloadRate
 }
 
 // noteChangeLocked appends a strategy or rate change to traffic.changes,
@@ -582,8 +582,9 @@ func main() {
 	flag.IntVar(&c.contextLength, "context-length", 65536, "-harness hermes: max_model_len the proxy reports on /models (match vLLM --max-model-len)")
 	flag.StringVar(&c.strategy, "strategy", stratRR, "Initial routing strategy: roundrobin (no llm-d) | kvaware (llm-d router) | flow (llm-d + flow control)")
 	tierMix := flag.String("tier-mix", "30,40,30", "flow strategy: percent of requests sent as premium,standard,best-effort (Paid Members, Paid Standard, Free Users)")
-	flag.IntVar(&c.fleetIdlePct, "fleet-idle-pct", 80, "Simulate Traffic duty cycle: percent of the fleet kept at rest; the other agents (200 of 1,000 at 80) cycle wake -> LLM request -> pause. Simulate Traffic offers one request/s per active agent (200 req/s at 80), Stage 3 that plus 200")
-	flag.IntVar(&c.maxInflight, "max-inflight", -1, "Overload traffic (the part of -rate above the duty cycle's rate) is held back while this many LLM requests are in flight: agents wait for their replies (0 = no cap, -1 = active agents + 20)")
+	flag.IntVar(&c.fleetIdlePct, "fleet-idle-pct", 80, "Simulate Traffic duty cycle: percent of the fleet kept at rest; the other agents (200 of 1,000 at 80) cycle wake -> LLM request -> pause. Simulate Traffic offers one request/s per active agent (200 req/s at 80), the same in every stage")
+	flag.Float64Var(&c.overloadRate, "overload-rate", 0, "Overload traffic in req/s added on top of the duty cycle, the same in every stage (0 = none): extra requests from agents that are already awake, held back at -max-inflight")
+	flag.IntVar(&c.maxInflight, "max-inflight", -1, "Overload traffic (-overload-rate) is held back while this many LLM requests are in flight: agents wait for their replies (0 = no cap, -1 = active agents + 20)")
 	flag.IntVar(&c.agentContextLines, "agent-context-lines", 60, "Steady-traffic requests carry this many lines (~25 tokens each) of context notes ahead of the question (0 = none)")
 	flag.IntVar(&c.contexts, "contexts", 240, "Agents work in this many teams that share their context notes (agent i is in team ((i-1) mod N)+1); 0 = every agent has its own notes. 240 x 60 lines: round robin hits ~60% of prompt tokens in the prefix cache, KV-aware routing ~93% (two vLLM pods)")
 	flag.Parse()
@@ -621,6 +622,9 @@ func main() {
 	}
 	if c.fleetIdlePct < 1 || c.fleetIdlePct > 99 {
 		log.Fatalf("-fleet-idle-pct must be 1..99, got %d", c.fleetIdlePct)
+	}
+	if c.overloadRate < 0 || math.IsNaN(c.overloadRate) || math.IsInf(c.overloadRate, 0) {
+		log.Fatalf("-overload-rate must be >= 0, got %v", c.overloadRate)
 	}
 	if c.maxInflight < 0 {
 		c.maxInflight = dutyTargetFor(c.agents, c.fleetIdlePct) + 20
@@ -2050,8 +2054,8 @@ func (d *driver) verifyAtRest(ctx context.Context) (fixed, notRest int, err erro
 // idle running agents while phase == running. When dutyCycle is active, the
 // base rate (one request/s per active agent) comes directly from dutyLoop's
 // wake->request->suspend cycle; trafficLoop only dispatches supplementary
-// overload traffic for the part of the rate above it (Stage 3: +200 req/s)
-// without overriding the agent's lifecycle state.
+// overload traffic for the part of the rate above it (-overload-rate, the same
+// in every stage; none by default) without overriding the agent's lifecycle state.
 func (d *driver) trafficLoop() {
 	tick := time.NewTicker(10 * time.Millisecond)
 	defer tick.Stop()
@@ -2754,6 +2758,7 @@ func (d *driver) snapshot() stateJSON {
 			"agent_context_lines": ctxLines,
 			"contexts":            ctxN,
 			"max_inflight":        d.cfg.maxInflight,
+			"overload_rate":       d.cfg.overloadRate,
 			"fleet_idle_pct":      d.cfg.fleetIdlePct,
 			"duty_target":         d.dutyTarget(),
 			"stage_rates": map[string]float64{stratRR: d.autoRateForStrategy(stratRR), stratKV: d.autoRateForStrategy(stratKV),

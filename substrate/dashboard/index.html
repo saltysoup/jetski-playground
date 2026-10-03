@@ -605,7 +605,7 @@ mark.cn.given{background:rgba(138,180,248,.14);color:inherit;box-shadow:inset 0 
           <div class="stages" role="group" aria-label="routing stage">
             <button class="stg" data-mode="roundrobin" data-n="1" title="Stage 1: no llm-d. The gateway spreads requests round robin over the two vLLM pods (1)">No llm-d<small>Round Robin</small></button>
             <button class="stg" data-mode="kvaware" data-n="2" title="Stage 2: the llm-d router sends each request to the pod that already has its prefix in KV cache (2)">llm-d Router<small>KV-Aware</small></button>
-            <button class="stg" data-mode="flow" data-n="3" title="Stage 3: llm-d router + flow control. Requests carry a user tier; when the pool is saturated, paid tiers are dispatched first. Adds 200 req/s of overload traffic (3)">llm-d + Flow<small>Priority SLA</small></button>
+            <button class="stg" data-mode="flow" data-n="3" title="Stage 3: llm-d router + flow control. Requests carry a user tier; when the pool is saturated, paid tiers are dispatched first (3)">llm-d + Flow<small>Priority SLA</small></button>
           </div>
           <button class="live" id="live" title="Connection to the driver · click for the operator menu"><i></i><span id="liveText">CONNECTING…</span><span class="caret">▾</span></button>
         </div>
@@ -1328,7 +1328,8 @@ function updateBanner(st) {
   if (bn.dataset.stage !== n) bn.dataset.stage = n;
   const rate = num(st.traffic.rate, 0);
   let title = info ? `Stage ${info.n}: ${info.title}` : `Routing: ${st.traffic.strategy || '—'}`;
-  if (mode === 'flow' && rate > 0) title = `Stage 3: llm-d + Flow (Priority SLA @ ${fInt(rate)} req/s)`;
+  // the offered load, in every stage: the same in all three unless the driver adds -overload-rate
+  if (info && rate > 0) title = `Stage ${info.n}: ${info.title.slice(0, -1)} @ ${fInt(rate)} req/s)`;
   setText($('bStage'), title);
   const live = KPI.req > 0.5, sla = live && SLA.on;
   setCls($('bKpi'), 'quiet', !live);

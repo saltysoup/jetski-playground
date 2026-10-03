@@ -48,7 +48,7 @@ llm-d gateway ──▶ vLLM pod-1 / pod-2 (Gemma 4 12B, TPU v6e, --max-model-le
   - caps `max_tokens` at 50;
   - counts tokens for the dashboard;
   - answers the image's warm-up turns itself.
-- **The deployed Hermes driver is an earlier build.** The stage headers above are the repo code. The Hermes driver running in the demo cluster knows only `balanced` (Stage 2) and `priority` (Stage 3). It serves the same dashboard page, which falls back to those names; clicking Stage 1 shows "This driver build has no round-robin stage". The three stages were not measured with Hermes.
+- **The deployed Hermes driver is an earlier build.** The stage headers above are the repo code. The Hermes driver running in the demo cluster knows only `balanced` (Stage 2) and `priority` (Stage 3). It serves the same dashboard page, which falls back to those names; clicking Stage 1 shows "This driver build has no round-robin stage". It also adds 200 req/s of overload traffic in Priority (300 req/s at its 90% idle), while the repo driver offers the same rate in every stage (`-overload-rate` adds more, default 0). The three stages were not measured with Hermes.
 - **Memory** is Hermes' own session store (SQLite under `/data`), selected by `X-Hermes-Session-Id: agent-NNNN-g<generation>`. Pause and suspend snapshot the whole sandbox (`onPause: SNAPSHOT_CONTENT_SCOPE_FULL`), so the history comes back on every wake.
 - **No tools.** Each turn is a single ~700-token chat completion. The system prompt is the same for every agent, so llm-d's prefix cache serves most of it.
 

@@ -3,10 +3,13 @@
 
 Wake Agents (wake_only) -> Simulate Traffic (Default 50:50, today's Stage 2) ->
 Priority (Stage 3) -> Default 50:50 -> Suspend all, each at the driver's own
-stage rate (config.stage_rates: 200 and 400 req/s at the default 80% fleet
-idle). Prints one line per sample, so stuck agents, failed calls and
-flow-control saturation are visible. BAL_S=0 suspends straight from Priority,
-the worst case for calls in flight during the pause.
+stage rate (config.stage_rates: 200 req/s in every stage at the default 80%
+fleet idle; older drivers 200 and 400). Prints one line per sample, so stuck
+agents, failed calls and flow-control saturation are visible. BAL_S=0
+suspends straight from Priority, the worst case for calls in flight during
+the pause. At 80% fleet idle the step back to Default 50:50 can fail a few
+dozen Free-User requests that were still queued from Priority (README §9);
+the show only goes forward.
 
 Usage: python3 demo_soak.py [DRIVER_URL=http://localhost:8090/] [WARM_S=30] [PRIO_S=60] [BAL_S=20]
 """

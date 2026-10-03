@@ -50,8 +50,9 @@ Mock-only extra (NOT part of the real contract, handy for testing edge states):
 Routes match by suffix, so the page also works behind a path prefix,
 e.g. http://127.0.0.1:8765/some/prefix/ .
 
-Usage:  python3 mock_server.py [port] [--harness sandbox|hermes] [--fleet-idle-pct=N] [--no-cluster]
-        (default 8765, sandbox; fleet idle 80 for sandbox and 90 for hermes, like each variant's driver)
+Usage:  python3 mock_server.py [port] [--harness sandbox|hermes] [--fleet-idle-pct=N] [--overload-rate=N] [--no-cluster]
+        (default 8765, sandbox; fleet idle 80 for sandbox and 90 for hermes, like each variant's driver;
+        sandbox offers the same rate in every stage, plus --overload-rate req/s (default 0), like the driver)
         config.cluster: sandbox 25 x c4-standard-4 (4 vCPU), hermes 18 x c4d-standard-16 (16 vCPU);
         --no-cluster omits it, like an older backend.
 """
@@ -137,11 +138,16 @@ def set_fleet_idle(pct):
 
 
 set_fleet_idle(80)
+OVERLOAD_RATE = 0.0             # the driver's -overload-rate: open-loop req/s added in every stage (light fleet only)
 
 
 def auto_rate(strategy):
-    """The driver's autoRateForStrategy: the duty cycle's base rate, plus 200 req/s of overload in Stage 3."""
-    return BASE_RATE + 200 if strategy == "flow" else BASE_RATE
+    """The driver's autoRateForStrategy: the same rate in every stage, so the stages compare at the same load:
+    the duty cycle's base rate plus -overload-rate (0 by default). The Hermes driver build predates that and
+    still adds 200 req/s of overload traffic in Stage 3 (100 / 300 at 90% idle)."""
+    if HARNESS == "hermes":
+        return BASE_RATE + 200 if strategy == "flow" else BASE_RATE
+    return BASE_RATE + OVERLOAD_RATE
 
 MILESTONE_FRACS = (0.10, 0.25, 0.50, 0.75, 1.0)
 SUSPEND_CAP = 200           # the driver caps suspend calls in flight at 200 ...
@@ -1118,7 +1124,7 @@ class Sim:
                         self.duty_owned[idx] = 1
                         self._set(idx, C1)
                         self._sched(now + self.rnd.uniform(0.06, 0.11), "duty_wake", idx)
-                    # Any extra req/s above the duty cycle's base rate (Stage 3: +200 req/s)
+                    # Extra req/s above the duty cycle's base rate (--overload-rate; Hermes harness: +200 in Stage 3)
                     extra_rate = max(0.0, float(self.rate) - BASE_RATE)
                     self.arr_acc = min(self.arr_acc + extra_rate * dt, max(1.0, extra_rate))
                     n = int(self.arr_acc)
@@ -1340,6 +1346,8 @@ class Sim:
                    "accelerator": ACCEL, "max_tokens": MAX_TOKENS, "harness": HARNESS,
                    "fleet_idle_pct": FLEET_IDLE_PCT, "duty_target": DUTY_TARGET, "max_inflight": MAX_INFLIGHT,
                    "stage_rates": {k: auto_rate(k) for k in STRATEGIES}}
+            if HARNESS != "hermes":
+                cfg["overload_rate"] = OVERLOAD_RATE
             if SEND_CLUSTER:
                 cfg["cluster"] = dict(CLUSTERS[HARNESS])
             state = {
@@ -1452,7 +1460,7 @@ class Handler(BaseHTTPRequestHandler):
 
 
 def main():
-    global HARNESS, SEND_CLUSTER
+    global HARNESS, SEND_CLUSTER, OVERLOAD_RATE
     port = 8765
     idle = None
     args = sys.argv[1:]
@@ -1467,6 +1475,13 @@ def main():
             HARNESS = args[j + 1]
         elif a.startswith("--fleet-idle-pct="):
             idle = a.split("=", 1)[1]
+        elif a.startswith("--overload-rate="):
+            try:
+                OVERLOAD_RATE = float(a.split("=", 1)[1])
+            except ValueError:
+                OVERLOAD_RATE = -1.0
+            if OVERLOAD_RATE < 0:
+                sys.exit("--overload-rate must be a number >= 0")
     if HARNESS not in ("sandbox", "hermes"):
         sys.exit("--harness must be sandbox or hermes")
     if idle is None:
@@ -1477,8 +1492,9 @@ def main():
     httpd = ThreadingHTTPServer(("0.0.0.0", port), Handler)
     httpd.daemon_threads = True
     threading.Thread(target=sim_loop, daemon=True).start()
-    print("mock keynote driver (harness %s, fleet idle %d%%): http://127.0.0.1:%d/  (Ctrl-C to stop)"
-          % (HARNESS, FLEET_IDLE_PCT, port), flush=True)
+    print("mock keynote driver (harness %s, fleet idle %d%%, stage rates %s): http://127.0.0.1:%d/  (Ctrl-C to stop)"
+          % (HARNESS, FLEET_IDLE_PCT, "/".join("%g" % auto_rate(k) for k in ("roundrobin", "kvaware", "flow")), port),
+          flush=True)
     try:
         httpd.serve_forever()
     except KeyboardInterrupt:

@@ -101,7 +101,7 @@ It waits for `runsc` to finish, so a restore still means a running sandbox.
 **Simulate Traffic (duty cycle).**
 - `-fleet-idle-pct` (default 80) sets the number of active agents: 1,000 × (100 − 80)% = 200, run by 196 workers. Each loops: pick a random paused agent → `ResumeActor` → hold it "running" for 70–140 ms so the state is visible on the grid → run one LLM request inside its sandbox → `PauseActor`.
 - That keeps about 200 agents active and about 80% idle. Until 2026-10-03 it was fixed at 96 workers, about 100 agents active and about 90% idle.
-- Stage 3 (`flow`) raises the offered load by 200 req/s (400 req/s at 80% idle). The extra requests go to agents that are already awake, and are skipped while `-max-inflight` requests are in flight (auto: active agents + 20 = 220).
+- Every stage offers the same load, the duty cycle's 200 req/s at 80% idle, so the stages compare at equal load. `-overload-rate` (default 0) adds open-loop overload traffic to every stage alike: extra requests from agents that are already awake, skipped while `-max-inflight` requests are in flight (auto: active agents + 20 = 220). Until the evening of 2026-10-03, Stage 3 (`flow`) alone added 200 req/s of it (400 req/s at 80% idle).
 
 **One LLM request.**
 - The driver POSTs to `atenet-router` `/process` for the agent. The sandbox runs a shell script that calls the llm-d gateway with `wget`, adding the routing header for the current strategy.

@@ -160,7 +160,7 @@ async function mainScenario() {
   console.log('stage 2, llm-d router (kvaware):', await click('.stg[data-mode="kvaware"]'));
   await sleep(8000);
   await shot('04c_stage2_kv_aware');
-  console.log('stage 3, llm-d + flow (auto 400 req/s at 80% idle):', await click('.stg[data-mode="flow"]'));
+  console.log('stage 3, llm-d + flow (same 200 req/s as stages 1 and 2 at 80% idle):', await click('.stg[data-mode="flow"]'));
   await sleep(9000);
   await shot('05_stage3_flow');
   await shot('07_1440x900', 1440, 900);

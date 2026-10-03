@@ -1,6 +1,6 @@
 # Status, decisions and open items
 
-Last updated 2026-10-03 (three llm-d stages; fleet idle rate 80%). The [README](./README.md) has the guide and the measured results. The engineering details are in [implementation.md](./implementation.md).
+Last updated 2026-10-03 (three llm-d stages; fleet idle rate 80%; the same load in every stage). The [README](./README.md) has the guide and the measured results. The engineering details are in [implementation.md](./implementation.md).
 
 ## Status
 
@@ -14,7 +14,7 @@ The demo works end to end on the live clusters, and the guide was re-verified st
 | llm-d | Balanced (now labelled Default 50:50) about 53/47. Steer 80/20 reached 80/20 within seconds (button removed from the dashboard on 2026-10-02; the driver API still accepts it). About 90% of prompt tokens come from the prefix cache. |
 | Hermes Agent variant (2026-09-28, [hermes/](./hermes/README.md)) | 1,000 Hermes agents on 18 × c4d-standard-16:<br>• wake in 2,444–2,854 ms;<br>• Simulate Traffic at 90.4–91.0% idle, 14,681 turns with 0 failed;<br>• 14,679 of 14,681 codename recalls correct after up to 28 suspends;<br>• Suspend all in 1,441 ms. |
 | Move to C4 (2026-09-28) | Light workers: 25 × c3-standard-4 → 25 × c4-standard-4. TPU cluster CPU node: e2-standard-4 → c4-standard-4. Control-plane pool stays on N2 (C4 can't attach the pd-balanced Postgres volume).<br>• Light wake 1,907–1,953 ms (was median 2,988 ms on C3), 0 failures;<br>• 40 s of traffic: 6,993 requests, 0 failed;<br>• Hermes re-check: wakes 2,500–2,923 ms, 1,702 replies with 0 failed, all recalls correct. |
-| Three llm-d stages at 80% fleet idle (2026-10-03, [README §2](./README.md#2-results)) | About 200 agents active (`-fleet-idle-pct` 80; was 90). Offered 200 / 200 / 400 req/s, served about 66–69 / 101–111 / 114–115 req/s in Stages 1–3: the pool (32 in flight per pod behind llm-d) is the limit. Stage 3 queue wait: Paid Members 39–72 ms, Free Users 3.7–4.5 s. Two runs, 25,203 requests, 0 failed. |
+| Three llm-d stages at the same load (2026-10-03, [README §2](./README.md#2-results)) | About 200 agents active (`-fleet-idle-pct` 80; was 90) and the same 200 req/s offered in every stage (Stage 3 added 200 req/s until the evening; `-overload-rate` now adds load to every stage alike). Served about 65 / 103–109 / 110–113 req/s in Stages 1–3; each request waited 2.4–2.6 s / 1.3–1.4 s / 1.25–1.3 s from agent to reply. The pool (32 in flight per pod behind llm-d) is the limit. Stage 3 queue wait: Paid Members 40–84 ms, Free Users 1.6–2.3 s. Three runs, 31,905 requests, 0 failed. (With 400 req/s in Stage 3 that afternoon: 114–115 served, Free Users 3.7–4.5 s.) |
 
 **Hermes open item:** the first suspend and the first wake after a teach are slow (13–29 s and 6.3–6.7 s). The pre-show steps include one warm-up cycle to absorb this ([hermes §5](./hermes/README.md#5-before-the-show)). The root cause was not found: it is not dirty-page writeback, and one slow-suspend node showed 40% IO stall.
 
