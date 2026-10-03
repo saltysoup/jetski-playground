@@ -29,7 +29,7 @@ button{font-family:inherit;font-variant-numeric:tabular-nums}
 #banner[data-stage="3"]{--sc:var(--green-l)}
 .bstage{font-family:var(--disp);font-size:35px;font-weight:700;line-height:1.1;letter-spacing:-.005em;color:var(--sc);
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;transition:color .4s}
-.bkpi{flex:none;display:flex;align-items:baseline;gap:14px;font-family:var(--disp);font-size:28px;font-weight:600;line-height:1.1;
+.bkpi{flex:none;display:flex;align-items:baseline;gap:12px;font-family:var(--disp);font-size:26px;font-weight:600;line-height:1.1;
   color:var(--text2);white-space:nowrap;transition:opacity .4s}
 .bkpi b{color:#fff;font-weight:700}
 .bkpi .sep{color:#4a515b;font-style:normal;font-weight:400}
@@ -500,6 +500,7 @@ mark.cn.given{background:rgba(138,180,248,.14);color:inherit;box-shadow:inset 0 
     <div class="bstage" id="bStage">Stage 1: No llm-d (Round Robin)</div>
     <div class="bkpi data quiet" id="bKpi">
       <span><b id="bHit">—</b>% KV Hit</span><i class="sep">|</i>
+      <span><b id="bTok">—</b> Output Tok/s</span><i class="sep">|</i>
       <span id="bE2Ew"><b id="bE2E">—</b> ms E2E</span>
       <span id="bSlaw" hidden><b id="bPaid">—</b> ms Paid vs <b id="bFree">—</b> ms Free (<b id="bRatio">—</b>x)</span><i class="sep">|</i>
       <span><b id="bTtft">—</b> ms TTFT</span>
@@ -1077,6 +1078,7 @@ const UI = {
   mOk: new Num($('mOk'), fInt), mTot: new Num($('mTot'), fInt),
 };
 const BAN = {hit: new Num($('bHit'), (v) => NF1.format(v), 300), ttft: new Num($('bTtft'), fInt, 300), e2e: new Num($('bE2E'), fInt, 300),
+  tok: new Num($('bTok'), fInt, 300),   // output tokens/s, both pods together
   paid: new Num([$('bPaid'), $('fhPaid')], fInt, 300), free: new Num([$('bFree'), $('fhFree')], fInt, 300),
   ratio: new Num([$('bRatio'), $('fhRatio')], (v) => fRatio(v), 300)};
 let wakePending = 0;   // after a successful Wake POST the driver stays 'idle' during its preflight: keep Wake disabled
@@ -1232,9 +1234,9 @@ function updateFromState(st) {
   setCls(UI.live, 'note', !!st.note);
   updateCluster(); updateHermes(st); updatePods(st); updateSplit(st); updateFlow(st); updateBanner(st); updateOps(st);
 }
-const KPI = {hit: null, ttft: null, e2e: null, req: 0};
+const KPI = {hit: null, ttft: null, e2e: null, tok: null, req: 0};
 function updatePods(st) {
-  let useSum = 0, useN = 0, hitW = 0, hitTok = 0, ttW = 0, e2W = 0, rq = 0;
+  let useSum = 0, useN = 0, hitW = 0, hitTok = 0, ttW = 0, e2W = 0, rq = 0, tok = 0, tokN = 0;
   for (let i = 0; i < 2; i++) {
     const u = podUI[i], has = !!st.llmd.pods[i], p = st.llmd.pods[i] || {};
     const up = has && p.up !== false;
@@ -1248,6 +1250,7 @@ function updatePods(st) {
     const ch = active ? nn(p.cache_hit_pct) : null, kv = v(p.kv_usage_pct);
     u.cache.set(ch); u.kv.set(kv);
     if (kv != null) { useSum += kv; useN++; }
+    if (up && isNum(p.gen_tok_s)) { tok += p.gen_tok_s; tokN++; }
     if (active) {
       const r = num(p.req_s, 0), pt = num(p.prompt_tok_s, 0);
       rq += r;
@@ -1260,6 +1263,7 @@ function updatePods(st) {
   KPI.hit = hitTok > 0 ? hitW / hitTok : null;
   KPI.ttft = rq > 0 && ttW > 0 ? ttW / rq : null;
   KPI.e2e = rq > 0 && e2W > 0 ? e2W / rq : null;
+  KPI.tok = tokN ? tok : null;   // output tokens/s of the pods that are up (vLLM generation tokens, last window_s)
   UI.kvSumUse.set(useN ? useSum / useN : null);
   UI.kvSumHit.set(KPI.hit);
 }
@@ -1321,7 +1325,8 @@ function updateFlow(st) {
     : 'llm-d flow control: 💎 Paid Members jump ahead of 🆓 Free Users');
 }
 const fRatio = (v) => (v >= 10 ? fInt(v) : NF1.format(v));
-// page-wide banner: the stage, plus pod-weighted KV hit and TTFT, and E2E (stages 1-2) or Paid vs Free wait (stage 3)
+// page-wide banner: the stage, plus pod-weighted KV hit and TTFT, total output tokens/s, and E2E (stages 1-2) or Paid vs
+// Free wait (stage 3)
 function updateBanner(st) {
   const mode = stratKey(st.traffic.strategy), info = STRAT[mode], bn = $('banner');
   const n = String(info ? info.n : 0);
@@ -1334,6 +1339,7 @@ function updateBanner(st) {
   const live = KPI.req > 0.5, sla = live && SLA.on;
   setCls($('bKpi'), 'quiet', !live);
   BAN.hit.set(live ? KPI.hit : null); BAN.ttft.set(live ? KPI.ttft : null); BAN.e2e.set(live ? KPI.e2e : null);
+  BAN.tok.set(live ? KPI.tok : null);
   BAN.paid.set(SLA.on ? SLA.paid : null); BAN.free.set(SLA.on ? SLA.free : null); BAN.ratio.set(SLA.on ? SLA.ratio : null);
   const ew = $('bE2Ew'), sw = $('bSlaw');
   if (ew.hidden !== sla) ew.hidden = sla;
