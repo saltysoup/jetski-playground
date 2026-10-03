@@ -81,9 +81,15 @@ inferenceExtension:
       - type: fcfs-ordering-policy
       - type: concurrency-detector
         parameters:
-          # Per-pod ideal in-flight requests; pool capacity = 2 x 256.
-          # 256 = vLLM max_num_seqs on these pods (not set by us; vLLM default).
-          maxConcurrency: 256
+          # Per-pod in-flight requests before the pool counts as saturated;
+          # pool capacity = 2 x 32. Measured directly on one pod: 32 concurrent
+          # = 66 req/s at 452 ms with ~1.7k-token prefix-cached prompts; with
+          # short prompts, 64 concurrent gave 4% more throughput than 32 at
+          # twice the latency. So Stage 3 (300 req/s offered) saturates the
+          # pool and flow control queues the excess by tier, while Stage 2
+          # (100 req/s) mostly stays below it. (Was 256 = vLLM max_num_seqs,
+          # which never saturated.)
+          maxConcurrency: 32
           concurrencyMode: requests
           headroom: 0.0
       dataLayer:

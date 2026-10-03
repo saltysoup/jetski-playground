@@ -11,7 +11,7 @@
 //	                    optional "agents":N (first N agents only) and
 //	                    "concurrency":C (max agents waking at once, 0 = all)
 //	POST /api/traffic   {"rate":100}   steady agent traffic in requests/s (0 = off)
-//	POST /api/strategy  {"mode":"balanced"|"steer8020"|"priority"}
+//	POST /api/strategy  {"mode":"roundrobin"|"kvaware"|"flow"}
 //	POST /api/suspend   {}             suspend every running agent (scale to zero)
 //	POST /api/reconcile {}             bring every agent back to SUSPENDED (retry
 //	                                   stuck suspends, re-create crashed agents)
@@ -24,12 +24,31 @@
 // llm-d gateway), and the reply is persisted to the sandbox filesystem
 // (/tmp/agent_memory.json), exactly like the original burst benchmark.
 //
-// Routing strategies only change the headers on the agents' next requests; the
-// llm-d router config is not touched:
+// Routing strategies are the dashboard's three stages. They only change the
+// headers on the agents' next requests; neither the gateway nor the llm-d
+// router config is touched when switching:
 //
-//	balanced   no routing headers (KV-cache + load aware scoring, ~50/50)
-//	steer8020  x-target-pod: pod-1 on 80% of requests, pod-2 on 20%
-//	priority   x-llm-d-inference-objective: premium 20% / standard 60% / best-effort 20%
+//	roundrobin  Stage 1 "No llm-d": x-route-mode: round-robin. The gateway skips
+//	            the llm-d EPP and spreads requests round robin over the vLLM pods.
+//	kvaware     Stage 2 "llm-d Router": no routing headers. The EPP picks the pod
+//	            by precise prefix-cache hits + load.
+//	flow        Stage 3 "llm-d + Flow": x-llm-d-inference-objective per user tier
+//	            (-tier-mix): Paid Members (Pro) = premium, Paid Standard =
+//	            standard, Free Users = best-effort. When the pool is saturated,
+//	            llm-d flow control dispatches higher tiers first.
+//	steer8020   (API only) x-target-pod: pod-1 on 80% of requests, pod-2 on 20%.
+//
+// Old names are accepted: balanced = kvaware, priority = flow.
+//
+// Steady-traffic requests carry a context ahead of the question, like a real
+// agent's memory, so where a request lands decides whether its context is
+// already in that pod's KV cache. The first request after a wake has no context.
+// With -contexts N the agents work in N teams (agent i is in team
+// ((i-1) mod N)+1) and every agent of a team sends its team's notes
+// (-agent-context-lines lines, starting with the team's name); with
+// -contexts 0 every agent sends its own notes. Size N so that all N contexts do
+// not fit in one pod's prefix cache but half of them do: then round robin
+// misses often, and KV-aware routing, which keeps each team on one pod, hits.
 //
 // Build from the root of a github.com/agent-substrate/substrate checkout (it
 // imports internal/ packages):
@@ -95,6 +114,7 @@ Rules for every reply:
 // as environment variables so no user text is ever spliced into shell code.
 const jokeScript = `
 set -- --header="Content-Type: application/json" --header="x-request-id: $REQ_ID" --header="x-agent-id: $AGENT_NAME"
+[ -n "$HDR_ROUTE" ] && set -- "$@" --header="x-route-mode: $HDR_ROUTE"
 [ -n "$HDR_TARGET" ] && set -- "$@" --header="x-target-pod: $HDR_TARGET"
 [ -n "$HDR_OBJECTIVE" ] && set -- "$@" --header="x-llm-d-inference-objective: $HDR_OBJECTIVE"
 [ -n "$HDR_FAIRNESS" ] && set -- "$@" --header="x-llm-d-inference-fairness-id: $HDR_FAIRNESS"
@@ -171,6 +191,11 @@ type config struct {
 	contextLength                 int
 	nodes, nodeVCPUs              int    // display only: the dashboard groups the grid into one tile per node
 	nodeType                      string // display only
+	agentContextLines             int    // context notes on steady-traffic requests (0 = none)
+	contexts                      int    // shared team contexts (0 = one per agent)
+	tierMix                       [3]int // flow: % of requests premium / standard / best-effort
+	maxInflight                   int    // cap on LLM requests in flight for overload traffic (0 = none)
+	strategy                      string // initial routing strategy
 }
 
 // agentRec is one agent's lifecycle in a burst. All times are ms since burst T0.
@@ -259,6 +284,17 @@ type trafficState struct {
 	Replies  int64   `json:"replies"`
 	Failed   int64   `json:"failed"`
 	Skipped  int64   `json:"skipped"`
+	// Changes are the latest strategy switches and traffic-rate changes
+	// (newest last), for the dashboard's chart markers.
+	Changes []stratChange `json:"changes"`
+}
+
+// stratChange is one strategy switch (Mode set) or traffic-rate change (Rate
+// set, 0 = traffic off).
+type stratChange struct {
+	T    int64    `json:"t"` // unix ms
+	Mode string   `json:"mode,omitempty"`
+	Rate *float64 `json:"rate,omitempty"`
 }
 
 type jokeRes struct {
@@ -402,6 +438,8 @@ type driver struct {
 	view      llmdView
 
 	h *hermesState // -harness hermes only
+
+	ctxs []string // contexts: one per team (-contexts) or per agent; nil if -agent-context-lines 0
 }
 
 func (d *driver) cliFor(idx int) *ateclient.Client {
@@ -411,12 +449,82 @@ func (d *driver) cliFor(idx int) *ateclient.Client {
 	return d.clis[(idx-1)%len(d.clis)]
 }
 
+// Routing strategies: the dashboard's three stages, plus API-only steering.
+const (
+	stratRR    = "roundrobin" // Stage 1 "No llm-d (Round Robin)"
+	stratKV    = "kvaware"    // Stage 2 "llm-d Router (KV-Aware)"
+	stratFlow  = "flow"       // Stage 3 "llm-d + Flow (Priority SLA)"
+	stratSteer = "steer8020"
+)
+
+// normStrategy maps an API strategy name, including the old ones, to a strategy.
+func normStrategy(s string) (string, bool) {
+	switch strings.ToLower(strings.TrimSpace(s)) {
+	case "roundrobin", "round-robin", "rr":
+		return stratRR, true
+	case "kvaware", "kv-aware", "balanced":
+		return stratKV, true
+	case "flow", "priority":
+		return stratFlow, true
+	case "steer8020":
+		return stratSteer, true
+	}
+	return "", false
+}
+
 func autoRateForStrategy(strategy string) float64 {
-	if strategy == "priority" {
+	if strategy == stratFlow {
 		return 300
 	}
 	return 100
 }
+
+// noteChangeLocked appends a strategy or rate change to traffic.changes,
+// keeping the latest 16. d.mu must be held.
+func (d *driver) noteChangeLocked(c stratChange) {
+	d.tr.Changes = append(d.tr.Changes, c)
+	if len(d.tr.Changes) > 16 {
+		d.tr.Changes = append([]stratChange(nil), d.tr.Changes[len(d.tr.Changes)-16:]...)
+	}
+}
+
+// setRateLocked sets the steady traffic rate and records a change in
+// traffic.changes. d.mu must be held.
+func (d *driver) setRateLocked(rate float64) {
+	if rate != d.tr.Rate {
+		r := rate
+		d.noteChangeLocked(stratChange{T: time.Now().UnixMilli(), Rate: &r})
+	}
+	d.tr.Rate = rate
+}
+
+var (
+	ctxPlaces    = []string{"hall A", "hall B", "the main stage", "the expo floor", "the livestream chat", "the front row", "the back row", "the overflow room"}
+	ctxTopics    = []string{"learning rates", "batch sizes", "gradients", "checkpoints", "tensors", "TPUs", "GPUs", "autograd", "overfitting", "dropout", "optimizers", "attention heads", "KV caches", "tokenizers", "epochs", "loss curves", "data loaders", "CUDA kernels", "mixed precision", "out-of-memory errors"}
+	ctxReactions = []string{"got big laughs", "got polite smiles", "got a groan", "fell flat", "got applause", "made the speaker laugh"}
+)
+
+// notesContext is the context of an agent (team 0) or of a team: notes that
+// start with the owner's name, so from its first token on the context is unique
+// to its owner and can only be a prefix-cache hit on a pod that served the
+// owner before. It is deterministic, so the owner always sends the same notes.
+func notesContext(idx, team, lines int) string {
+	seed, head := int64(idx)*7919+17, fmt.Sprintf("Private notes of %s from earlier shows (its own memory", agentName(idx))
+	if team > 0 {
+		seed, head = int64(team)*104729+23, fmt.Sprintf("Shared notes of team %d from earlier shows (the team's memory", team)
+	}
+	r := rand.New(rand.NewSource(seed))
+	pick := func(s []string) string { return s[r.Intn(len(s))] }
+	var b strings.Builder
+	b.WriteString(head + ": use them to pick a fresh angle, never quote them):\n")
+	for i := 1; i <= lines; i++ {
+		fmt.Fprintf(&b, "- Show %d, %s: a joke about %s %s; one about %s %s.\n", i, pick(ctxPlaces), pick(ctxTopics), pick(ctxReactions), pick(ctxTopics), pick(ctxReactions))
+	}
+	return b.String()
+}
+
+// contextFor is the context agent idx sends (-contexts / -agent-context-lines).
+func (d *driver) contextFor(idx int) string { return d.ctxs[(idx-1)%len(d.ctxs)] }
 
 func agentName(idx int) string { return fmt.Sprintf("agent-%04d", idx) }
 
@@ -462,6 +570,11 @@ func main() {
 	flag.StringVar(&c.llmListen, "llm-listen", ":8091", "-harness hermes: listen address of the LLM proxy the agents call (MODEL_BASE_URL)")
 	flag.BoolVar(&c.memory, "memory", true, "-harness hermes: codename memory demo (first turn gives a codename, later turns ask for it)")
 	flag.IntVar(&c.contextLength, "context-length", 65536, "-harness hermes: max_model_len the proxy reports on /models (match vLLM --max-model-len)")
+	flag.StringVar(&c.strategy, "strategy", stratRR, "Initial routing strategy: roundrobin (no llm-d) | kvaware (llm-d router) | flow (llm-d + flow control)")
+	tierMix := flag.String("tier-mix", "30,40,30", "flow strategy: percent of requests sent as premium,standard,best-effort (Paid Members, Paid Standard, Free Users)")
+	flag.IntVar(&c.maxInflight, "max-inflight", 120, "Overload traffic (the part of -rate above 100 req/s) is held back while this many LLM requests are in flight: agents wait for their replies (0 = no cap)")
+	flag.IntVar(&c.agentContextLines, "agent-context-lines", 60, "Steady-traffic requests carry this many lines (~25 tokens each) of context notes ahead of the question (0 = none)")
+	flag.IntVar(&c.contexts, "contexts", 240, "Agents work in this many teams that share their context notes (agent i is in team ((i-1) mod N)+1); 0 = every agent has its own notes. 240 x 60 lines: round robin hits ~60% of prompt tokens in the prefix cache, KV-aware routing ~93% (two vLLM pods)")
 	flag.Parse()
 	if c.restMode != "suspend" && c.restMode != "pause" {
 		log.Fatalf("-rest-mode must be suspend or pause, got %q", c.restMode)
@@ -474,6 +587,26 @@ func main() {
 	}
 	if c.gatewayURL == "" {
 		log.Fatal("-gateway-url is required")
+	}
+	if s, ok := normStrategy(c.strategy); ok {
+		c.strategy = s
+	} else {
+		log.Fatalf("-strategy must be roundrobin, kvaware or flow, got %q", c.strategy)
+	}
+	{
+		parts := strings.Split(*tierMix, ",")
+		sum := 0
+		for i := 0; i < len(parts) && i < 3; i++ {
+			v, err := strconv.Atoi(strings.TrimSpace(parts[i]))
+			if err != nil || v < 0 {
+				log.Fatalf("bad -tier-mix %q", *tierMix)
+			}
+			c.tierMix[i] = v
+			sum += v
+		}
+		if len(parts) != 3 || sum != 100 {
+			log.Fatalf("-tier-mix needs 3 percentages that add up to 100, got %q", *tierMix)
+		}
 	}
 	for _, kv := range strings.Split(vllmFlag, ",") {
 		if kv = strings.TrimSpace(kv); kv == "" {
@@ -495,7 +628,7 @@ func main() {
 		reqBusy: make([]int32, c.agents),
 		badSnap: map[int]bool{},
 		uniq:    map[string]struct{}{},
-		tr:      trafficState{Strategy: "balanced"},
+		tr:      trafficState{Strategy: c.strategy},
 		httpc: &http.Client{
 			Timeout: 120 * time.Second,
 			Transport: &http.Transport{
@@ -515,6 +648,20 @@ func main() {
 	}
 	for i := range d.lastSplit {
 		d.lastSplit[i] = 100.0 / float64(len(d.lastSplit))
+	}
+	if c.agentContextLines > 0 && c.harness == "sandbox" {
+		if c.contexts > 0 {
+			d.ctxs = make([]string, min(c.contexts, c.agents))
+			for i := range d.ctxs {
+				d.ctxs[i] = notesContext(0, i+1, c.agentContextLines)
+			}
+		} else {
+			d.ctxs = make([]string, c.agents)
+			for i := range d.ctxs {
+				d.ctxs[i] = notesContext(i+1, 0, c.agentContextLines)
+			}
+		}
+		log.Printf("contexts: %d distinct, %d lines, %d bytes (the first)", len(d.ctxs), c.agentContextLines, len(d.ctxs[0]))
 	}
 	if err := os.MkdirAll(c.runsDir, 0o755); err != nil {
 		log.Printf("runs dir: %v", err)
@@ -883,37 +1030,47 @@ func (d *driver) restRPC(ctx context.Context, idx, attempts int, mode string) er
 	return err
 }
 
-func (d *driver) strategyHeaders(strategy string) (target, objective, tag string) {
+// routeHdrs are the routing headers of one request (empty = not sent).
+type routeHdrs struct{ route, target, objective, tag string }
+
+func (d *driver) strategyHeaders(strategy string) routeHdrs {
 	n := atomic.AddUint64(&d.reqSeq, 1)
 	switch strategy {
-	case "steer8020":
+	case stratRR:
+		return routeHdrs{route: "round-robin"}
+	case stratSteer:
 		if n%5 == 0 {
-			return "pod-2", "", "pod-2"
+			return routeHdrs{target: "pod-2", tag: "pod-2"}
 		}
-		return "pod-1", "", "pod-1"
-	case "priority":
-		switch n % 5 {
-		case 0:
-			return "", "premium-traffic", "premium"
-		case 4:
-			return "", "best-effort-traffic", "best-effort"
+		return routeHdrs{target: "pod-1", tag: "pod-1"}
+	case stratFlow:
+		// Walk 100 slots with stride 37 (coprime with 100): the tiers come
+		// interleaved and hit -tier-mix exactly over every 100 requests.
+		slot := int(n * 37 % 100)
+		switch {
+		case slot < d.cfg.tierMix[0]:
+			return routeHdrs{objective: "premium-traffic", tag: "premium"}
+		case slot < d.cfg.tierMix[0]+d.cfg.tierMix[1]:
+			return routeHdrs{objective: "standard-traffic", tag: "standard"}
 		default:
-			return "", "standard-traffic", "standard"
+			return routeHdrs{objective: "best-effort-traffic", tag: "best-effort"}
 		}
 	}
-	return "", "", ""
+	return routeHdrs{}
 }
 
 // askJoke makes the agent call the llm-d gateway from inside its sandbox, with
 // at most maxAttempts tries. Every try runs a new process in the agent's
 // 256 MiB worker, so the budget stays small: under overload, unbounded retries
 // pile up processes and OOM-kill workers (their agents then cannot pause).
-func (d *driver) askJoke(ctx context.Context, idx int, strategy string, maxAttempts int) jokeRes {
+// withCtx puts the agent's private context (-agent-context-lines) ahead of the
+// question.
+func (d *driver) askJoke(ctx context.Context, idx int, strategy string, maxAttempts int, withCtx bool) jokeRes {
 	if d.h != nil {
 		return d.askHermes(ctx, idx, strategy)
 	}
 	name := agentName(idx)
-	target, objective, tag := d.strategyHeaders(strategy)
+	hd := d.strategyHeaders(strategy)
 	msgs := []map[string]string{}
 	if d.cfg.systemPrompt != "" {
 		msgs = append(msgs, map[string]string{"role": "system", "content": d.cfg.systemPrompt})
@@ -921,6 +1078,9 @@ func (d *driver) askJoke(ctx context.Context, idx int, strategy string, maxAttem
 	user := d.cfg.userPrompt
 	if strings.Contains(user, "%s") {
 		user = fmt.Sprintf(user, name)
+	}
+	if withCtx && d.ctxs != nil {
+		user = d.contextFor(idx) + "\n" + user
 	}
 	msgs = append(msgs, map[string]string{"role": "user", "content": user})
 	payload, _ := json.Marshal(map[string]any{
@@ -934,8 +1094,9 @@ func (d *driver) askJoke(ctx context.Context, idx int, strategy string, maxAttem
 		"LLM_URL":       d.cfg.gatewayURL,
 		"AGENT_NAME":    name,
 		"REQ_ID":        fmt.Sprintf("kd-%s-%d-%s", d.runTag, atomic.AddUint64(&d.idSeq, 1), name),
-		"HDR_TARGET":    target,
-		"HDR_OBJECTIVE": objective,
+		"HDR_ROUTE":     hd.route,
+		"HDR_TARGET":    hd.target,
+		"HDR_OBJECTIVE": hd.objective,
 		"HDR_FAIRNESS":  "",
 	}
 	body, _ := json.Marshal(processRequest{Command: []string{"sh", "-c", jokeScript}, EnvVars: env})
@@ -943,7 +1104,7 @@ func (d *driver) askJoke(ctx context.Context, idx int, strategy string, maxAttem
 	host := resources.ActorDNSName(resources.ActorRef{Atespace: d.cfg.atespace, Name: name})
 
 	t0 := time.Now()
-	res := jokeRes{tag: tag}
+	res := jokeRes{tag: hd.tag}
 	fail := func(msg string) {
 		res.err = msg
 		if res.firstErr == "" {
@@ -1211,7 +1372,7 @@ func (d *driver) runBurst(id string, hold, wakeOnly bool, n, conc int) {
 			d.phase = "running"
 		}
 		if !wakeOnly && d.cfg.autoTraffic && !d.cfg.oneshot && d.tr.Rate == 0 {
-			d.tr.Rate = autoRateForStrategy(d.tr.Strategy)
+			d.setRateLocked(autoRateForStrategy(d.tr.Strategy))
 		}
 	}
 	summary := d.summaryLocked(b)
@@ -1226,7 +1387,7 @@ func (d *driver) checkWakeDoneLocked(b *burst, t float64, allUp chan struct{}) {
 		if b.hold {
 			d.phase = "running"
 			if !b.wakeOnly && d.cfg.autoTraffic && !d.cfg.oneshot && d.tr.Rate == 0 {
-				d.tr.Rate = autoRateForStrategy(d.tr.Strategy)
+				d.setRateLocked(autoRateForStrategy(d.tr.Strategy))
 			}
 		}
 		close(allUp)
@@ -1305,7 +1466,7 @@ func (d *driver) runFirstJoke(ctx context.Context, b *burst, idx int) {
 	r.LLMStartMs = msSince(b.t0)
 	d.mu.Unlock()
 	// Up to 4 tries: right after a wake, atenet can briefly answer 503.
-	res := d.askJoke(ctx, idx, strategy, 4)
+	res := d.askJoke(ctx, idx, strategy, 4, false)
 	d.mu.Lock()
 	d.reqBusy[i]--
 	atomic.AddInt64(&d.inflight, -1)
@@ -1540,7 +1701,7 @@ func (d *driver) dutyWakeAndRequest(ctx context.Context, b *burst) {
 	d.tr.Sent++
 	d.mu.Unlock()
 
-	res := d.askJoke(ctx, idx, strategy, 3)
+	res := d.askJoke(ctx, idx, strategy, 3, true)
 
 	d.mu.Lock()
 	d.reqBusy[idx-1]--
@@ -1642,12 +1803,12 @@ func (d *driver) simulateTraffic(stop, toggle bool) (float64, error) {
 		return 0, fmt.Errorf("wake agents first (phase %s)", ph)
 	}
 	if stop || (toggle && d.tr.Rate > 0) {
-		d.tr.Rate = 0
+		d.setRateLocked(0)
 		d.mu.Unlock()
 		return 0, nil
 	}
 	rate := autoRateForStrategy(d.tr.Strategy)
-	d.tr.Rate = rate
+	d.setRateLocked(rate)
 	if d.b != nil && !d.b.dutyCycle {
 		d.startDutyCycleLocked(d.b)
 	}
@@ -1700,7 +1861,7 @@ func (d *driver) startReconcile() error {
 	}
 	d.busy = true
 	d.phase = "reconciling"
-	d.tr.Rate = 0
+	d.setRateLocked(0)
 	go func() {
 		t0 := time.Now()
 		res := d.preflight(context.Background())
@@ -1722,7 +1883,7 @@ func (d *driver) startSuspendAll() error {
 	}
 	d.busy = true
 	d.phase = "suspending"
-	d.tr.Rate = 0
+	d.setRateLocked(0)
 	b := d.b
 	if b == nil {
 		d.burstN++
@@ -1913,6 +2074,12 @@ func (d *driver) pickIdle(duty bool) int {
 	if d.phase != "running" {
 		return -1
 	}
+	// Agents wait for their replies: with -max-inflight requests already
+	// outstanding, this tick's request is skipped (closed loop), so a
+	// saturated pool builds a bounded queue in llm-d instead of timeouts.
+	if d.cfg.maxInflight > 0 && atomic.LoadInt64(&d.inflight) >= int64(d.cfg.maxInflight) {
+		return -1
+	}
 	n := len(d.states)
 	take := func(i int) int {
 		if !duty {
@@ -1953,7 +2120,7 @@ const maxReqPerAgent = 2
 func (d *driver) trafficRequest(idx int, strategy string, duty bool) {
 	// Overload traffic is never retried: retries would multiply the load the
 	// strategy demo is meant to show being shed or queued.
-	res := d.askJoke(context.Background(), idx, strategy, 1)
+	res := d.askJoke(context.Background(), idx, strategy, 1, true)
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	d.reqBusy[idx-1]--
@@ -2552,11 +2719,19 @@ func (d *driver) snapshot() stateJSON {
 	for _, p := range d.cfg.vllm {
 		pods = append(pods, p.name)
 	}
+	ctxLines, ctxN := 0, 0
+	if d.ctxs != nil {
+		ctxLines, ctxN = d.cfg.agentContextLines, len(d.ctxs)
+	}
 	s := stateJSON{
 		ServerUnixMs: time.Now().UnixMilli(),
 		Config: map[string]any{"total_agents": d.cfg.agents, "model": d.cfg.model, "pods": pods,
 			"accelerator": "TPU v6e", "max_tokens": d.cfg.maxTokens, "harness": d.cfg.harness,
-			"cluster": map[string]any{"nodes": d.cfg.nodes, "node_type": d.cfg.nodeType, "vcpus_per_node": d.cfg.nodeVCPUs}},
+			"cluster":             map[string]any{"nodes": d.cfg.nodes, "node_type": d.cfg.nodeType, "vcpus_per_node": d.cfg.nodeVCPUs},
+			"tier_mix":            d.cfg.tierMix[:],
+			"agent_context_lines": ctxLines,
+			"contexts":            ctxN,
+			"max_inflight":        d.cfg.maxInflight},
 		Phase:   d.phase,
 		Agents:  string(d.states),
 		Totals:  d.tot,
@@ -2573,6 +2748,7 @@ func (d *driver) snapshot() stateJSON {
 		}
 	}
 	s.Traffic.Inflight = atomic.LoadInt64(&d.inflight)
+	s.Traffic.Changes = append([]stratChange{}, d.tr.Changes...)
 	activeUp := d.up
 	if d.b != nil && d.b.dutyCycle && d.phase == "running" {
 		activeUp = d.dutyActiveCountLocked()
@@ -2724,7 +2900,7 @@ func (d *driver) serve() {
 			return nil, fmt.Errorf("rate must be 0..2000")
 		}
 		d.mu.Lock()
-		d.tr.Rate = rate
+		d.setRateLocked(rate)
 		if rate > 0 && d.phase == "running" && d.b != nil && !d.b.dutyCycle {
 			d.startDutyCycleLocked(d.b)
 		}
@@ -2733,16 +2909,18 @@ func (d *driver) serve() {
 		return rate, nil
 	}))
 	mux.HandleFunc("/api/strategy", post(func(b map[string]any) (any, error) {
-		mode, _ := b["mode"].(string)
-		switch mode {
-		case "balanced", "steer8020", "priority":
-		default:
-			return nil, fmt.Errorf("mode must be balanced, steer8020 or priority")
+		raw, _ := b["mode"].(string)
+		mode, ok := normStrategy(raw)
+		if !ok {
+			return nil, fmt.Errorf("mode must be roundrobin, kvaware or flow")
 		}
 		d.mu.Lock()
+		if mode != d.tr.Strategy {
+			d.noteChangeLocked(stratChange{T: time.Now().UnixMilli(), Mode: mode})
+		}
 		d.tr.Strategy = mode
 		if d.cfg.autoTraffic && !d.cfg.oneshot && d.phase == "running" && d.tr.Rate > 0 {
-			d.tr.Rate = autoRateForStrategy(mode)
+			d.setRateLocked(autoRateForStrategy(mode))
 		}
 		d.mu.Unlock()
 		log.Printf("API strategy=%s", mode)

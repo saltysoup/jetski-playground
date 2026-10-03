@@ -20,8 +20,21 @@ html,body{margin:0;height:100%;overflow:hidden;background:var(--bg);color:var(--
   font-variant-numeric:tabular-nums;font-feature-settings:"tnum" 1;-webkit-font-smoothing:antialiased}
 button{font-family:inherit;font-variant-numeric:tabular-nums}
 #stage{position:absolute;left:0;top:0;width:1920px;height:1080px;transform-origin:0 0;display:grid;
-  grid-template-columns:954px 12px 954px;overflow:hidden;background:var(--bg)}
-.panel{position:relative;height:1080px;min-width:0;overflow:hidden}
+  grid-template-columns:954px 12px 954px;grid-template-rows:58px minmax(0,1fr);overflow:hidden;background:var(--bg)}
+.panel{position:relative;height:1022px;min-width:0;overflow:hidden}
+/* ---------- stage banner (page-wide): current routing stage + headline KPIs ---------- */
+#banner{grid-column:1/-1;display:flex;align-items:flex-end;justify-content:space-between;gap:28px;padding:0 26px 2px 26px;
+  min-width:0;--sc:var(--yellow-l)}
+#banner[data-stage="2"]{--sc:var(--blue-l)}
+#banner[data-stage="3"]{--sc:var(--green-l)}
+.bstage{font-family:var(--disp);font-size:35px;font-weight:700;line-height:1.1;letter-spacing:-.005em;color:var(--sc);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;transition:color .4s}
+.bkpi{flex:none;display:flex;align-items:baseline;gap:14px;font-family:var(--disp);font-size:28px;font-weight:600;line-height:1.1;
+  color:var(--text2);white-space:nowrap;transition:opacity .4s}
+.bkpi b{color:#fff;font-weight:700}
+.bkpi .sep{color:#4a515b;font-style:normal;font-weight:400}
+.bkpi.quiet{opacity:.38}
+.bkpi [hidden]{display:none}
 .divider{position:relative;cursor:col-resize;user-select:none;touch-action:none;display:flex;align-items:center;justify-content:center;z-index:10}
 .divider::before{content:"";position:absolute;top:0;bottom:0;left:50%;width:2px;transform:translateX(-50%);
   background:linear-gradient(to bottom,transparent,#2b333e 6%,#2b333e 94%,transparent);transition:background .2s,width .2s,box-shadow .2s}
@@ -60,8 +73,8 @@ body.stale .data{opacity:.4;filter:saturate(.3);transition:opacity .3s,filter:sa
 @keyframes pend{50%{opacity:.55}}
 
 /* ---------- LEFT ---------- */
-#left{display:flex;flex-direction:column;gap:12px;padding:14px 24px 16px 26px;min-height:0}
-.hero{flex:none;height:164px;display:grid;grid-template-columns:280px 218px minmax(0,1fr);column-gap:14px;align-items:stretch}
+#left{display:flex;flex-direction:column;gap:12px;padding:6px 24px 14px 26px;min-height:0}
+.hero{flex:none;height:156px;display:grid;grid-template-columns:280px 218px minmax(0,1fr);column-gap:14px;align-items:stretch}
 .hcount{display:flex;flex-direction:column;justify-content:flex-end;min-width:0}
 .counter{font-family:var(--disp);font-weight:700;font-size:108px;line-height:.86;letter-spacing:-.025em;color:var(--text);
   white-space:nowrap;transition:color .3s}
@@ -119,7 +132,7 @@ body.stale .data{opacity:.4;filter:saturate(.3);transition:opacity .3s,filter:sa
 .hero[data-mode=reconciling] .clabel,.hero[data-mode=starting] .clabel{color:var(--yellow)}
 .hero[data-mode=reconciling] .clock{color:#4a5059}
 
-.gridCard{flex:none;height:364px;padding:10px 16px 9px;display:flex;flex-direction:column;gap:6px}
+.gridCard{flex:none;height:338px;padding:10px 16px 9px;display:flex;flex-direction:column;gap:6px}
 .denspill{display:inline-flex;align-items:center;gap:6px;padding:2px 10px;border-radius:99px;
   background:rgba(52,168,83,.13);border:1px solid rgba(129,201,149,.42);color:var(--green-l);
   font-size:12px;font-weight:600;letter-spacing:.03em;text-transform:none;white-space:nowrap}
@@ -131,7 +144,7 @@ body.stale .data{opacity:.4;filter:saturate(.3);transition:opacity .3s,filter:sa
 .legend .note{margin-left:auto;color:var(--text2);font-size:13px;font-weight:500}
 
 /* definite row track: an auto track would grow to the canvas' intrinsic height and overflow into the ticker */
-.mid{flex:none;height:150px;display:grid;grid-template-columns:280px minmax(0,1fr);grid-template-rows:minmax(0,1fr);gap:12px}
+.mid{flex:none;height:142px;display:grid;grid-template-columns:280px minmax(0,1fr);grid-template-rows:minmax(0,1fr);gap:12px}
 .tiles{display:grid;grid-template-rows:repeat(3,minmax(0,1fr));gap:8px;min-width:0;min-height:0}
 .tile{min-height:0;padding:0 16px;display:flex;flex-direction:column;justify-content:center;gap:1px;overflow:hidden}
 .tl{font-size:12px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--dim);line-height:1.1;white-space:nowrap}
@@ -191,7 +204,7 @@ body.stale .data{opacity:.4;filter:saturate(.3);transition:opacity .3s,filter:sa
   letter-spacing:-.005em;padding:6px 4px;overflow-y:auto}
 
 /* ---------- LEFT COMPACT (30/70 split) ---------- */
-#left.compact{padding:14px 16px 16px 18px}
+#left.compact{padding:6px 16px 14px 18px}
 #left.compact .phead{gap:6px}
 #left.compact .ptitle{font-size:14.5px}
 #left.compact .ptitle .pdot{width:8px;height:8px;margin-right:6px}
@@ -237,14 +250,20 @@ body.stale .data{opacity:.4;filter:saturate(.3);transition:opacity .3s,filter:sa
 
 /* ---------- RIGHT ---------- */
 #right{display:flex;flex-direction:column;min-height:0}
-.rmain{flex:1;display:flex;flex-direction:column;gap:12px;padding:14px 26px 16px 24px;min-width:0;min-height:0}
+.rmain{flex:1;display:flex;flex-direction:column;gap:10px;padding:6px 26px 14px 24px;min-width:0;min-height:0}
 /* header controls (replace the old side rail): flow-control strategy switch + live pill that opens the operator menu */
 .rctl{display:flex;align-items:center;gap:10px;flex:none}
-.seg{display:flex;align-items:center;gap:2px;height:42px;padding:3px;border-radius:21px;border:1px solid var(--line2);background:#0d1117}
-.sbtn{height:34px;padding:0 16px;border-radius:17px;border:0;background:transparent;color:var(--dim);font-size:16px;font-weight:600;
-  cursor:pointer;white-space:nowrap;transition:background .25s,color .25s,box-shadow .25s}
-.sbtn:hover:not(.active){color:var(--text);background:rgba(255,255,255,.07)}
-.sbtn.active{background:var(--blue);color:#fff;box-shadow:0 0 14px rgba(66,133,244,.5)}
+/* the three stages: No llm-d (round robin) -> llm-d Router (KV-aware) -> llm-d + Flow (priority SLA) */
+.stages{display:flex;align-items:center;gap:7px}
+.stg{height:40px;padding:0 13px;border-radius:20px;border:1.5px solid var(--line2);background:#0e1218;color:var(--text2);
+  display:flex;align-items:baseline;gap:6px;font-size:15px;font-weight:700;letter-spacing:.01em;cursor:pointer;white-space:nowrap;
+  --sc:var(--yellow-l);--sg:rgba(251,188,4,.13);transition:border-color .25s,background .25s,color .25s,box-shadow .25s}
+.stg small{font-size:11.5px;font-weight:600;letter-spacing:.02em;color:var(--dim);transition:color .25s}
+.stg[data-n="2"]{--sc:var(--blue-l);--sg:rgba(66,133,244,.15)}
+.stg[data-n="3"]{--sc:var(--green-l);--sg:rgba(52,168,83,.15)}
+.stg:hover:not(.active){border-color:#56606c;color:#fff}
+.stg.active{border-color:var(--sc);background:var(--sg);color:#fff;box-shadow:0 0 14px var(--sg),inset 0 0 0 1px var(--sg)}
+.stg.active small{color:var(--sc)}
 .live{position:relative;flex:none;height:42px;padding:0 12px 0 15px;display:flex;align-items:center;gap:8px;border:1px solid var(--line);
   border-radius:21px;background:transparent;color:var(--green-l);font-size:13px;font-weight:700;letter-spacing:.12em;white-space:nowrap;cursor:pointer;
   transition:border-color .2s}
@@ -254,7 +273,7 @@ body.stale .data{opacity:.4;filter:saturate(.3);transition:opacity .3s,filter:sa
 .live.bad{color:var(--yellow);border-color:rgba(251,188,4,.6);background:rgba(251,188,4,.1);animation:pend 1s ease-in-out infinite;
   letter-spacing:.04em;gap:7px}
 .live.note::after{content:"";position:absolute;top:-2px;right:-2px;width:11px;height:11px;border-radius:50%;background:var(--yellow);border:2px solid var(--bg)}
-.splitCard{flex:none;height:154px;padding:10px 18px 12px;display:flex;flex-direction:column;transition:opacity .4s}
+.splitCard{flex:none;height:138px;padding:10px 18px 12px;display:flex;flex-direction:column;transition:opacity .4s}
 .splitCard.quiet .sbar,.splitCard.quiet .srow{opacity:.42}
 .srow{display:grid;grid-template-columns:1fr auto 1fr;align-items:end;transition:opacity .4s}
 .spn{font-size:17px;font-weight:700;letter-spacing:.05em;display:flex;align-items:center;gap:8px;color:var(--text2)}
@@ -265,11 +284,13 @@ body.stale .data{opacity:.4;filter:saturate(.3);transition:opacity .3s,filter:sa
 .smode{align-self:center;text-align:center;display:flex;flex-direction:column;align-items:center;gap:5px}
 .smode .m1{display:inline-block;font-size:14px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--text);
   border:1px solid var(--line2);border-radius:8px;padding:4px 12px;background:#181e26;white-space:nowrap}
-.kvpill{display:inline-flex;align-items:center;gap:6px;padding:3px 11px;border-radius:99px;
-  background:rgba(36,193,224,.13);border:1px solid rgba(120,217,236,.48);color:var(--cyan-l);
-  font-size:12px;font-weight:700;letter-spacing:.06em;white-space:nowrap}
-.kvpill i{width:7px;height:7px;border-radius:50%;background:var(--cyan-l);box-shadow:0 0 6px var(--cyan-l)}
-.kvpill b{color:#fff;font-weight:700}
+.kvpill{display:inline-flex;align-items:center;gap:8px;padding:4px 16px 5px;border-radius:12px;
+  background:linear-gradient(180deg,rgba(36,193,224,.14),rgba(36,193,224,.05));border:1.5px solid rgba(120,217,236,.55);
+  color:var(--cyan-l);font-size:13px;font-weight:700;letter-spacing:.08em;white-space:nowrap;box-shadow:0 0 16px rgba(36,193,224,.12)}
+.kvpill i{width:8px;height:8px;border-radius:50%;background:var(--cyan-l);box-shadow:0 0 6px var(--cyan-l)}
+.kvpill b{font-family:var(--disp);font-size:25px;line-height:1.1;letter-spacing:0;color:#fff;font-weight:700}
+.kvpill b.hit{color:var(--green-l)}
+.kvpill .dot{color:#5f6b78}
 .smode .m2{font-size:13px;color:var(--dim);white-space:nowrap}
 .swrap{position:relative;margin-top:10px}
 .sbar{height:24px;border-radius:12px;overflow:hidden;background:#1d232b;display:flex;transition:opacity .4s}
@@ -280,7 +301,7 @@ body.stale .data{opacity:.4;filter:saturate(.3);transition:opacity .3s,filter:sa
   white-space:nowrap;text-transform:uppercase;text-shadow:0 0 3px rgba(0,0,0,.9),0 1px 2px #000}
 .star.flip span{left:auto;right:9px}
 
-.pods{flex:none;height:262px;display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.pods{flex:none;height:252px;display:grid;grid-template-columns:1fr 1fr;gap:12px}
 .pod{position:relative;overflow:hidden;padding:10px 14px 10px;display:flex;flex-direction:column;justify-content:space-between;gap:7px;transition:opacity .3s}
 .pod::before{content:"";position:absolute;left:0;top:0;right:0;height:4px;background:var(--pc)}
 .pod.down{opacity:.55}
@@ -311,11 +332,14 @@ body.stale .data{opacity:.4;filter:saturate(.3);transition:opacity .3s,filter:sa
 .mv{font-size:20px;font-weight:600;line-height:1.05;white-space:nowrap}
 
 .tokCard{flex:1;min-height:0;padding:10px 14px 6px;display:flex;flex-direction:column}
-.latCard{flex:none;height:132px;padding:9px 14px 6px;display:flex;flex-direction:column}
+.latCard{flex:none;height:118px;padding:9px 14px 6px;display:flex;flex-direction:column}
 canvas.chart{flex:1 1 0px;min-height:0;width:100%;display:block}
 
-.flowCard{flex:none;height:224px;padding:9px 18px 9px;display:flex;flex-direction:column;transition:opacity .5s}
+.flowCard{flex:none;height:206px;padding:8px 18px 9px;display:flex;flex-direction:column;transition:opacity .5s,border-color .4s,box-shadow .4s}
 .flowCard.quiet{opacity:.45}
+.flowCard.on{border-color:rgba(52,168,83,.75);box-shadow:0 0 0 1px rgba(52,168,83,.22),0 0 26px rgba(52,168,83,.1)}
+.frow.paid .fv.w{color:var(--green-l)}
+.frow.paid .fv.w u{color:rgba(129,201,149,.75)}
 .sat{display:flex;align-items:center;gap:10px;font-size:13.5px;font-weight:500;letter-spacing:.02em;text-transform:none;color:var(--dim)}
 .satbar{width:128px;height:12px;border-radius:6px;background:#232a33;overflow:hidden}
 .satbar b{display:block;height:100%;width:0;border-radius:6px;background:var(--green);transition:background .4s}
@@ -323,7 +347,7 @@ canvas.chart{flex:1 1 0px;min-height:0;width:100%;display:block}
 .fcols,.frow{display:grid;grid-template-columns:236px minmax(0,1fr) 68px 104px 108px;align-items:center;column-gap:12px}
 .fcols{margin-top:6px;height:16px;font-size:11.5px;font-weight:700;letter-spacing:.09em;text-transform:uppercase;color:var(--dim2)}
 .fcols span:nth-child(n+3){text-align:right}
-.frow{height:40px;border-top:1px solid rgba(255,255,255,.05)}
+.frow{height:37px;border-top:1px solid rgba(255,255,255,.05)}
 .fname{font-size:16.5px;font-weight:600;display:flex;align-items:center;gap:8px;white-space:nowrap}
 .fname i{width:11px;height:11px;border-radius:3px;display:inline-block;flex:none}
 .fname small{font-size:11.5px;color:var(--dim2);font-family:var(--mono);font-weight:500}
@@ -331,12 +355,14 @@ canvas.chart{flex:1 1 0px;min-height:0;width:100%;display:block}
 .qbar b{display:block;height:100%;width:0;border-radius:5px}
 .fv{font-size:21px;font-weight:600;text-align:right;white-space:nowrap}
 .fv u{text-decoration:none;font-size:.6em;color:var(--dim);margin-left:4px}
-.fhint{margin-top:auto;height:22px;font-size:13px;color:var(--dim);text-align:center;display:flex;align-items:center;justify-content:center;
-  border-radius:6px;padding:0 10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.fhint.sla{background:rgba(251,188,4,.13);border:1px solid rgba(251,188,4,.45);color:var(--yellow-l);font-weight:600}
+.fhint{margin-top:auto;height:26px;flex:none;font-size:13.5px;color:var(--dim);text-align:center;display:flex;align-items:center;justify-content:center;
+  border-radius:7px;border:1px solid var(--line);padding:0 10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.fhint.sla{background:rgba(52,168,83,.13);border-color:rgba(52,168,83,.6);color:#d3f0dc;font-weight:600}
+.fhint.sla b{color:#fff}
+.fhint [hidden]{display:none}
 
 /* operator menu: opened from the LIVE pill; holds what used to sit in the side rail (traffic stats, driver note, keys, admin) */
-.ops{position:absolute;z-index:16;top:62px;right:26px;width:330px;display:none;flex-direction:column;gap:9px;padding:12px 16px 13px;
+.ops{position:absolute;z-index:16;top:54px;right:26px;width:330px;display:none;flex-direction:column;gap:9px;padding:12px 16px 13px;
   background:#0c1016;border:1px solid var(--line2);border-radius:14px;box-shadow:0 14px 40px rgba(0,0,0,.72)}
 .ops.on{display:flex;animation:jpop .16s ease-out}
 .ops-h{font-size:12px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--dim)}
@@ -352,21 +378,26 @@ canvas.chart{flex:1 1 0px;min-height:0;width:100%;display:block}
 .radmin.arm{color:var(--yellow);border-color:rgba(251,188,4,.6);background:rgba(251,188,4,.1)}
 .radmin:disabled{opacity:.45;cursor:default}
 
+/* the wide CONNECTING… / RECONNECTING… pill takes the subtitle's room: drop it instead of truncating it */
+#right:has(#live.bad) .ptitle .opt{display:none}
+
 /* ---------- RIGHT COMPACT (70/30 split) ---------- */
-#right.compact .rmain{padding:14px 14px 16px 14px}
+#right.compact .rmain{padding:6px 14px 14px 14px}
 #right.compact .phead{gap:8px}
 #right.compact .ptitle{font-size:15.5px}
 #right.compact .ptitle .pdot{width:9px;height:9px;margin-right:7px}
 #right.compact .rctl{gap:6px}
-#right.compact .seg{height:36px}
-#right.compact .sbtn{height:28px;padding:0 10px;font-size:13px}
+#right.compact .stages{gap:4px}
+#right.compact .stg{height:34px;padding:0 9px;font-size:12.5px}
+#right.compact .stg small{display:none}
 #right.compact .live{height:36px;padding:0 9px 0 11px;font-size:11.5px;letter-spacing:.06em;gap:6px}
-#right.compact .ops{right:14px;top:56px}
+#right.compact .ops{right:14px;top:50px}
 #right.compact .splitCard{padding:9px 12px 10px}
 #right.compact .spn{font-size:14px;gap:6px}
 #right.compact .spc{font-size:44px}
 #right.compact .smode .m1{font-size:12px;padding:3px 8px}
-#right.compact .kvpill{font-size:10.5px;padding:2px 8px;gap:4px}
+#right.compact .kvpill{font-size:10px;padding:2px 8px;gap:4px;letter-spacing:.03em}
+#right.compact .kvpill b{font-size:17px}
 #right.compact .smode .m2{font-size:11.5px}
 #right.compact .pods{gap:8px}
 #right.compact .pod{padding:9px 10px 9px;gap:6px}
@@ -397,7 +428,7 @@ canvas.chart{flex:1 1 0px;min-height:0;width:100%;display:block}
 
 /* ---------- Hermes Agent memory (only used when config.harness == "hermes") ---------- */
 .gridCard{position:relative}
-.mid.hermes{height:170px;grid-template-columns:318px minmax(0,1fr)}
+.mid.hermes{height:160px;grid-template-columns:318px minmax(0,1fr)}
 .mid.hermes .tiles{grid-template-rows:1fr 1fr 1.5fr}
 #left.compact .mid.hermes{grid-template-columns:186px minmax(0,1fr)}
 .mtile{gap:2px;transition:border-color .4s,background .4s}
@@ -465,6 +496,15 @@ mark.cn.given{background:rgba(138,180,248,.14);color:inherit;box-shadow:inset 0 
 </head>
 <body>
 <div id="stage">
+  <header id="banner" data-stage="1">
+    <div class="bstage" id="bStage">Stage 1: No llm-d (Round Robin)</div>
+    <div class="bkpi data quiet" id="bKpi">
+      <span><b id="bHit">—</b>% KV Hit</span><i class="sep">|</i>
+      <span id="bE2Ew"><b id="bE2E">—</b> ms E2E</span>
+      <span id="bSlaw" hidden><b id="bPaid">—</b> ms Paid vs <b id="bFree">—</b> ms Free (<b id="bRatio">—</b>x)</span><i class="sep">|</i>
+      <span><b id="bTtft">—</b> ms TTFT</span>
+    </div>
+  </header>
   <section id="left" class="panel">
     <header class="phead">
       <div class="ptitle"><span class="pdot" style="background:var(--green)"></span><b>AGENTS</b><span class="opt" id="ptitleL"> · Agent Substrate on GKE</span></div>
@@ -560,28 +600,28 @@ mark.cn.given{background:rgba(138,180,248,.14);color:inherit;box-shadow:inset 0 
   <section id="right" class="panel">
     <div class="rmain">
       <header class="phead">
-        <div class="ptitle"><span class="pdot" style="background:var(--blue)"></span><b>LLM-D</b><span class="opt"> · Gemma 4 12B on llm-d + vllm + TPUs</span></div>
+        <div class="ptitle"><span class="pdot" style="background:var(--blue)"></span><b>LLM-D</b><span class="opt"> · Gemma 4</span></div>
         <div class="rctl">
-          <div class="seg" role="group" aria-label="llm-d flow control strategy">
-            <button class="sbtn" data-mode="balanced" title="Default: KV-cache &amp; load-aware routing, about 50:50 across both pods (B)">Default 50:50</button>
-            <button class="sbtn" data-mode="priority" title="Priority-based flow control: 💎 Paid jump ahead of 🆓 Free; raises traffic to 300 req/s (P)">Priority</button>
+          <div class="stages" role="group" aria-label="routing stage">
+            <button class="stg" data-mode="roundrobin" data-n="1" title="Stage 1: no llm-d. The gateway spreads requests round robin over the two vLLM pods (1)">No llm-d<small>Round Robin</small></button>
+            <button class="stg" data-mode="kvaware" data-n="2" title="Stage 2: the llm-d router sends each request to the pod that already has its prefix in KV cache (2)">llm-d Router<small>KV-Aware</small></button>
+            <button class="stg" data-mode="flow" data-n="3" title="Stage 3: llm-d router + flow control. Requests carry a user tier; when the pool is saturated, paid tiers are dispatched first. Raises traffic to 300 req/s (3)">llm-d + Flow<small>Priority SLA</small></button>
           </div>
           <button class="live" id="live" title="Connection to the driver · click for the operator menu"><i></i><span id="liveText">CONNECTING…</span><span class="caret">▾</span></button>
         </div>
       </header>
       <div class="card flowCard data quiet" id="flowCard">
-        <div class="ctitle"><span>llm-d Priority Flow Control<span class="opt"> · Paid vs Free</span></span>
+        <div class="ctitle"><span>Paid Tier SLA &amp; Queue Depth<span class="opt"> · Paid vs Free</span></span>
           <span class="sat">pool saturation<span class="satbar"><b id="satb"></b></span><span class="satv" id="satv">0%</span></span></div>
         <div class="fcols"><span>user tier (priority)</span><span>queue depth</span><span>queued</span><span>queue wait</span><span>dispatched</span></div>
         <div id="frows"></div>
-        <div class="fhint" id="fhint">Viral spike protection: 💎 Paid Members jump ahead of 🆓 Free Users</div>
+        <div class="fhint" id="fhint"><span id="fhMsg">llm-d flow control: 💎 Paid Members jump ahead of 🆓 Free Users</span><span id="fhSla" hidden>🟢 llm-d + Flow Control: 💎 Paid Members served <b id="fhRatio">—</b>x faster (<b id="fhPaid">—</b> ms wait vs <b id="fhFree">—</b> ms for 🆓 Free Users)</span></div>
       </div>
       <div class="card splitCard data" id="splitCard">
         <div class="srow">
           <div class="sp1"><div class="spn"><i style="background:var(--blue)"></i><span id="spn1">pod-1</span></div><div class="spc" id="spc1">50%</div></div>
           <div class="smode">
-            <div class="m1" id="smode">Default 50:50</div>
-            <div class="kvpill" id="kvSummary"><i></i><span>KV CACHE</span><b id="kvSumUse">0%</b><span class="opt">used</span><span>·</span><b id="kvSumHit">—</b><span>hit</span></div>
+            <div class="kvpill" id="kvSummary"><i></i><span>⚡ KV CACHE HIT</span><b class="hit" id="kvSumHit">—</b><span class="dot">·</span><span>USAGE</span><b id="kvSumUse">—</b></div>
             <div class="m2" id="scap">share of requests · last 3 s</div>
           </div>
           <div class="sp2"><div class="spn"><span id="spn2">pod-2</span><i style="background:var(--green)"></i></div><div class="spc" id="spc2">50%</div></div>
@@ -614,7 +654,7 @@ mark.cn.given{background:rgba(138,180,248,.14);color:inherit;box-shadow:inset 0 
         <span>failed</span><b id="rsFail">—</b>
       </div>
       <div class="rmsg" id="rmsg"></div>
-      <div class="rkeys">Keys: W wake · T traffic · S suspend<br>B default 50:50 · P priority · Esc close</div>
+      <div class="rkeys">Keys: W wake · T traffic · S suspend<br>1 No llm-d · 2 llm-d Router · 3 llm-d + Flow · Esc close</div>
       <div class="radrow">
         <button class="radmin" id="btnRecon" title="Admin: POST api/reconcile (heal all agents back to suspended). Click twice.">reconcile agents</button>
         <button class="radmin" id="btnMemReset" style="display:none" title="Admin: POST api/memory/reset (new codenames + fresh Hermes sessions, idle only). Click twice.">reset memory</button>
@@ -639,16 +679,19 @@ const TICKER_EVERY_MS = 250;    // release at most 4 ticker lines per second
 const TICKER_BACKLOG = 12;
 const TICKER_DOM_MAX = 10;
 const SPAN_MS = 60000;          // time-series window
-// The two strategies the dashboard offers. The driver API also accepts 'steer8020' (header steering); if something
-// else sets it, the split card and chart markers show the raw mode name and no button is highlighted.
+// The three stages the dashboard offers (driver strategies). The driver API also accepts 'steer8020' (header
+// steering); if something else sets it, the banner and chart markers show the raw mode name and no pill is lit.
 const STRAT = {
-  balanced: {label: 'Default 50:50', target: 50},   // KV-cache & load-aware routing, no routing header
-  priority: {label: 'Priority', target: 50},        // flow control by request priority (Paid vs Free)
+  roundrobin: {n: 1, title: 'No llm-d (Round Robin)', marker: 'No llm-d', target: 50},          // gateway round robin, EPP bypassed
+  kvaware: {n: 2, title: 'llm-d Router (KV-Aware)', marker: 'llm-d Router', target: 50},         // EPP: prefix-cache + load scoring
+  flow: {n: 3, title: 'llm-d + Flow (Priority SLA)', marker: 'llm-d + Flow Control', target: 50}, // + flow control by user tier
 };
+const STRAT_ALIAS = {balanced: 'kvaware', priority: 'flow', 'round-robin': 'roundrobin', rr: 'roundrobin', 'kv-aware': 'kvaware'};
+const stratKey = (s) => (s && STRAT_ALIAS[s]) || s;
 const CELL = {48: '#262c35', 49: '#FBBC04', 50: '#34A853', 51: '#4285F4', 52: '#A142F4', 57: '#EA4335'};
 const CELL_OTHER = '#5f6368';
 const POD_C = ['#4285F4', '#34A853'];
-const BAND_C = {premium: '#FBBC04', standard: '#8AB4F8', 'best-effort': '#9AA0A6'};
+const BAND_C = {premium: '#34A853', standard: '#5BB974', 'best-effort': '#80868B'};   // paid tiers green, free gray
 const FONT = getComputedStyle(document.documentElement).getPropertyValue('--sans').trim() || 'sans-serif';
 
 // ------------------------------------------------------------------ helpers
@@ -690,7 +733,8 @@ class Num {
       this.cur = f >= 1 ? this.to : this.from + (this.to - this.from) * (1 - Math.pow(1 - f, 3));
       t = this.fmt(this.cur);
     }
-    setText(this.el, t);
+    if (Array.isArray(this.el)) for (const e of this.el) setText(e, t);
+    else setText(this.el, t);
   }
   val(d = 0) { return this.cur === null ? d : this.cur; }
 }
@@ -773,7 +817,8 @@ function normalize(js) {
       unique: nn(t.unique_replies)},
     ticker: arr(s.ticker),
     traffic: {rate: nn(tr.rate), strategy: typeof tr.strategy === 'string' ? tr.strategy : null,
-      inflight: nn(tr.inflight), sent: nn(tr.sent), replies: nn(tr.replies), failed: nn(tr.failed)},
+      inflight: nn(tr.inflight), sent: nn(tr.sent), replies: nn(tr.replies), failed: nn(tr.failed),
+      changes: Array.isArray(tr.changes) ? tr.changes.map(obj).filter((c) => isNum(c.t) && (typeof c.mode === 'string' || isNum(c.rate))) : null},
     llmd: {window: num(l.window_s, 3), pods: arr(l.pods).map(obj), split: arr(l.split_pct), flow: obj(l.flow), history: arr(l.history)},
   };
 }
@@ -986,14 +1031,26 @@ function ingestHistory(st) {
   h.sort((a, b) => a.t - b.t);
   S.hist = h;
 }
+const markerLabel = (mode) => (STRAT[stratKey(mode)] || {marker: mode}).marker;
+const rateLabel = (r) => (r ? fInt(r) + ' req/s' : 'traffic off');
 function ingestMarkers(st, key) {
-  const s = st.traffic.strategy, r = st.traffic.rate;
-  if (s) {
-    if (S.strategy !== null && s !== S.strategy) S.markers.push({t: key, kind: 's', label: (STRAT[s] || {label: s}).label});
+  const s = st.traffic.strategy, r = st.traffic.rate, ch = st.traffic.changes;
+  // The driver keeps the latest strategy switches ({t, mode}) and, since 2026-10-03, rate changes ({t, rate}):
+  // draw from that history so markers survive a reload. Older backends: strategy history only, or none.
+  const srvRate = !!ch && ch.some((c) => isNum(c.rate));
+  if (ch) {
+    S.markers = S.markers.filter((m) => m.kind !== 's' && !(srvRate && m.kind === 'r'));
+    for (const c of ch) {
+      if (typeof c.mode === 'string') S.markers.push({t: c.t, kind: 's', label: markerLabel(c.mode)});
+      else if (isNum(c.rate)) S.markers.push({t: c.t, kind: 'r', label: rateLabel(c.rate)});
+    }
+    S.strategy = s;
+  } else if (s) {
+    if (S.strategy !== null && s !== S.strategy) S.markers.push({t: key, kind: 's', label: markerLabel(s)});
     S.strategy = s;
   }
   if (r !== null) {
-    if (S.rate !== null && r !== S.rate) S.markers.push({t: key, kind: 'r', label: r ? fInt(r) + ' req/s' : 'traffic off'});
+    if (!srvRate && S.rate !== null && r !== S.rate) S.markers.push({t: key, kind: 'r', label: rateLabel(r)});
     S.rate = r;
   }
   S.markers = S.markers.filter((m) => m.t > key - SPAN_MS - 5000);
@@ -1018,9 +1075,12 @@ const UI = {
   rsInf: new Num($('rsInf'), fInt), rsSent: new Num($('rsSent'), fInt), rsRep: new Num($('rsRep'), fInt), rsFail: new Num($('rsFail'), fInt),
   mOk: new Num($('mOk'), fInt), mTot: new Num($('mTot'), fInt),
 };
+const BAN = {hit: new Num($('bHit'), (v) => NF1.format(v), 300), ttft: new Num($('bTtft'), fInt, 300), e2e: new Num($('bE2E'), fInt, 300),
+  paid: new Num([$('bPaid'), $('fhPaid')], fInt, 300), free: new Num([$('bFree'), $('fhFree')], fInt, 300),
+  ratio: new Num([$('bRatio'), $('fhRatio')], (v) => fRatio(v), 300)};
 let wakePending = 0;   // after a successful Wake POST the driver stays 'idle' during its preflight: keep Wake disabled
                        // (and show "starting…") until the phase moves on, for at most 15 s
-const sBtns = [...document.querySelectorAll('.sbtn')];
+const sBtns = [...document.querySelectorAll('.stg')];
 const podName = (i) => { const p = S.latest && S.latest.llmd.pods[i]; return (p && p.name ? String(p.name) : '') || S.pods[i] || 'pod-' + (i + 1); };
 
 const BAND_META = {
@@ -1031,29 +1091,29 @@ const BAND_META = {
 const TAG_LABEL = {
   premium: '💎 PAID PRO',
   standard: '🔹 PAID STD',
-  'best-effort': '🆓 FREE TIER',
+  'best-effort': '🆓 FREE',
 };
 
 function buildPod(p) {
   const root = $('pod' + p);
   root.innerHTML = `
     <div class="phd"><span class="pnm"><i></i><span class="pn">pod-${p + 1}</span></span><span class="pst">no data</span></div>
+    <div class="pkv">
+      <div class="kvbox">
+        <div class="kvl">⚡ KV CACHE HIT<span class="opt"> (PROMPT)</span></div>
+        <div class="kvv"><span data-k="cache"></span><u>%</u></div>
+        <div class="kvbar"><b data-b="cache"></b></div>
+      </div>
+      <div class="kvbox">
+        <div class="kvl">KV CACHE USAGE<span class="opt"> (MEM)</span></div>
+        <div class="kvv"><span data-k="kv"></span><u>%</u></div>
+        <div class="kvbar"><b data-b="kv"></b></div>
+      </div>
+    </div>
     <div class="pbig">
       <div><div class="bv" data-k="req"></div><div class="bl">req/s</div></div>
       <div><div class="bv" data-k="gen"></div><div class="bl">output tok/s</div></div>
       <div><div class="bv"><span data-k="e2e"></span><u>ms</u></div><div class="bl">E2E latency</div></div>
-    </div>
-    <div class="pkv">
-      <div class="kvbox">
-        <div class="kvl">KV CACHE USAGE</div>
-        <div class="kvv"><span data-k="kv"></span><u>%</u></div>
-        <div class="kvbar"><b data-b="kv"></b></div>
-      </div>
-      <div class="kvbox">
-        <div class="kvl">KV CACHE HIT<span class="opt"> (PROMPT)</span></div>
-        <div class="kvv"><span data-k="cache"></span><u>%</u></div>
-        <div class="kvbar"><b data-b="cache"></b></div>
-      </div>
     </div>
     <div class="psm">
       <div><div class="ml">input tok/s</div><div class="mv" data-k="inp"></div></div>
@@ -1082,10 +1142,10 @@ function buildFlow(bands) {
     const c = BAND_C[b.name] || '#c4c9d0';
     const meta = BAND_META[b.name] || {label: b.name, sub: 'p' + String(b.priority).replace('-', '−')};
     const row = document.createElement('div');
-    row.className = 'frow';
+    row.className = b.priority >= 0 ? 'frow paid' : 'frow';
     row.innerHTML = `<div class="fname"><i style="background:${c}"></i><span></span><small></small></div>
       <div class="qbar"><b style="background:${c}"></b></div><div class="fv" data-k="q"></div>
-      <div class="fv"><span data-k="w"></span><u>ms</u></div><div class="fv"><span data-k="r"></span><u>req/s</u></div>`;
+      <div class="fv w"><span data-k="w"></span><u>ms</u></div><div class="fv"><span data-k="r"></span><u>req/s</u></div>`;
     row.querySelector('.fname span').textContent = meta.label;
     row.querySelector('.fname small').textContent = meta.sub;
     wrap.appendChild(row);
@@ -1137,7 +1197,7 @@ if (dividerEl) {
 }
 
 // ------------------------------------------------------------------ per-poll updates
-function targetRateFor(mode) { return mode === 'priority' ? 300 : 100; }
+function targetRateFor(mode) { return stratKey(mode) === 'flow' ? 300 : 100; }
 function updateFromState(st) {
   setText(UI.wake, 'Wake Agents');
   const ph = st.phase;   // idle | waking | running | suspending | reconciling (anything else counts as busy)
@@ -1166,10 +1226,11 @@ function updateFromState(st) {
   // driver note (errors / repair summaries): shown in the operator menu, flagged by a dot on the LIVE pill
   setText(UI.note, st.note); if (UI.note.title !== st.note) UI.note.title = st.note;
   setCls(UI.live, 'note', !!st.note);
-  updateCluster(); updateHermes(st); updatePods(st); updateSplit(st); updateFlow(st); updateOps(st);
+  updateCluster(); updateHermes(st); updatePods(st); updateSplit(st); updateFlow(st); updateBanner(st); updateOps(st);
 }
+const KPI = {hit: null, ttft: null, e2e: null, req: 0};
 function updatePods(st) {
-  let useSum = 0, useN = 0, hitSum = 0, hitN = 0;
+  let useSum = 0, useN = 0, hitW = 0, hitTok = 0, ttW = 0, e2W = 0, rq = 0;
   for (let i = 0; i < 2; i++) {
     const u = podUI[i], has = !!st.llmd.pods[i], p = st.llmd.pods[i] || {};
     const up = has && p.up !== false;
@@ -1183,11 +1244,22 @@ function updatePods(st) {
     const ch = active ? nn(p.cache_hit_pct) : null, kv = v(p.kv_usage_pct);
     u.cache.set(ch); u.kv.set(kv);
     if (kv != null) { useSum += kv; useN++; }
-    if (ch != null) { hitSum += ch; hitN++; }
+    if (active) {
+      const r = num(p.req_s, 0), pt = num(p.prompt_tok_s, 0);
+      rq += r;
+      if (ch != null) { const w = pt > 0 ? pt : r; hitW += w * ch; hitTok += w; }
+      if (isNum(p.ttft_ms)) ttW += r * p.ttft_ms;
+      if (isNum(p.e2e_ms)) e2W += r * p.e2e_ms;
+    }
   }
-  UI.kvSumUse.set(useN ? useSum / useN : 0);
-  UI.kvSumHit.set(hitN ? hitSum / hitN : null);
+  KPI.req = rq;
+  KPI.hit = hitTok > 0 ? hitW / hitTok : null;
+  KPI.ttft = rq > 0 && ttW > 0 ? ttW / rq : null;
+  KPI.e2e = rq > 0 && e2W > 0 ? e2W / rq : null;
+  UI.kvSumUse.set(useN ? useSum / useN : null);
+  UI.kvSumHit.set(KPI.hit);
 }
+let splitQuiet = true;   // no requests in the window: park the bar at 50/50 and show '—' (the driver reports [0, 100] when idle)
 function updateSplit(st) {
   const L = st.llmd;
   const reqs = [0, 1].map((i) => num((L.pods[i] || {}).req_s, 0)), tot = reqs[0] + reqs[1];
@@ -1195,11 +1267,11 @@ function updateSplit(st) {
   if (a == null && b != null) a = 100 - b;
   if (a != null && b != null && a + b > 0) a = (100 * a) / (a + b);
   if (a == null) a = tot > 0 ? (100 * reqs[0]) / tot : 50;
-  UI.split.set(clamp(a, 0, 100));
   const quiet = tot <= 0.05;
+  splitQuiet = quiet;
+  UI.split.set(quiet ? 50 : clamp(a, 0, 100));
   setCls($('splitCard'), 'quiet', quiet);
-  const s = st.traffic.strategy, info = STRAT[s];
-  setText($('smode'), info ? info.label : s || '—');
+  const info = STRAT[stratKey(st.traffic.strategy)];
   setText($('scap'), quiet ? 'no traffic right now' : `share of requests · last ${fInt(L.window)} s`);
   const tgt = info ? info.target : 50, star = $('star');
   if (star.__l !== tgt) { star.__l = tgt; star.style.left = tgt + '%'; setCls(star, 'flip', tgt >= 85); }
@@ -1207,6 +1279,7 @@ function updateSplit(st) {
   setText($('starl'), tgt === 50 ? 'target 50 / 50' : `target ${tgt} / ${100 - tgt}`);
   setText($('spn1'), podName(0)); setText($('spn2'), podName(1));
 }
+const SLA = {on: false, paid: null, free: null, ratio: null};   // Stage 3 headline: Paid Members vs Free Users queue wait
 function updateFlow(st) {
   const f = st.llmd.flow;
   let bands = arr(f.bands).map(obj).filter((b) => b.name != null)
@@ -1215,32 +1288,55 @@ function updateFlow(st) {
   bands.sort((x, y) => y.priority - x.priority);
   bands = bands.slice(0, 3);
   buildFlow(bands);
-  let qmax = 0, qsum = 0;
+  let qmax = 0;
   const byName = {};
   for (const b of bands) {
     byName[b.name] = b;
     const r = flowUI.rows.get(b.name);
     r.q.set(b.queue); r.w.set(b.wait); r.r.set(b.rs);
-    qmax = Math.max(qmax, num(b.queue, 0)); qsum += num(b.queue, 0);
+    qmax = Math.max(qmax, num(b.queue, 0));
   }
   flowUI.scaleTo = niceMax(Math.max(20, qmax * 1.05), 4);
   const sat = clamp(num(f.saturation, 0), 0, 1);
   UI.sat.set(sat);
-  setCls($('flowCard'), 'quiet', sat < 0.005 && qsum === 0 && st.traffic.strategy !== 'priority');
-  const fh = $('fhint');
+  // Stage 3 is the flow-control stage: frame it; in stages 1 and 2 the panel stays visible but dimmed
+  const mode = stratKey(st.traffic.strategy), flowOn = mode === 'flow', card = $('flowCard');
+  setCls(card, 'on', flowOn);
+  setCls(card, 'quiet', !flowOn);
   const prem = byName['premium'] || {}, be = byName['best-effort'] || {};
-  if (qsum > 0 && isNum(prem.wait) && isNum(be.wait) && prem.wait > 0) {
-    const ratio = Math.max(2, Math.round(be.wait / Math.max(1, prem.wait)));
-    setCls(fh, 'sla', true);
-    setText(fh, `⚡ Viral Spike Protection: 💎 Paid Members served ${ratio}× faster (${fInt(prem.wait)} ms wait vs ${fInt(be.wait)} ms for 🆓 Free Users)`);
-  } else {
-    setCls(fh, 'sla', false);
-    setText(fh, 'Viral spike protection: 💎 Paid Members jump ahead of 🆓 Free Users');
-  }
+  const ok = flowOn && isNum(prem.wait) && isNum(be.wait) && be.wait >= 20 && be.wait > prem.wait;
+  SLA.on = ok; SLA.paid = ok ? prem.wait : null; SLA.free = ok ? be.wait : null;
+  SLA.ratio = ok ? be.wait / Math.max(1, prem.wait) : null;
+  const fh = $('fhint'), fs = $('fhSla'), fm = $('fhMsg');
+  setCls(fh, 'sla', ok);
+  if (fs.hidden !== !ok) fs.hidden = !ok;   // SLA sentence: its numbers are BAN.paid / free / ratio, shared with the banner
+  if (fm.hidden !== ok) fm.hidden = ok;
+  if (!ok) setText(fm, flowOn ? '🟢 llm-d + Flow Control: 💎 Paid Members jump ahead of 🆓 Free Users when the pool is saturated'
+    : mode === 'kvaware' ? 'Stage 2 · requests carry no user tier yet: llm-d queues them all in one band (p0)'
+    : mode === 'roundrobin' ? 'Stage 1 · requests bypass llm-d (round robin): no queues, no priorities'
+    : 'llm-d flow control: 💎 Paid Members jump ahead of 🆓 Free Users');
+}
+const fRatio = (v) => (v >= 10 ? fInt(v) : NF1.format(v));
+// page-wide banner: the stage, plus pod-weighted KV hit and TTFT, and E2E (stages 1-2) or Paid vs Free wait (stage 3)
+function updateBanner(st) {
+  const mode = stratKey(st.traffic.strategy), info = STRAT[mode], bn = $('banner');
+  const n = String(info ? info.n : 0);
+  if (bn.dataset.stage !== n) bn.dataset.stage = n;
+  const rate = num(st.traffic.rate, 0);
+  let title = info ? `Stage ${info.n}: ${info.title}` : `Routing: ${st.traffic.strategy || '—'}`;
+  if (mode === 'flow' && rate > 0) title = `Stage 3: llm-d + Flow (Priority SLA @ ${fInt(rate)} req/s)`;
+  setText($('bStage'), title);
+  const live = KPI.req > 0.5, sla = live && SLA.on;
+  setCls($('bKpi'), 'quiet', !live);
+  BAN.hit.set(live ? KPI.hit : null); BAN.ttft.set(live ? KPI.ttft : null); BAN.e2e.set(live ? KPI.e2e : null);
+  BAN.paid.set(SLA.on ? SLA.paid : null); BAN.free.set(SLA.on ? SLA.free : null); BAN.ratio.set(SLA.on ? SLA.ratio : null);
+  const ew = $('bE2Ew'), sw = $('bSlaw');
+  if (ew.hidden !== sla) ew.hidden = sla;
+  if (sw.hidden !== !sla) sw.hidden = !sla;
 }
 function updateOps(st) {
   const tr = st.traffic;
-  for (const b of sBtns) setCls(b, 'active', b.dataset.mode === tr.strategy);
+  for (const b of sBtns) setCls(b, 'active', b.dataset.mode === stratKey(tr.strategy));
   const r = num(tr.rate, 0);
   setText($('rsRate'), tr.rate == null ? '—' : r > 0 ? fInt(r) + ' req/s' : 'off');
   UI.rsInf.set(tr.inflight); UI.rsSent.set(tr.sent); UI.rsRep.set(tr.replies); UI.rsFail.set(tr.failed);
@@ -1482,10 +1578,10 @@ function setW(el, pct) { const w = clamp(pct, 0, 100).toFixed(1) + '%'; if (el._
 function renderBars() {
   const a = UI.split.val(50), p1 = Math.round(a);
   setW($('sb1'), a);
-  setText($('spc1'), p1 + '%'); setText($('spc2'), 100 - p1 + '%');
+  setText($('spc1'), splitQuiet ? '—' : p1 + '%'); setText($('spc2'), splitQuiet ? '—' : 100 - p1 + '%');
   for (const u of podUI) { setW(u.cacheB, u.cache.val(0)); setW(u.kvB, u.kv.val(0)); }
-  const kvUse = UI.kvSumUse.val(0), kvHit = UI.kvSumHit.cur;
-  setText($('kvSumUse'), NF1.format(kvUse) + '%');
+  const kvUse = UI.kvSumUse.cur, kvHit = UI.kvSumHit.cur;
+  setText($('kvSumUse'), kvUse != null ? NF1.format(kvUse) + '%' : '—');
   setText($('kvSumHit'), kvHit != null ? NF1.format(kvHit) + '%' : '—');
   flowUI.scale += (flowUI.scaleTo - flowUI.scale) * 0.12;
   for (const r of flowUI.rows.values()) setW(r.bar, (100 * r.q.val(0)) / flowUI.scale);
@@ -2008,23 +2104,27 @@ function toast(msg) {
   t.textContent = msg; t.classList.add('show');
   clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.remove('show'), 3500);
 }
-async function post(path, body, btn) {
-  let ok = false;
+async function post(path, body, btn, quiet) {   // quiet(err): true = the caller handles this error, no toast
+  let ok = false, err = '';
   if (btn) { pendingBtn.add(btn); btn.classList.add('pending'); }
   try {
     const r = await fetch(path, {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body), cache: 'no-store'});
     let js = null;
     try { js = await r.json(); } catch (e) { /* non-JSON reply */ }
     ok = r.ok && !(js && js.ok === false);
-    if (!ok) toast((js && js.error) || `${path}: HTTP ${r.status}`);
+    if (!ok) { err = (js && js.error) || `${path}: HTTP ${r.status}`; if (!(quiet && quiet(err))) toast(err); }
   } catch (e) {
     toast(`${path}: ${e && e.message ? e.message : 'request failed'}`);
   } finally {
     if (btn) { pendingBtn.delete(btn); btn.classList.remove('pending'); }
     pollSoon();
   }
+  post.lastError = err;
   return ok;
 }
+// Drivers built before the three stages (the Hermes variant's, which serves this same page) only know these names.
+const LEGACY_MODE = {kvaware: 'balanced', flow: 'priority'};
+const legacyReject = (err) => /mode must be balanced/.test(err);
 const act = {
   wake: async () => {
     if (UI.wake.disabled) return;
@@ -2038,7 +2138,11 @@ const act = {
   suspend: () => { if (!UI.susp.disabled) { UI.susp.disabled = true; post('api/suspend', {}, UI.susp); } },
   strategy: async (mode) => {
     const btn = sBtns.find((b) => b.dataset.mode === mode);
-    const ok = await post('api/strategy', {mode}, btn);
+    let ok = await post('api/strategy', {mode}, btn, legacyReject);
+    if (!ok && legacyReject(post.lastError)) {
+      if (LEGACY_MODE[mode]) ok = await post('api/strategy', {mode: LEGACY_MODE[mode]}, btn);
+      else toast('This driver build has no round-robin stage');
+    }
     if (ok && S.latest && S.latest.phase === 'running' && num(S.latest.traffic.rate, 0) > 0) {
       await post('api/traffic', {rate: targetRateFor(mode)});
     }
@@ -2085,8 +2189,9 @@ document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape' && spotEl && spotEl.classList.contains('on')) { e.preventDefault(); hideSpotlight(); return; }
   if (e.ctrlKey || e.metaKey || e.altKey || e.repeat) return;
   const k = e.key.toLowerCase();
-  const map = {w: act.wake, t: act.traffic, s: act.suspend, b: () => act.strategy('balanced'), d: () => act.strategy('balanced'),
-    p: () => act.strategy('priority')};
+  const map = {w: act.wake, t: act.traffic, s: act.suspend,
+    1: () => act.strategy('roundrobin'), 2: () => act.strategy('kvaware'), 3: () => act.strategy('flow'),
+    r: () => act.strategy('roundrobin'), b: () => act.strategy('kvaware'), d: () => act.strategy('kvaware'), p: () => act.strategy('flow')};
   if (map[k]) { e.preventDefault(); map[k](); }
 });
 

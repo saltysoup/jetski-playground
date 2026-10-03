@@ -452,18 +452,22 @@ func (d *driver) llmProxy(w http.ResponseWriter, r *http.Request) {
 		strategy = d.tr.Strategy
 		d.mu.Unlock()
 	}
-	target, objective, tag := d.strategyHeaders(strategy)
+	hd := d.strategyHeaders(strategy)
+	tag := hd.tag
 	up, _ := http.NewRequestWithContext(r.Context(), r.Method, h.upBase+sub, bytes.NewReader(body))
 	up.Header.Set("Content-Type", "application/json")
 	up.Header.Set("x-request-id", fmt.Sprintf("kd-%s-%d-hermes", d.runTag, atomic.AddUint64(&d.idSeq, 1)))
 	if idx > 0 {
 		up.Header.Set("x-agent-id", agentName(idx))
 	}
-	if target != "" {
-		up.Header.Set("x-target-pod", target)
+	if hd.route != "" {
+		up.Header.Set("x-route-mode", hd.route)
 	}
-	if objective != "" {
-		up.Header.Set("x-llm-d-inference-objective", objective)
+	if hd.target != "" {
+		up.Header.Set("x-target-pod", hd.target)
+	}
+	if hd.objective != "" {
+		up.Header.Set("x-llm-d-inference-objective", hd.objective)
 	}
 	t0 := time.Now()
 	atomic.AddInt64(&h.calls, 1)

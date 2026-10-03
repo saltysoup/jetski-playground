@@ -44,10 +44,11 @@ llm-d gateway ──▶ vLLM pod-1 / pod-2 (Gemma 4 12B, TPU v6e, --max-model-le
 
 - **One agent turn** is one Hermes API call. The driver sends the user message; Hermes adds its system prompt and the session history, then calls the model.
 - **The model call goes through the driver's LLM proxy**, not straight to llm-d. The proxy:
-  - applies the dashboard's routing strategy (the Priority header; `x-target-pod` too if the API-only `steer8020` mode is set);
+  - applies the dashboard's routing stage: `x-route-mode: round-robin` in Stage 1, no header in Stage 2, the user-tier objective in Stage 3, and `x-target-pod` if the API-only `steer8020` mode is set;
   - caps `max_tokens` at 50;
   - counts tokens for the dashboard;
   - answers the image's warm-up turns itself.
+- **The deployed Hermes driver is an earlier build.** The stage headers above are the repo code. The Hermes driver running in the demo cluster knows only `balanced` (Stage 2) and `priority` (Stage 3). It serves the same dashboard page, which falls back to those names; clicking Stage 1 shows "This driver build has no round-robin stage". The three stages were not measured with Hermes.
 - **Memory** is Hermes' own session store (SQLite under `/data`), selected by `X-Hermes-Session-Id: agent-NNNN-g<generation>`. Pause and suspend snapshot the whole sandbox (`onPause: SNAPSHOT_CONTENT_SCOPE_FULL`), so the history comes back on every wake.
 - **No tools.** Each turn is a single ~700-token chat completion. The system prompt is the same for every agent, so llm-d's prefix cache serves most of it.
 

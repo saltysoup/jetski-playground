@@ -1,3 +1,16 @@
+# In-cluster Envoy gateway in front of the two vLLM pods (hostPort 8080).
+#
+# Two paths on the same listener:
+#  * default: ext_proc -> llm-d EPP (gaie-pd-epp) picks the pod (precise
+#    KV-cache-aware scoring, header steering, flow control) and Envoy forwards
+#    to it via ORIGINAL_DST (x-gateway-destination-endpoint).
+#  * x-route-mode: round-robin: "no llm-d" baseline for the keynote's Stage 1.
+#    ext_proc is disabled on this route, so the EPP never sees the request;
+#    Envoy spreads requests ROUND_ROBIN over the vLLM pods, resolved through
+#    the headless Service gemma4-12b-vllm-pods (follows pod IP changes).
+#
+# Envoy reads this file only at start: kubectl rollout restart
+# deploy/llmd-envoy-gateway after changing it.
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -25,6 +38,19 @@ data:
                         - name: vllm_host
                           domains: ["*"]
                           routes:
+                            - match:
+                                prefix: "/"
+                                headers:
+                                  - name: x-route-mode
+                                    string_match: { exact: round-robin }
+                              route:
+                                cluster: vllm_round_robin
+                                timeout: 3600s
+                                idle_timeout: 3600s
+                              typed_per_filter_config:
+                                envoy.filters.http.ext_proc:
+                                  "@type": type.googleapis.com/envoy.extensions.filters.http.ext_proc.v3.ExtProcPerRoute
+                                  disabled: true
                             - match: { prefix: "/" }
                               route:
                                 cluster: original_destination_cluster
@@ -96,6 +122,46 @@ data:
                         socket_address:
                           address: 172.24.18.142
                           port_value: 9002
+        # "No llm-d" baseline: plain round robin over the Ready vLLM pods. The
+        # headless Service resolves to one A record per pod, and STRICT_DNS
+        # makes each returned IP a host.
+        - name: vllm_round_robin
+          type: STRICT_DNS
+          dns_lookup_family: V4_ONLY
+          dns_refresh_rate: 5s
+          connect_timeout: 10s
+          lb_policy: ROUND_ROBIN
+          circuit_breakers:
+            thresholds:
+              - max_connections: 40000
+                max_pending_requests: 40000
+                max_requests: 40000
+          load_assignment:
+            cluster_name: vllm_round_robin
+            endpoints:
+              - lb_endpoints:
+                  - endpoint:
+                      address:
+                        socket_address:
+                          address: gemma4-12b-vllm-pods.default.svc.cluster.local
+                          port_value: 8000
+---
+# Headless Service over the vLLM pods (same labels as the InferencePool), used
+# only by the round-robin route above.
+apiVersion: v1
+kind: Service
+metadata:
+  name: gemma4-12b-vllm-pods
+  namespace: default
+spec:
+  clusterIP: None
+  selector:
+    llm-d.ai/inference-serving: "true"
+    llm-d.ai/model: gemma-4-12b-it
+  ports:
+    - name: http
+      port: 8000
+      targetPort: 8000
 ---
 apiVersion: apps/v1
 kind: Deployment

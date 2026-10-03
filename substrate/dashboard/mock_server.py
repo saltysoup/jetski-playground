@@ -7,7 +7,8 @@ Python 3 stdlib only. Serves ./index.html at "/" and simulates the JSON API:
   POST api/burst     {"hold": true}               wake all agents at once
                      (+ optional "agents": N, "concurrency": C, like the real driver)
   POST api/traffic   {"rate": 100}                steady agent traffic in req/s (0 = off)
-  POST api/strategy  {"mode": "balanced" | "steer8020" | "priority"}
+  POST api/strategy  {"mode": "roundrobin" | "kvaware" | "flow"}
+                     (old names: balanced = kvaware, priority = flow; steer8020 is API only)
   POST api/suspend   {}                           suspend all running agents (scale to zero)
   POST api/reconcile {}                           heal every agent back to suspended (phase "reconciling")
 
@@ -79,10 +80,31 @@ TICKER_KEEP = 60
 RAMP_MAX_PTS = 120          # the driver sends at most 120 ramp entries (1,000 ms steps)
 MAX_SEQS = 128              # vLLM max_num_seqs per pod (mock): beyond this requests wait inside vLLM
 SAT_RPS = 400.0             # request rate that would fully saturate the pool (mock)
-SATURATE_AT_RPS = 300       # priority mode forms flow-control queues at/above this steady rate
+SATURATE_AT_RPS = 300       # flow mode forms flow-control queues at/above this steady rate
 BANDS = ((100, "premium"), (0, "standard"), (-10, "best-effort"))
-BAND_WAIT_MS = (70.0, 400.0, 1100.0)
+BAND_WAIT_MS = (56.0, 85.0, 1150.0)  # flow @ 300 req/s on the cluster: ~50-70 / ~70-110 / ~1,100-1,400 ms
+TIER_MIX = (30, 40, 30)     # flow: % of requests sent premium / standard / best-effort (driver -tier-mix)
 STANDARD = 1
+# Prefix-cache hit of steady traffic (the driver's 240 team contexts x 60 lines) on the cluster:
+# round robin ~55-64 %, llm-d KV-aware routing ~89-97 %.
+HIT = {"roundrobin": 0.60, "kvaware": 0.94, "flow": 0.93, "steer8020": 0.80}
+STEADY_PROMPT = (1780, 1920)  # steady-traffic prompt tokens (team notes + question); first replies ~290
+STRATEGIES = ("roundrobin", "kvaware", "flow", "steer8020")
+STRATEGY_ALIASES = {"round-robin": "roundrobin", "rr": "roundrobin", "kv-aware": "kvaware",
+                    "balanced": "kvaware", "priority": "flow"}
+
+
+def norm_strategy(s):
+    """The driver's normStrategy: API name (old names too) -> strategy, or None."""
+    s = str(s or "").strip().lower()
+    s = STRATEGY_ALIASES.get(s, s)
+    return s if s in STRATEGIES else None
+
+
+def auto_rate(strategy):
+    """The driver's autoRateForStrategy: Stage 3 overloads the pool, the others run 100 req/s."""
+    return 300 if strategy == "flow" else 100
+
 MILESTONE_FRACS = (0.10, 0.25, 0.50, 0.75, 1.0)
 SUSPEND_CAP = 200           # the driver caps suspend calls in flight at 200 ...
 SUSPEND_S = (0.35, 0.95)    # ... and one suspend call takes this long (mock), so 1,000 agents take ~3 s
@@ -237,7 +259,9 @@ class Sim:
         self.seq = 0
         self.hdr_seq = 0
         self.rate = 0
-        self.strategy = "balanced"
+        self.strategy = "roundrobin"
+        self.changes = []                   # latest strategy switches, newest last (traffic.changes)
+        self.hit = HIT["roundrobin"]        # prefix-cache hit fraction, tweened toward HIT[strategy]
         self.tr = {"inflight": 0, "sent": 0, "replies": 0, "failed": 0, "skipped": 0}
         self.p1 = 0.5
         self.arr_acc = 0.0
@@ -431,6 +455,12 @@ class Sim:
                 delay = 0.02 + 1.45 * ((rank - 100) / max(1.0, float(len(running_idxs) - 100))) + self.rnd.uniform(0.0, 0.12)
                 self._sched(now + delay, "duty_park", i)
 
+    def _set_rate(self, rate):
+        """Set the steady traffic rate and record it in traffic.changes, like the driver's setRateLocked."""
+        if rate != self.rate:
+            self.changes = (self.changes + [{"t": unix_ms(), "rate": rate}])[-16:]
+        self.rate = rate
+
     def simulate_traffic(self, body):
         stop = bool(body.get("stop"))
         toggle = bool(body.get("toggle"))
@@ -438,9 +468,9 @@ class Sim:
             if self.phase not in ("running", "waking"):
                 return False, "wake agents first (phase %s)" % self.phase
             if stop or (toggle and self.rate > 0):
-                self.rate = 0
+                self._set_rate(0)
                 return True, 0
-            self.rate = 300 if self.strategy == "priority" else 100
+            self._set_rate(auto_rate(self.strategy))
             now = mono()
             if self.t0 is not None and not getattr(self, "duty_cycle", False):
                 self._start_duty_cycle(now)
@@ -451,19 +481,21 @@ class Sim:
         if isinstance(rate, bool) or not isinstance(rate, (int, float)) or not (0 <= rate <= 2000):
             return False, "rate must be 0..2000"
         with self.lock:
-            self.rate = int(rate) if float(rate).is_integer() else float(rate)
+            self._set_rate(int(rate) if float(rate).is_integer() else float(rate))
             if self.rate > 0 and self.phase == "running" and self.t0 is not None and not getattr(self, "duty_cycle", False):
                 self._start_duty_cycle(mono())
             return True, self.rate
 
     def set_strategy(self, body):
-        mode = body.get("mode")
-        if mode not in ("balanced", "steer8020", "priority"):
-            return False, "mode must be balanced, steer8020 or priority"
+        mode = norm_strategy(body.get("mode"))
+        if mode is None:
+            return False, "mode must be roundrobin, kvaware or flow"
         with self.lock:
+            if mode != self.strategy:
+                self.changes = (self.changes + [{"t": unix_ms(), "mode": mode}])[-16:]
             self.strategy = mode
             if self.phase == "running" and self.rate > 0:
-                self.rate = 300 if mode == "priority" else 100
+                self._set_rate(auto_rate(mode))
             return True, mode
 
     def suspend(self, body):
@@ -472,7 +504,7 @@ class Sim:
                 return False, "busy (phase %s)" % self.phase
             self.busy = True
             self.phase = "suspending"
-            self.rate = 0
+            self._set_rate(0)
             now = mono()
             self.drain_deadline = now + DRAIN_MAX_S
             self._sched(now, "drain", None)
@@ -484,7 +516,7 @@ class Sim:
                 return False, "busy (phase %s)" % self.phase
             self.busy = True
             self.phase = "reconciling"
-            self.rate = 0
+            self._set_rate(0)
             rest, dead = self._leftovers()
             dur = max(RECONCILE_MIN_S, self._preflight_s(rest, dead))
             self._sched(mono() + dur, "recon_done", (rest, dead))
@@ -591,7 +623,7 @@ class Sim:
                 if self.wake_only and not self.traffic_started:
                     self.busy = False
                 elif self.rate == 0:
-                    self.rate = 300 if self.strategy == "priority" else 100
+                    self._set_rate(auto_rate(self.strategy))
 
     def _life_done(self, t):
         """One agent goroutine finished (woke + first reply, or failed; one-shot: also suspended)."""
@@ -605,7 +637,7 @@ class Sim:
                 if self.phase == "waking":
                     self.phase = "running"
                 if self.phase == "running" and self.rate == 0 and not (self.wake_only and not self.traffic_started):
-                    self.rate = 300 if self.strategy == "priority" else 100
+                    self._set_rate(auto_rate(self.strategy))
 
     # -------------------------------------------------------- suspend events
     def _ev_drain(self, t, _):
@@ -684,12 +716,12 @@ class Sim:
         r.agent, r.steady, r.first, r.t_arrive, r.mode = i, steady, not steady, t, self.strategy
         r.suspend_after = suspend_after
         self.hdr_seq += 1
-        if self.strategy == "priority":     # like the driver's headers: 1 in 5 premium, 1 in 5 best-effort
-            m = self.hdr_seq % 5
-            r.band = 0 if m == 0 else (2 if m == 4 else STANDARD)
+        if self.strategy == "flow":         # the driver's headers: 100 slots, stride 37, -tier-mix 30,40,30
+            slot = self.hdr_seq * 37 % 100
+            r.band = 0 if slot < TIER_MIX[0] else (STANDARD if slot < TIER_MIX[0] + TIER_MIX[1] else 2)
         else:
             r.band = STANDARD
-        r.prompt = rnd.randint(284, 297)
+        r.prompt = rnd.randint(*STEADY_PROMPT) if steady else rnd.randint(284, 297)
         r.joke = rnd.choice(JOKES)
         r.text = (rnd.choice(OPENERS) + r.joke + rnd.choice(CLOSERS)).strip()
         r.completion = max(20, min(45, int(len(r.text) / 4.0) + rnd.randint(10, 20)))
@@ -700,8 +732,9 @@ class Sim:
         share = (self.p1 if pod == 0 else 1.0 - self.p1) if both else 1.0
         load = self.rate * share if self.phase == "running" else 0.0
         rnd = self.rnd
-        ttft = max(18.0, 40.0 + 0.45 * load + rnd.gauss(0, 5))
-        tpot = max(4.0, 6.3 + 0.018 * load + rnd.gauss(0, 0.25))
+        miss = 1.0 - self.hit              # prefix-cache misses re-prefill the team notes
+        ttft = max(18.0, 40.0 + 0.45 * load + 600.0 * miss + rnd.gauss(0, 5))
+        tpot = max(4.0, 6.3 + 0.018 * load + 25.0 * miss + rnd.gauss(0, 0.25))
         return ttft, max(80.0, ttft + completion * tpot)
 
     def _dispatch(self, t, r, queue_ms, e2e=None):
@@ -717,7 +750,7 @@ class Sim:
             return
         r.pod = pod
         self.pod_inflight[pod] += 1
-        self.dispatch_log.append((t, pod, r.band, queue_ms))
+        self.dispatch_log.append((t, pod, -1 if r.mode == "roundrobin" else r.band, queue_ms))  # RR skips the EPP
         if e2e is None:
             r.ttft, r.e2e = self._service_latency(pod, r.completion)
             r.vq = rnd.uniform(0.5, 4.0)
@@ -763,7 +796,7 @@ class Sim:
         r = self._new_req(i, True, t, suspend_after=suspend_after)
         self.tr["sent"] += 1
         self.tr["inflight"] += 1
-        if self.strategy == "priority" and self.pressure > 0.02:
+        if self.strategy == "flow" and self.pressure > 0.02:
             w = BAND_WAIT_MS[r.band] * self.pressure * self.rnd.uniform(0.55, 1.45)
             self.band_queue[r.band] += 1
             if suspend_after:
@@ -893,7 +926,7 @@ class Sim:
         self.seq += 1
         if r.mode == "steer8020":
             tag = PODS[r.pod]
-        elif r.mode == "priority":
+        elif r.mode == "flow":
             tag = BANDS[r.band][1]
         else:
             tag = ""
@@ -930,7 +963,7 @@ class Sim:
             r = self._new_req(i, True, t, suspend_after=False)
             self.tr["sent"] += 1
             self.tr["inflight"] += 1
-            if self.strategy == "priority" and self.pressure > 0.02:
+            if self.strategy == "flow" and self.pressure > 0.02:
                 w = BAND_WAIT_MS[r.band] * self.pressure * self.rnd.uniform(0.55, 1.45)
                 self.band_queue[r.band] += 1
                 self._sched(t + w / 1000.0, "dispatch", r)
@@ -945,7 +978,7 @@ class Sim:
         r = self._new_req(i, True, t)
         self.tr["sent"] += 1
         self.tr["inflight"] += 1
-        if self.strategy == "priority" and self.pressure > 0.02:
+        if self.strategy == "flow" and self.pressure > 0.02:
             w = BAND_WAIT_MS[r.band] * self.pressure * self.rnd.uniform(0.55, 1.45)
             self.band_queue[r.band] += 1
             self._sched(t + w / 1000.0, "dispatch", r)
@@ -960,12 +993,16 @@ class Sim:
             self.last_tick = now
             if self.strategy == "steer8020":
                 tgt = 0.8
+            elif self.strategy == "roundrobin":     # the gateway alternates pods: a near-exact 50/50
+                tgt = 0.5 + 0.004 * math.sin(now / 1.9)
             else:
                 tgt = 0.5 + 0.02 * math.sin(now / 3.1) + 0.012 * math.sin(now / 1.27)
             self.p1 += (tgt - self.p1) * (1.0 - math.exp(-dt / 0.35))
-            want = 1.0 if (self.strategy == "priority" and self.phase == "running"
+            want = 1.0 if (self.strategy == "flow" and self.phase == "running"
                            and self.rate >= SATURATE_AT_RPS) else 0.0
             self.pressure += (want - self.pressure) * (1.0 - math.exp(-dt / 0.9))
+            hit_tgt = HIT.get(self.strategy, 0.9) + 0.012 * math.sin(now / 2.3)
+            self.hit += (hit_tgt - self.hit) * (1.0 - math.exp(-dt / 1.5))  # caches warm up / thrash in ~seconds
             if self.phase == "running" and self.rate > 0 and dt > 0:
                 if getattr(self, "duty_cycle", False):
                     # Maintain ~100 active agents (~90% idle rate) waking from C0 -> C1 -> C2 -> C3 -> C4 -> C0
@@ -1051,9 +1088,11 @@ class Sim:
         dn, bn, bw = [0, 0], [0, 0, 0], [0.0, 0.0, 0.0]
         for (_, pod, band, qms) in dl:
             dn[pod] += 1
-            bn[band] += 1
-            bw[band] += qms
+            if band >= 0:                   # round-robin requests never reach the EPP
+                bn[band] += 1
+                bw[band] += qms
         tot_d = dn[0] + dn[1]
+        epp_d = bn[0] + bn[1] + bn[2]
         up_frac = self._up() / float(TOTAL)
         fleet_active_scale = 1.0 if (getattr(self, "duty_cycle", False) and self.rate > 0) else up_frac
         rnd = self.rnd
@@ -1064,7 +1103,7 @@ class Sim:
             k = n[p]
             pod_share = (dn[p] / float(tot_d)) if tot_d else 0.5
             kv_pct = (
-                round(max(1.0, min(97.0, 18.0 * fleet_active_scale + 36.0 * fleet_active_scale * pod_share + running * 0.55 + rnd.gauss(0, 0.4))), 1)
+                round(max(1.0, min(97.0, 6.0 * fleet_active_scale + 14.0 * fleet_active_scale * pod_share + running * 0.3 + rnd.gauss(0, 0.4))), 1)
                 if (inflight or (k and fleet_active_scale > 0))
                 else 0
             )
@@ -1078,13 +1117,13 @@ class Sim:
                 "queue_ms": round(vq[p] / k, 1) if k else None,
                 "running": running,
                 "waiting": max(0, inflight - MAX_SEQS),
-                "cache_hit_pct": round(min(99.0, 88.5 + 3.5 * pod_share + rnd.gauss(0, 0.6)), 1) if k else None,
+                "cache_hit_pct": round(max(0.0, min(99.0, 100.0 * self.hit + rnd.gauss(0, 1.2))), 1) if k else None,
                 "kv_usage_pct": kv_pct,
                 "requests_total": self.pod_total[p],
             })
         split = [round(100.0 * dn[0] / tot_d, 1), round(100.0 * dn[1] / tot_d, 1)] if tot_d else [50.0, 50.0]
-        raw = min(0.78, (tot_d / W) / SAT_RPS)
-        raw = raw * (1.0 - self.pressure) + (0.9 + rnd.gauss(0, 0.008)) * self.pressure
+        raw = min(0.85, 2.2 * (epp_d / W) / SAT_RPS)      # 0 in round robin: the EPP sees no traffic
+        raw = raw * (1.0 - self.pressure) + (1.02 + rnd.gauss(0, 0.04)) * self.pressure
         self.sat += (raw - self.sat) * 0.35
         if self.sat < 0.001:
             self.sat = 0.0
@@ -1212,7 +1251,7 @@ class Sim:
                 "agents": self.agents.decode("ascii"),
                 "totals": dict(self.totals, unique_replies=len(self.unique)),
                 "ticker": list(self.ticker),
-                "traffic": dict({"rate": self.rate, "strategy": self.strategy}, **self.tr),
+                "traffic": dict({"rate": self.rate, "strategy": self.strategy, "changes": list(self.changes)}, **self.tr),
                 "llmd": dict(self.metrics, sample_unix_ms=self.sample_unix, history=list(self.history)),
             }
             if HARNESS == "hermes":

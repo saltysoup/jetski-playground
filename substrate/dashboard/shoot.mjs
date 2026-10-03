@@ -82,9 +82,9 @@ const CHECK = `(() => {
   return {issues: [...new Set(out)], hero: document.getElementById('hero').innerText.replace(/\\s+/g, ' '),
     split: document.getElementById('spc1').textContent + ' | ' + document.getElementById('spc2').textContent,
     viewSplit: lw + ' / ' + (100 - lw),
-    kvSummary: document.getElementById('kvSummary').innerText.replace(/\\s+/g, ' '),
+    kvSummary: 'hit ' + document.getElementById('kvSumHit').textContent + ' · usage ' + document.getElementById('kvSumUse').textContent,
     tickerRows: rows.length, tickerVisible: visible, live: document.getElementById('liveText').textContent,
-    strategy: [...document.querySelectorAll('.sbtn.active')].map((b) => b.textContent).join(',') || 'none',
+    strategy: [...document.querySelectorAll('.stg.active')].map((b) => b.dataset.mode).join(',') || 'none',
     ops: document.getElementById('ops').classList.contains('on') ? 'open' : 'closed',
     buttons: 'wake ' + btn('btnWake') + ' · traffic ' + btn('btnTraffic') + ' · suspend ' + btn('btnSuspend') + ' · reconcile ' + btn('btnRecon'),
     toast: document.getElementById('toast').classList.contains('show') ? document.getElementById('toast').textContent : '',
@@ -138,7 +138,7 @@ async function mainScenario() {
   console.log('simulate traffic:', await click('#btnTraffic'));
   await waitFor(firstRepliesDone, 20000, 'first replies');
   await sleep(5500);
-  await shot('03_all_running_balanced');             // strategy "Default 50:50" (driver mode "balanced")
+  await shot('03_stage1_round_robin');               // Stage 1 "No llm-d" (driver mode "roundrobin", the default after a reset)
   console.log('magnify joke:', await click('#ticker .trow'));
   await sleep(300);
   await shot('03c_joke_magnified');
@@ -157,9 +157,12 @@ async function mainScenario() {
   await shot('04_operator_menu');
   console.log('close operator menu:', await click('#live'));
   await sleep(250);
-  console.log('priority (auto 300 req/s):', await click('.sbtn[data-mode="priority"]'));
-  await sleep(5500);
-  await shot('05_priority');
+  console.log('stage 2, llm-d router (kvaware):', await click('.stg[data-mode="kvaware"]'));
+  await sleep(8000);
+  await shot('04c_stage2_kv_aware');
+  console.log('stage 3, llm-d + flow (auto 300 req/s):', await click('.stg[data-mode="flow"]'));
+  await sleep(9000);
+  await shot('05_stage3_flow');
   await shot('07_1440x900', 1440, 900);
   console.log('suspend:', await click('#btnSuspend'));
   await sleep(380);
