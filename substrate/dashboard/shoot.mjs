@@ -150,6 +150,9 @@ async function mainScenario() {
   await evaluate('window.__setViewSplit(30)');
   await sleep(400);
   await shot('04b_llmd_focus_30_70');
+  await evaluate('window.__setViewSplit(0)');               // divider all the way left: Agents hidden, llm-d full width
+  await sleep(400);
+  await shot('04d_llmd_full_width');
   await evaluate('window.__setViewSplit(50)');
   await sleep(250);
   console.log('operator menu:', await click('#live'));

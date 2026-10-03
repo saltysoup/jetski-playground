@@ -22,6 +22,11 @@ button{font-family:inherit;font-variant-numeric:tabular-nums}
 #stage{position:absolute;left:0;top:0;width:1920px;height:1080px;transform-origin:0 0;display:grid;
   grid-template-columns:954px 12px 954px;grid-template-rows:58px minmax(0,1fr);overflow:hidden;background:var(--bg)}
 .panel{position:relative;height:1022px;min-width:0;overflow:hidden}
+/* fixed cells, so the Agents panel can be hidden (divider dragged all the way left) without moving the others */
+#left{grid-column:1;grid-row:2}
+.divider{grid-column:2;grid-row:2}
+#right{grid-column:3;grid-row:2}
+#left.gone{display:none}
 /* ---------- stage banner (page-wide): current routing stage + headline KPIs ---------- */
 #banner{grid-column:1/-1;display:flex;align-items:flex-end;justify-content:space-between;gap:28px;padding:0 26px 2px 26px;
   min-width:0;--sc:var(--yellow-l)}
@@ -595,7 +600,7 @@ mark.cn.given{background:rgba(138,180,248,.14);color:inherit;box-shadow:inset 0 
       </div>
     </div>
   </section>
-  <div class="divider" id="divider" title="Drag to adjust Agents vs llm-d view split (double-click for 50/50)">
+  <div class="divider" id="divider" title="Drag to adjust the Agents vs llm-d view split; drag all the way left to hide Agents (double-click for 50/50)">
     <div class="dhandle"><i></i></div>
   </div>
   <section id="right" class="panel">
@@ -1157,16 +1162,23 @@ function buildFlow(bands) {
   }
 }
 
-// ------------------------------------------------------------------ interactive view split (25% .. 75% via center divider)
+// ------------------------------------------------------------------ interactive view split (center divider)
+// Agents get 25% .. 75% of the width, or none: dragging the divider into the left half of the 0..25% zone hides
+// the Agents panel (llm-d full width); dragging back out of it brings Agents back at 25%. Double-click: 50/50.
+const SPLIT_MIN = 25, SPLIT_MAX = 75, SPLIT_HIDE_BELOW = SPLIT_MIN / 2;
 const leftPanel = $('left'), rightPanel = $('right'), dividerEl = $('divider');
 let viewSplitPct = 50;
 function setViewSplit(rawPct) {
-  const pct = clamp(Math.round(num(+rawPct, 50)), 25, 75);
+  let pct = clamp(Math.round(num(+rawPct, 50)), 0, SPLIT_MAX);
+  if (pct < SPLIT_MIN) pct = pct < SPLIT_HIDE_BELOW ? 0 : SPLIT_MIN;
   viewSplitPct = pct;
   const avail = 1920 - 12;
   const w1 = Math.round((avail * pct) / 100);
   const w2 = avail - w1;
   stage.style.gridTemplateColumns = `${w1}px 12px ${w2}px`;
+  const gone = pct === 0;
+  if (gone && !leftPanel.classList.contains('gone')) { closeInspector(); hideSpotlight(); }   // both live in the Agents panel
+  setCls(leftPanel, 'gone', gone);
   setCls(leftPanel, 'compact', pct < 42);
   setCls(rightPanel, 'compact', pct > 58);
   for (const cv of [gridCv, rampCv, tokCv, latCv]) {

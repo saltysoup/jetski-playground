@@ -1110,17 +1110,24 @@ func (d *driver) askJoke(ctx context.Context, idx int, strategy string, maxAttem
 		"max_tokens":  d.cfg.maxTokens,
 		"temperature": d.cfg.temperature,
 	})
-	env := map[string]string{
-		"PAYLOAD":       string(payload),
-		"LLM_URL":       d.cfg.gatewayURL,
-		"AGENT_NAME":    name,
-		"REQ_ID":        fmt.Sprintf("kd-%s-%d-%s", d.runTag, atomic.AddUint64(&d.idSeq, 1), name),
-		"HDR_ROUTE":     hd.route,
-		"HDR_TARGET":    hd.target,
-		"HDR_OBJECTIVE": hd.objective,
-		"HDR_FAIRNESS":  "",
+	reqID := fmt.Sprintf("kd-%s-%d-%s", d.runTag, atomic.AddUint64(&d.idSeq, 1), name)
+	// mkBody is the /process call for one try. The routing headers can change
+	// between tries (see the retry below); everything else stays the same.
+	mkBody := func(hd routeHdrs) []byte {
+		env := map[string]string{
+			"PAYLOAD":       string(payload),
+			"LLM_URL":       d.cfg.gatewayURL,
+			"AGENT_NAME":    name,
+			"REQ_ID":        reqID,
+			"HDR_ROUTE":     hd.route,
+			"HDR_TARGET":    hd.target,
+			"HDR_OBJECTIVE": hd.objective,
+			"HDR_FAIRNESS":  "",
+		}
+		body, _ := json.Marshal(processRequest{Command: []string{"sh", "-c", jokeScript}, EnvVars: env})
+		return body
 	}
-	body, _ := json.Marshal(processRequest{Command: []string{"sh", "-c", jokeScript}, EnvVars: env})
+	body := mkBody(hd)
 	url := fmt.Sprintf("http://%s/process", d.cfg.atenet)
 	host := resources.ActorDNSName(resources.ActorRef{Atespace: d.cfg.atespace, Name: name})
 
@@ -1143,6 +1150,15 @@ func (d *driver) askJoke(ctx context.Context, idx int, strategy string, maxAttem
 				break
 			}
 			time.Sleep(retryBackoff(attempt - 1))
+			// Retry in the stage that is active now, not the one the request
+			// started in. After Stage 3 -> Stage 2, a Free Users (best-effort)
+			// request would otherwise go back into the lowest band, below every
+			// new Stage 2 request, and time out on every try.
+			if cur := d.currentStrategy(); cur != strategy {
+				strategy, hd = cur, d.strategyHeaders(cur)
+				res.tag = hd.tag
+				body = mkBody(hd)
+			}
 		}
 		res.attempts = attempt
 		req, _ := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
@@ -1533,6 +1549,13 @@ func (d *driver) agentResting(idx int) bool {
 	defer d.mu.Unlock()
 	s := d.states[idx-1]
 	return s == stSuspending || s == stSuspended
+}
+
+// currentStrategy is the stage (routing strategy) active right now.
+func (d *driver) currentStrategy() string {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	return d.tr.Strategy
 }
 
 // dutyTargetFor is how many agents the duty cycle keeps active: the part of
