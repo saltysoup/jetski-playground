@@ -99,9 +99,9 @@ It waits for `runsc` to finish, so a restore still means a running sandbox.
 - No LLM calls are made.
 
 **Simulate Traffic (duty cycle).**
-- 96 workers loop: pick a random paused agent → `ResumeActor` → hold it "running" for 70–140 ms so the state is visible on the grid → run one LLM request inside its sandbox → `PauseActor`.
-- That keeps about 100 agents active and about 90% idle.
-- Priority mode raises the load to 300 req/s. The extra 200 req/s go to agents that are already awake.
+- `-fleet-idle-pct` (default 80) sets the number of active agents: 1,000 × (100 − 80)% = 200, run by 196 workers. Each loops: pick a random paused agent → `ResumeActor` → hold it "running" for 70–140 ms so the state is visible on the grid → run one LLM request inside its sandbox → `PauseActor`.
+- That keeps about 200 agents active and about 80% idle. Until 2026-10-03 it was fixed at 96 workers, about 100 agents active and about 90% idle.
+- Stage 3 (`flow`) raises the offered load by 200 req/s (400 req/s at 80% idle). The extra requests go to agents that are already awake, and are skipped while `-max-inflight` requests are in flight (auto: active agents + 20 = 220).
 
 **One LLM request.**
 - The driver POSTs to `atenet-router` `/process` for the agent. The sandbox runs a shell script that calls the llm-d gateway with `wget`, adding the routing header for the current strategy.
@@ -140,10 +140,10 @@ The Helm values are in [`manifests/tpu/gaie-values-flowctl.yaml`](./manifests/tp
 
 **Flow control:**
 - Priority bands 100 / 0 / −10 (premium / standard / best-effort, from [`inference-objectives.yaml`](./manifests/tpu/inference-objectives.yaml)).
-- A concurrency-based saturation detector at 256 in-flight requests per pod (vLLM's default `max_num_seqs` on these pods).
-- At 300 req/s the pool stays well below that (saturation median 0.2, max 0.45). Queues stay short, at up to 31 requests, and every band waits 19 ms or less, so the bands don't separate (README §2.2).
+- A concurrency-based saturation detector at 32 in-flight requests per pod since 2026-10-03; before that 256, vLLM's default `max_num_seqs` on these pods.
+- At 256 the pool never saturated: at 300 req/s, saturation median 0.2 and max 0.45, queues up to 31 requests, and every band waited 19 ms or less, so the bands didn't separate (README §2.2). At 32 it saturates: in Stage 3 at 90% fleet idle, and from Stage 2 on at 80% (README §2).
 
-**Prefix cache:** every agent sends the same 286-token system prompt, so about 90% of prompt tokens are served from the prefix cache. Each agent's own user prompt and temperature 1.0 keep the replies distinct.
+**Prefix cache:** every agent sends the same 286-token system prompt, and each agent's own user prompt and temperature 1.0 keep the replies distinct. With that alone about 90% of prompt tokens came from the prefix cache. Since 2026-10-03 steady-traffic requests also carry their team's notes (240 teams × 60 lines, about 1.9k prompt tokens per request), so the hit depends on routing: 43–75% with round robin against 78–98% with KV-aware routing at 80% fleet idle (README §1, §2).
 
 ## 6. Incidents and lessons
 

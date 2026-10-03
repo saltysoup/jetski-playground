@@ -194,7 +194,8 @@ type config struct {
 	agentContextLines             int    // context notes on steady-traffic requests (0 = none)
 	contexts                      int    // shared team contexts (0 = one per agent)
 	tierMix                       [3]int // flow: % of requests premium / standard / best-effort
-	maxInflight                   int    // cap on LLM requests in flight for overload traffic (0 = none)
+	maxInflight                   int    // cap on LLM requests in flight for overload traffic (0 = none, -1 = duty target + 20)
+	fleetIdlePct                  int    // duty cycle: % of the fleet kept at rest (the rest cycle wake -> request -> pause)
 	strategy                      string // initial routing strategy
 }
 
@@ -472,11 +473,20 @@ func normStrategy(s string) (string, bool) {
 	return "", false
 }
 
-func autoRateForStrategy(strategy string) float64 {
+// baseRate is the steady-traffic rate the duty cycle offers: one request/s
+// per active agent (100 req/s at 90% idle, 200 at 80%).
+func (d *driver) baseRate() float64 {
+	return float64(d.dutyTarget())
+}
+
+// autoRateForStrategy is the rate Simulate Traffic and the stage buttons set:
+// the duty cycle's base rate, plus 200 req/s of overload traffic in Stage 3
+// (100 / 300 at 90% idle, 200 / 400 at 80%).
+func (d *driver) autoRateForStrategy(strategy string) float64 {
 	if strategy == stratFlow {
-		return 300
+		return d.baseRate() + 200
 	}
-	return 100
+	return d.baseRate()
 }
 
 // noteChangeLocked appends a strategy or rate change to traffic.changes,
@@ -572,7 +582,8 @@ func main() {
 	flag.IntVar(&c.contextLength, "context-length", 65536, "-harness hermes: max_model_len the proxy reports on /models (match vLLM --max-model-len)")
 	flag.StringVar(&c.strategy, "strategy", stratRR, "Initial routing strategy: roundrobin (no llm-d) | kvaware (llm-d router) | flow (llm-d + flow control)")
 	tierMix := flag.String("tier-mix", "30,40,30", "flow strategy: percent of requests sent as premium,standard,best-effort (Paid Members, Paid Standard, Free Users)")
-	flag.IntVar(&c.maxInflight, "max-inflight", 120, "Overload traffic (the part of -rate above 100 req/s) is held back while this many LLM requests are in flight: agents wait for their replies (0 = no cap)")
+	flag.IntVar(&c.fleetIdlePct, "fleet-idle-pct", 80, "Simulate Traffic duty cycle: percent of the fleet kept at rest; the other agents (200 of 1,000 at 80) cycle wake -> LLM request -> pause. Simulate Traffic offers one request/s per active agent (200 req/s at 80), Stage 3 that plus 200")
+	flag.IntVar(&c.maxInflight, "max-inflight", -1, "Overload traffic (the part of -rate above the duty cycle's rate) is held back while this many LLM requests are in flight: agents wait for their replies (0 = no cap, -1 = active agents + 20)")
 	flag.IntVar(&c.agentContextLines, "agent-context-lines", 60, "Steady-traffic requests carry this many lines (~25 tokens each) of context notes ahead of the question (0 = none)")
 	flag.IntVar(&c.contexts, "contexts", 240, "Agents work in this many teams that share their context notes (agent i is in team ((i-1) mod N)+1); 0 = every agent has its own notes. 240 x 60 lines: round robin hits ~60% of prompt tokens in the prefix cache, KV-aware routing ~93% (two vLLM pods)")
 	flag.Parse()
@@ -607,6 +618,12 @@ func main() {
 		if len(parts) != 3 || sum != 100 {
 			log.Fatalf("-tier-mix needs 3 percentages that add up to 100, got %q", *tierMix)
 		}
+	}
+	if c.fleetIdlePct < 1 || c.fleetIdlePct > 99 {
+		log.Fatalf("-fleet-idle-pct must be 1..99, got %d", c.fleetIdlePct)
+	}
+	if c.maxInflight < 0 {
+		c.maxInflight = dutyTargetFor(c.agents, c.fleetIdlePct) + 20
 	}
 	for _, kv := range strings.Split(vllmFlag, ",") {
 		if kv = strings.TrimSpace(kv); kv == "" {
@@ -1372,7 +1389,7 @@ func (d *driver) runBurst(id string, hold, wakeOnly bool, n, conc int) {
 			d.phase = "running"
 		}
 		if !wakeOnly && d.cfg.autoTraffic && !d.cfg.oneshot && d.tr.Rate == 0 {
-			d.setRateLocked(autoRateForStrategy(d.tr.Strategy))
+			d.setRateLocked(d.autoRateForStrategy(d.tr.Strategy))
 		}
 	}
 	summary := d.summaryLocked(b)
@@ -1387,7 +1404,7 @@ func (d *driver) checkWakeDoneLocked(b *burst, t float64, allUp chan struct{}) {
 		if b.hold {
 			d.phase = "running"
 			if !b.wakeOnly && d.cfg.autoTraffic && !d.cfg.oneshot && d.tr.Rate == 0 {
-				d.setRateLocked(autoRateForStrategy(d.tr.Strategy))
+				d.setRateLocked(d.autoRateForStrategy(d.tr.Strategy))
 			}
 		}
 		close(allUp)
@@ -1514,10 +1531,14 @@ func (d *driver) agentResting(idx int) bool {
 	return s == stSuspending || s == stSuspended
 }
 
-// dutyTarget is how many agents the duty cycle keeps active: 10% of the
-// fleet (100 of 1,000), i.e. a ~90% idle rate.
+// dutyTargetFor is how many agents the duty cycle keeps active: the part of
+// the fleet that -fleet-idle-pct doesn't keep at rest (200 of 1,000 at 80).
+func dutyTargetFor(agents, idlePct int) int {
+	return max(1, int(math.Round(float64(agents)*float64(100-idlePct)/100)))
+}
+
 func (d *driver) dutyTarget() int {
-	return max(1, d.cfg.agents/10)
+	return dutyTargetFor(d.cfg.agents, d.cfg.fleetIdlePct)
 }
 
 func (d *driver) dutyActiveCountLocked() int {
@@ -1551,17 +1572,17 @@ func (d *driver) startDutyCycleLocked(b *burst) {
 	go func(b *burst, idxs []int) {
 		ctx := context.Background()
 		var wg sync.WaitGroup
-		// The first ~10% of agents (100 of 1,000) stagger a joke request over
-		// 0..0.85s and then pause, while the rest stagger-pause over 0..1.5s, so
-		// the fleet settles smoothly to ~10% active (~90% idle rate) and every
-		// initial agent parks.
+		// The first dutyTarget agents (200 of 1,000 at 80% idle) stagger a joke
+		// request over 0..0.85s and then pause, while the rest stagger-pause over
+		// 0..1.5s, so the fleet settles smoothly to the duty cycle's idle rate
+		// and every initial agent parks.
 		target := d.dutyTarget()
 		for rank, idx := range idxs {
 			if rank < target {
 				wg.Add(1)
 				go func(idx, rank int) {
 					defer wg.Done()
-					time.Sleep(time.Duration(rank*8+rand.Intn(40)) * time.Millisecond)
+					time.Sleep(time.Duration(rank*800/target+rand.Intn(40)) * time.Millisecond)
 					d.runFirstJoke(ctx, b, idx)
 					time.Sleep(time.Duration(60+rand.Intn(80)) * time.Millisecond)
 					d.mu.Lock()
@@ -1730,10 +1751,10 @@ func (d *driver) dutyWakeAndRequest(ctx context.Context, b *burst) {
 
 func (d *driver) dutyLoop() {
 	ctx := context.Background()
-	// Worker goroutines (96 for 1,000 agents) continuously wake random
-	// suspended agents, send a joke request, and pause back to 0 CPU so ~10%
-	// of the agents are active at any moment (~90% idle rate) and different
-	// agents cycle across the grid.
+	// Worker goroutines (dutyTarget-4: 196 for 1,000 agents at 80% idle)
+	// continuously wake random suspended agents, send a joke request, and pause
+	// back to 0 CPU, so about dutyTarget agents are active at any moment
+	// (-fleet-idle-pct) and different agents cycle across the grid.
 	for w := 0; w < d.dutyTarget()-4 || w < 1; w++ {
 		go func(w int) {
 			time.Sleep(time.Duration(w*12) * time.Millisecond)
@@ -1774,7 +1795,7 @@ func (d *driver) dutyLoop() {
 			}
 		}(w)
 	}
-	// 1-second step sampler for dutyRamp so the 1,000 ms step chart shows the ~100 active (90% idle) bars + climbing replies.
+	// 1-second step sampler for dutyRamp so the 1,000 ms step chart shows the active-agent bars (~200 at 80% idle) + climbing replies.
 	tick := time.NewTicker(1 * time.Second)
 	defer tick.Stop()
 	for range tick.C {
@@ -1807,7 +1828,7 @@ func (d *driver) simulateTraffic(stop, toggle bool) (float64, error) {
 		d.mu.Unlock()
 		return 0, nil
 	}
-	rate := autoRateForStrategy(d.tr.Strategy)
+	rate := d.autoRateForStrategy(d.tr.Strategy)
 	d.setRateLocked(rate)
 	if d.b != nil && !d.b.dutyCycle {
 		d.startDutyCycleLocked(d.b)
@@ -2026,11 +2047,11 @@ func (d *driver) verifyAtRest(ctx context.Context) (fixed, notRest int, err erro
 }
 
 // trafficLoop dispatches steady agent traffic at tr.Rate requests/s to random
-// idle running agents while phase == running. When dutyCycle is active (~90%
-// idle rate), normal requests (~100 req/s) come directly from dutyLoop's
+// idle running agents while phase == running. When dutyCycle is active, the
+// base rate (one request/s per active agent) comes directly from dutyLoop's
 // wake->request->suspend cycle; trafficLoop only dispatches supplementary
-// overload traffic when rate > 100 (e.g. Priority mode at 300 req/s) without
-// overriding the agent's lifecycle state.
+// overload traffic for the part of the rate above it (Stage 3: +200 req/s)
+// without overriding the agent's lifecycle state.
 func (d *driver) trafficLoop() {
 	tick := time.NewTicker(10 * time.Millisecond)
 	defer tick.Stop()
@@ -2044,7 +2065,7 @@ func (d *driver) trafficLoop() {
 		duty := d.b != nil && d.b.dutyCycle
 		d.mu.Unlock()
 		if duty {
-			rate = math.Max(0, rate-100)
+			rate = math.Max(0, rate-d.baseRate())
 		}
 		if rate <= 0 || phase != "running" {
 			credit = 0
@@ -2090,9 +2111,10 @@ func (d *driver) pickIdle(duty bool) int {
 		d.tr.Sent++
 		return i + 1
 	}
-	// In the duty cycle only ~10% of agents are up, so overload traffic
-	// shares them; cap it per agent so a slow pool turns into skipped
-	// requests instead of a pile of processes in one 256 MiB worker.
+	// In the duty cycle only the active agents are up (20% at the default
+	// -fleet-idle-pct), so overload traffic shares them; cap it per agent so a
+	// slow pool turns into skipped requests instead of a pile of processes in
+	// one 256 MiB worker.
 	eligible := func(i int) bool {
 		if d.reqBusy[i] >= maxReqPerAgent {
 			return false
@@ -2731,7 +2753,11 @@ func (d *driver) snapshot() stateJSON {
 			"tier_mix":            d.cfg.tierMix[:],
 			"agent_context_lines": ctxLines,
 			"contexts":            ctxN,
-			"max_inflight":        d.cfg.maxInflight},
+			"max_inflight":        d.cfg.maxInflight,
+			"fleet_idle_pct":      d.cfg.fleetIdlePct,
+			"duty_target":         d.dutyTarget(),
+			"stage_rates": map[string]float64{stratRR: d.autoRateForStrategy(stratRR), stratKV: d.autoRateForStrategy(stratKV),
+				stratFlow: d.autoRateForStrategy(stratFlow), stratSteer: d.autoRateForStrategy(stratSteer)}},
 		Phase:   d.phase,
 		Agents:  string(d.states),
 		Totals:  d.tot,
@@ -2920,7 +2946,7 @@ func (d *driver) serve() {
 		}
 		d.tr.Strategy = mode
 		if d.cfg.autoTraffic && !d.cfg.oneshot && d.phase == "running" && d.tr.Rate > 0 {
-			d.setRateLocked(autoRateForStrategy(mode))
+			d.setRateLocked(d.autoRateForStrategy(mode))
 		}
 		d.mu.Unlock()
 		log.Printf("API strategy=%s", mode)

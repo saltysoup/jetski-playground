@@ -1,6 +1,6 @@
 # Status, decisions and open items
 
-Last updated 2026-09-28 (Hermes variant added; workers moved to C4). The [README](./README.md) has the guide and the measured results. The engineering details are in [implementation.md](./implementation.md).
+Last updated 2026-10-03 (three llm-d stages; fleet idle rate 80%). The [README](./README.md) has the guide and the measured results. The engineering details are in [implementation.md](./implementation.md).
 
 ## Status
 
@@ -14,6 +14,7 @@ The demo works end to end on the live clusters, and the guide was re-verified st
 | llm-d | Balanced (now labelled Default 50:50) about 53/47. Steer 80/20 reached 80/20 within seconds (button removed from the dashboard on 2026-10-02; the driver API still accepts it). About 90% of prompt tokens come from the prefix cache. |
 | Hermes Agent variant (2026-09-28, [hermes/](./hermes/README.md)) | 1,000 Hermes agents on 18 × c4d-standard-16:<br>• wake in 2,444–2,854 ms;<br>• Simulate Traffic at 90.4–91.0% idle, 14,681 turns with 0 failed;<br>• 14,679 of 14,681 codename recalls correct after up to 28 suspends;<br>• Suspend all in 1,441 ms. |
 | Move to C4 (2026-09-28) | Light workers: 25 × c3-standard-4 → 25 × c4-standard-4. TPU cluster CPU node: e2-standard-4 → c4-standard-4. Control-plane pool stays on N2 (C4 can't attach the pd-balanced Postgres volume).<br>• Light wake 1,907–1,953 ms (was median 2,988 ms on C3), 0 failures;<br>• 40 s of traffic: 6,993 requests, 0 failed;<br>• Hermes re-check: wakes 2,500–2,923 ms, 1,702 replies with 0 failed, all recalls correct. |
+| Three llm-d stages at 80% fleet idle (2026-10-03, [README §2](./README.md#2-results)) | About 200 agents active (`-fleet-idle-pct` 80; was 90). Offered 200 / 200 / 400 req/s, served about 66–69 / 101–111 / 114–115 req/s in Stages 1–3: the pool (32 in flight per pod behind llm-d) is the limit. Stage 3 queue wait: Paid Members 39–72 ms, Free Users 3.7–4.5 s. Two runs, 25,203 requests, 0 failed. |
 
 **Hermes open item:** the first suspend and the first wake after a teach are slow (13–29 s and 6.3–6.7 s). The pre-show steps include one warm-up cycle to absorb this ([hermes §5](./hermes/README.md#5-before-the-show)). The root cause was not found: it is not dirty-page writeback, and one slow-suspend node showed 40% IO stall.
 
@@ -35,9 +36,7 @@ The demo works end to end on the live clusters, and the guide was re-verified st
 None of these are implemented. Each needs an owner's decision.
 
 1. **Node auto-upgrade is on for every node pool in both clusters, with no maintenance exclusion.** Recreating a Substrate node destroys the node-local snapshots of the agents paused on it, and awake agents on it end up `CRASHED`. Recommended before the show: `--no-enable-autoupgrade` on `substrate-node-pool` and `keynote-driver-pool`, plus a maintenance exclusion that covers the show.
-2. **Priority mode shows no queueing on the live pool.** The flow-control saturation detector allows 256 in-flight requests per pod, and 300 req/s never reaches that, so every band waits the same few milliseconds. An earlier llm-d-only test with a limit of 16 per pod showed premium 0.40 s against best-effort 1.26 s mean latency. Options:
-   - lower the per-pod limit for the demo (an llm-d setting; vLLM is unchanged);
-   - or present Priority as "bands configured; queues form only under saturation".
+2. **Done 2026-10-03: Priority mode now queues on the live pool.** The flow-control saturation detector allows 32 in-flight requests per pod instead of 256, so Stage 3 saturates the pool and the tiers separate (README §2). At 80% fleet idle that same limit caps served traffic at about 110–115 req/s, and Stage 2 queues too. Admitting more per pod (for example 48–64) would raise throughput somewhat, at higher per-request latency; not tested on the pool.
 3. **Wake-time margin.** The tail is set by uneven placement: 32–47 agents per node, and nodes with 40 or fewer finish by about 2.45 s. Rebalancing to about 40 per node would likely bring the wake to about 2.4–2.5 s. That estimate comes from the less-loaded nodes; it was not tested.
 4. **Safety net for an unrestorable snapshot.** It happened once in about 13,000 pause/restore cycles, and it makes "Wake 1,000" stop at 999. The driver could re-create an agent whose restore fails twice, which would cost about 4 s instead of a stuck wake. Today the fix is the manual repair in README §7.
 5. **Postgres data exposure.** `http_srv` in `postgres-0` serves the whole Postgres data directory on the pod network. Serve a separate directory that holds only the binaries, or bake the binaries into images.

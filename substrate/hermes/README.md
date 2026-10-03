@@ -152,7 +152,7 @@ ARGS="-listen=:8092 -llm-listen=:8091 -harness=hermes -hermes-key-file=/work/her
  -model=google/gemma-4-12B-it -gateway-url=http://${GATEWAY_IP}:8080/v1/chat/completions \
  -vllm=pod-1=${POD1_IP}:8000,pod-2=${POD2_IP}:8000 -epp=${EPP_IP}:9090 \
  -max-tokens=50 -temperature=1.0 -rest-mode=pause -grpc-conns=32 -suspend-concurrency=200 \
- -auto-traffic=false -nodes=18 -node-type=c4d-standard-16 -node-vcpus=16"
+ -auto-traffic=false -nodes=18 -node-type=c4d-standard-16 -node-vcpus=16 -fleet-idle-pct=90"
 $D exec keynote-driver -- sh -c "
   kill \$(pidof keynote_driver_hermes) 2>/dev/null; sleep 1; mkdir -p /work/runs-hermes; echo '${ARGS}' > /work/args.hermes
   (setsid nohup /work/keynote_driver_hermes ${ARGS} >> /work/driver-hermes.log 2>&1 &); sleep 3; tail -n 3 /work/driver-hermes.log"
@@ -161,6 +161,7 @@ curl -s -X POST localhost:8092/api/reconcile -d '{}'      # creates agent-0001..
 ```
 
 - `-nodes`, `-node-type` and `-node-vcpus` only change the dashboard: one grid tile per node, and the per-node density label.
+- `-fleet-idle-pct=90` keeps the Hermes fleet at ~90% idle, as measured here. The driver's default is 80 since 2026-10-03 (light fleet, main guide §2). The Hermes driver running on the cluster is a build from before that flag, fixed at 90%, so its args don't include it; that older build would refuse the flag.
 - The driver keeps each agent's memory bookkeeping (codename generation, recalls, suspends survived) in `/work/runs-hermes/hermes_memory.json`, so it survives a driver restart.
 
 ## 5. Before the show

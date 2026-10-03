@@ -160,14 +160,14 @@ async function mainScenario() {
   console.log('stage 2, llm-d router (kvaware):', await click('.stg[data-mode="kvaware"]'));
   await sleep(8000);
   await shot('04c_stage2_kv_aware');
-  console.log('stage 3, llm-d + flow (auto 300 req/s):', await click('.stg[data-mode="flow"]'));
+  console.log('stage 3, llm-d + flow (auto 400 req/s at 80% idle):', await click('.stg[data-mode="flow"]'));
   await sleep(9000);
   await shot('05_stage3_flow');
   await shot('07_1440x900', 1440, 900);
   console.log('suspend:', await click('#btnSuspend'));
   await sleep(380);
   await shot('06_draining');
-  // From the duty cycle only ~100 agents are up, so the suspend clock can finish in well under a second.
+  // From the duty cycle only ~200 agents are up, so the suspend clock can finish in about a second.
   await waitFor((s) => s.phase !== 'suspending' || s.burst.suspend_elapsed_ms >= 300, 20000, 'mid suspend');
   await shot('06a_suspending');
   await waitFor((s) => s.phase === 'idle', 30000, 'suspended');

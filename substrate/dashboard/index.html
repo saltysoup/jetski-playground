@@ -605,7 +605,7 @@ mark.cn.given{background:rgba(138,180,248,.14);color:inherit;box-shadow:inset 0 
           <div class="stages" role="group" aria-label="routing stage">
             <button class="stg" data-mode="roundrobin" data-n="1" title="Stage 1: no llm-d. The gateway spreads requests round robin over the two vLLM pods (1)">No llm-d<small>Round Robin</small></button>
             <button class="stg" data-mode="kvaware" data-n="2" title="Stage 2: the llm-d router sends each request to the pod that already has its prefix in KV cache (2)">llm-d Router<small>KV-Aware</small></button>
-            <button class="stg" data-mode="flow" data-n="3" title="Stage 3: llm-d router + flow control. Requests carry a user tier; when the pool is saturated, paid tiers are dispatched first. Raises traffic to 300 req/s (3)">llm-d + Flow<small>Priority SLA</small></button>
+            <button class="stg" data-mode="flow" data-n="3" title="Stage 3: llm-d router + flow control. Requests carry a user tier; when the pool is saturated, paid tiers are dispatched first. Adds 200 req/s of overload traffic (3)">llm-d + Flow<small>Priority SLA</small></button>
           </div>
           <button class="live" id="live" title="Connection to the driver · click for the operator menu"><i></i><span id="liveText">CONNECTING…</span><span class="caret">▾</span></button>
         </div>
@@ -801,6 +801,7 @@ function normalize(js) {
     harness: str(cfg.harness),      // optional: "hermes" | "sandbox" (absent = sandbox)
     memory: s.memory && typeof s.memory === 'object' && !Array.isArray(s.memory) ? s.memory : null,   // hermes only
     cluster: normCluster(cfg.cluster),   // optional {nodes, node_type, vcpus_per_node}; null = older backend
+    stageRates: obj(cfg.stage_rates),    // optional {roundrobin, kvaware, flow: req/s}; {} = older backend (100 / 300)
     busy: s.busy === true,          // optional (not in the contract today): honoured if the driver ever sends it
     burst: {
       id: b.id == null ? '' : String(b.id), t0: num(b.t0_unix_ms, 0), elapsed: nn(b.elapsed_ms),
@@ -1197,7 +1198,10 @@ if (dividerEl) {
 }
 
 // ------------------------------------------------------------------ per-poll updates
-function targetRateFor(mode) { return stratKey(mode) === 'flow' ? 300 : 100; }
+function targetRateFor(mode) {   // the driver's rate for this stage; older drivers: 100, or 300 in Stage 3
+  const k = stratKey(mode), r = S.latest && S.latest.stageRates ? num(S.latest.stageRates[k], 0) : 0;
+  return r > 0 ? r : (k === 'flow' ? 300 : 100);
+}
 function updateFromState(st) {
   setText(UI.wake, 'Wake Agents');
   const ph = st.phase;   // idle | waking | running | suspending | reconciling (anything else counts as busy)
@@ -1530,7 +1534,7 @@ function renderHero(rt) {
     : h.mode === 'running' ? '· Idle: 0% (all 1,000 awake)'
     : `· Idle: ${idlePctRound}% (0 CPU)`);
   let note;
-  if (!ci) note = duty ? `~4 active / 36 suspended per node (~${idlePctRound}% idle)` : '1 tile = 1 node (40 gVisor sandboxes · 4 vCPU)';
+  if (!ci) note = duty ? `${fInt(cnt)} active / ${fInt(suspCnt)} suspended (~${idlePctRound}% idle)` : '1 tile = 1 node (40 gVisor sandboxes · 4 vCPU)';
   else if (duty) { const act = clamp(Math.round(cnt / ci.nodes), 0, ci.per); note = `~${fInt(act)} active / ${fInt(ci.per - act)} suspended per node (~${idlePctRound}% idle)`; }
   else note = `1 tile = 1 node (${fInt(ci.per)} gVisor sandboxes${ci.vcpus ? ` · ${fInt(ci.vcpus)} vCPU` : ''})`;
   setText(UI.gridNote, note);

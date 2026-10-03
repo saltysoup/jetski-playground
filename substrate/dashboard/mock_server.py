@@ -25,6 +25,10 @@ Behaviour mirrors keynote_driver/main.go where it matters to the page:
   * per-pod e2e/ttft/queue/cache fields and band wait_ms are null while there is no data
   * "note" carries the driver's last status line (omitted when empty)
   * errors are HTTP 409 {"ok": false, "error": "..."}; success is {"ok": true, "result": ...}
+  * Simulate Traffic runs the driver's duty cycle as a closed loop (DUTY_TARGET - 4 workers, each waking a paused
+    agent, waiting for its reply and pausing it again), plus Stage 3's overload, skipped above MAX_INFLIGHT in flight.
+    Requests meet a modeled pool (see POOL_CAP_PER_POD): served req/s, queue waits and per-pod latency follow from
+    it, roughly as measured on the cluster on 2026-10-03, instead of being set per stage.
 Not mocked: burst.ramp_fine, api/summary, api/events.
 
 Hermes Agent mode (--harness hermes; default --harness sandbox keeps the old payload, plus config.harness):
@@ -46,7 +50,8 @@ Mock-only extra (NOT part of the real contract, handy for testing edge states):
 Routes match by suffix, so the page also works behind a path prefix,
 e.g. http://127.0.0.1:8765/some/prefix/ .
 
-Usage:  python3 mock_server.py [port] [--harness sandbox|hermes] [--no-cluster]     (default 8765, sandbox)
+Usage:  python3 mock_server.py [port] [--harness sandbox|hermes] [--fleet-idle-pct=N] [--no-cluster]
+        (default 8765, sandbox; fleet idle 80 for sandbox and 90 for hermes, like each variant's driver)
         config.cluster: sandbox 25 x c4-standard-4 (4 vCPU), hermes 18 x c4d-standard-16 (16 vCPU);
         --no-cluster omits it, like an older backend.
 """
@@ -78,16 +83,30 @@ HIST_EVERY_S = 0.5
 HIST_KEEP = 120
 TICKER_KEEP = 60
 RAMP_MAX_PTS = 120          # the driver sends at most 120 ramp entries (1,000 ms steps)
-MAX_SEQS = 128              # vLLM max_num_seqs per pod (mock): beyond this requests wait inside vLLM
-SAT_RPS = 400.0             # request rate that would fully saturate the pool (mock)
-SATURATE_AT_RPS = 300       # flow mode forms flow-control queues at/above this steady rate
 BANDS = ((100, "premium"), (0, "standard"), (-10, "best-effort"))
-BAND_WAIT_MS = (56.0, 85.0, 1150.0)  # flow @ 300 req/s on the cluster: ~50-70 / ~70-110 / ~1,100-1,400 ms
 TIER_MIX = (30, 40, 30)     # flow: % of requests sent premium / standard / best-effort (driver -tier-mix)
 STANDARD = 1
-# Prefix-cache hit of steady traffic (the driver's 240 team contexts x 60 lines) on the cluster:
-# round robin ~55-64 %, llm-d KV-aware routing ~89-97 %.
-HIT = {"roundrobin": 0.60, "kvaware": 0.94, "flow": 0.93, "steer8020": 0.80}
+# The inference pool (mock), calibrated against the live runs of 2026-10-03 (README section 2):
+#  * behind llm-d (kvaware, flow) the endpoint picker admits up to POOL_CAP_PER_POD requests per pod into vLLM
+#    (its concurrency detector: maxConcurrency 32 per pod, counted over the pool) and queues the rest in flow
+#    control: by tier in flow, all in one band (standard) in kvaware. Queue waits come out of that. It counts only
+#    the requests it sent itself, and steers new ones away from a pod with requests waiting inside vLLM (its queue
+#    scorer), so a round robin backlog doesn't stall Stage 2 while it drains; on the cluster it didn't either.
+#  * round robin bypasses llm-d: every request goes straight to vLLM. At its ~55-60 % prefix-cache hit, prefill
+#    takes most of a pod, a pod that falls behind builds a queue inside vLLM, and round robin keeps feeding it.
+#  * a pod's speed follows from its load: decode slows with the batch and with the uncached prompt tokens the pod
+#    prefills at the same time (that is also why pod-2, with the lower hit behind llm-d, is the slower pod).
+POOL_CAP_PER_POD = 32       # requests llm-d lets into the pool per vLLM pod (the EPP's maxConcurrency)
+RUN_CAP = 80                # requests one vLLM pod runs at once; the rest show as "waiting" (mock)
+PREFILL_TPS = 46000.0       # uncached prompt tokens/s one pod prefills (fitted; ~37k measured with a single stream)
+FC_DISPATCH_MS = (25.0, 45.0)  # flow control hands a queued request to a pod this long after a slot frees (mock)
+AGENT_HOP_MS = (50.0, 110.0)   # a steady request leaves its agent and reaches the gateway this much later (mock)
+# Prefix-cache hit of steady traffic (the driver's 240 team contexts x 60 lines) per pod on the cluster:
+# round robin ~45-75 % (lower on the pod with more requests in flight), llm-d KV-aware routing ~78-98 %.
+# Round robin: pod-1 runs a few points lower (live at 80 % idle: pod-1 43-60 %, pod-2 54-75 %), so it is the pod
+# that falls behind, as in both live runs.
+HIT_POD = {"roundrobin": (0.62, 0.68), "kvaware": (0.95, 0.87), "flow": (0.97, 0.89), "steer8020": (0.85, 0.80)}
+HIT_RR_SLOPE = 0.0005       # round robin: each request in flight on a pod costs it 0.05 point of hit (cache churn)
 STEADY_PROMPT = (1780, 1920)  # steady-traffic prompt tokens (team notes + question); first replies ~290
 STRATEGIES = ("roundrobin", "kvaware", "flow", "steer8020")
 STRATEGY_ALIASES = {"round-robin": "roundrobin", "rr": "roundrobin", "kv-aware": "kvaware",
@@ -101,9 +120,28 @@ def norm_strategy(s):
     return s if s in STRATEGIES else None
 
 
+# Fleet idle rate (the driver's -fleet-idle-pct): the duty cycle keeps DUTY_TARGET of the 1,000 agents active.
+# main() sets it: 80 for the light fleet (the driver's default since 2026-10-03), 90 for --harness hermes
+# (the Hermes driver build predates the flag and keeps 90), or --fleet-idle-pct=N.
+FLEET_IDLE_PCT = DUTY_TARGET = DUTY_WORKERS = BASE_RATE = MAX_INFLIGHT = 0
+
+
+def set_fleet_idle(pct):
+    """The driver's dutyTargetFor and the defaults that follow from it."""
+    global FLEET_IDLE_PCT, DUTY_TARGET, DUTY_WORKERS, BASE_RATE, MAX_INFLIGHT
+    FLEET_IDLE_PCT = pct
+    DUTY_TARGET = max(1, int(round(TOTAL * (100 - pct) / 100.0)))   # 200 of 1,000 active at 80
+    DUTY_WORKERS = max(1, DUTY_TARGET - 4)      # duty-cycle workers: each keeps one agent busy at a time
+    BASE_RATE = DUTY_TARGET                     # Simulate Traffic: one request/s per active agent
+    MAX_INFLIGHT = DUTY_TARGET + 20             # -max-inflight auto: overload is skipped above this many in flight
+
+
+set_fleet_idle(80)
+
+
 def auto_rate(strategy):
-    """The driver's autoRateForStrategy: Stage 3 overloads the pool, the others run 100 req/s."""
-    return 300 if strategy == "flow" else 100
+    """The driver's autoRateForStrategy: the duty cycle's base rate, plus 200 req/s of overload in Stage 3."""
+    return BASE_RATE + 200 if strategy == "flow" else BASE_RATE
 
 MILESTONE_FRACS = (0.10, 0.25, 0.50, 0.75, 1.0)
 SUSPEND_CAP = 200           # the driver caps suspend calls in flight at 200 ...
@@ -228,7 +266,7 @@ def percentiles(v):
 
 class Req:
     __slots__ = ("agent", "steady", "first", "band", "pod", "t_arrive", "queue_ms", "prompt",
-                 "completion", "text", "ttft", "e2e", "vq", "mode", "suspend_after", "joke")
+                 "completion", "text", "ttft", "e2e", "vq", "mode", "suspend_after", "joke", "via_epp")
 
 
 class Sim:
@@ -261,17 +299,22 @@ class Sim:
         self.rate = 0
         self.strategy = "roundrobin"
         self.changes = []                   # latest strategy switches, newest last (traffic.changes)
-        self.hit = HIT["roundrobin"]        # prefix-cache hit fraction, tweened toward HIT[strategy]
+        self.hit_pod = list(HIT_POD["roundrobin"])  # prefix-cache hit fraction per pod, tweened toward HIT_POD[strategy]
         self.tr = {"inflight": 0, "sent": 0, "replies": 0, "failed": 0, "skipped": 0}
         self.p1 = 0.5
         self.arr_acc = 0.0
-        self.pressure = 0.0
+        self.fcq = [deque(), deque(), deque()]   # llm-d flow-control queues per band (premium, standard, best-effort)
+        self.fc_handoff = 0                 # queued requests already given a slot, on their way to a pod
+        self.duty_workers = 0
+        self.duty_owned = bytearray(TOTAL)  # 1 = this agent is a duty worker's current agent
         self.sat = 0.0
         self.dispatch_log = deque()
         self.done_log = deque()
         self.pod_inflight = [0, 0]
+        self.epp_inflight = 0               # requests llm-d's endpoint picker sent that are still in flight
         self.pod_total = [0, 0]
-        self.band_queue = [0, 0, 0]
+        self.pf_acc = [0.0, 0.0]            # uncached prompt tokens sent to each pod since the last tick
+        self.pf_rate = [0.0, 0.0]           # ... per second, smoothed over ~1 s: the pod's prefill load
         self.susp_active = 0
         self.susp_wait = deque()
         self.susp_outstanding = 0
@@ -320,9 +363,10 @@ class Sim:
         self.wake_only = wake_only
         self.traffic_started = not wake_only
         self.duty_cycle = False
+        self.duty_workers = 0
+        self.duty_owned = bytearray(TOTAL)
         self.traffic_t0 = None
         self.duty_Settled = False
-        self.duty_acc = 0.0
         self.ramp_wake_pts = None
         self.ramp_duty_pts = []
         self.next_duty_ramp = None
@@ -426,7 +470,7 @@ class Sim:
             return True, bid
 
     def _start_duty_cycle(self, now):
-        """Transition awake fleet into ~90% idle duty cycle (staggered request -> suspend -> random resume)."""
+        """Transition awake fleet into the duty cycle (FLEET_IDLE_PCT idle: staggered request -> suspend -> random resume)."""
         if self.ramp_wake_pts is None and self.t0 is not None:
             end = self.wake_done_ms if self.wake_done_ms is not None else max(1000.0, (now - self.t0) * 1000.0)
             npts = min(max(1, int(math.ceil(end / 1000.0))), 10)
@@ -440,19 +484,22 @@ class Sim:
         self.duty_cycle = True
         self.traffic_t0 = now
         self.duty_Settled = False
-        self.duty_acc = 0.0
         self.ramp_frozen = None
         self.next_duty_ramp = now + 1.0
         running_idxs = [i for i in range(self.n) if self.agents[i] in (C1, C2)]
         self.rnd.shuffle(running_idxs)
-        # Stagger initial wave: first 100 agents stagger a request over 0..0.9s then suspend;
-        # remaining ~900 stagger-suspend over 0.03..1.5s so the fleet settles smoothly to ~100 active (~90% idle).
+        # Stagger initial wave: each of the DUTY_WORKERS workers takes one awake agent and staggers its request
+        # over 0..0.9s (then pauses it and moves on to a paused agent: see tick); the rest stagger-suspend over
+        # 0.03..1.5s so the fleet settles smoothly to ~DUTY_TARGET active.
+        tgt = min(DUTY_WORKERS, len(running_idxs))
+        self.duty_workers = tgt
         for rank, i in enumerate(running_idxs):
-            if rank < 100:
-                delay = 0.01 + 0.85 * (rank / 100.0) + self.rnd.uniform(0.0, 0.08)
+            if rank < tgt:
+                self.duty_owned[i] = 1
+                delay = 0.01 + 0.85 * (rank / float(tgt)) + self.rnd.uniform(0.0, 0.08)
                 self._sched(now + delay, "duty_send", (i, True))
             else:
-                delay = 0.02 + 1.45 * ((rank - 100) / max(1.0, float(len(running_idxs) - 100))) + self.rnd.uniform(0.0, 0.12)
+                delay = 0.02 + 1.45 * ((rank - tgt) / max(1.0, float(len(running_idxs) - tgt))) + self.rnd.uniform(0.0, 0.12)
                 self._sched(now + delay, "duty_park", i)
 
     def _set_rate(self, rate):
@@ -496,6 +543,7 @@ class Sim:
             self.strategy = mode
             if self.phase == "running" and self.rate > 0:
                 self._set_rate(auto_rate(mode))
+            self._fc_pump(mono())
             return True, mode
 
     def suspend(self, body):
@@ -544,6 +592,7 @@ class Sim:
                 self.suspend_fail_rate = max(0.0, min(1.0, float(body["suspend_fail_rate"])))
             if "pod_up" in body and isinstance(body["pod_up"], list) and len(body["pod_up"]) == 2:
                 self.pod_up = [bool(x) for x in body["pod_up"]]
+                self._fc_pump(mono())
             return True, None
 
     # ------------------------------------------------------------ burst events
@@ -648,6 +697,8 @@ class Sim:
             self.burst_no += 1
             self._new_burst("s-%s-%04d" % (RUN_TAG, self.burst_no), t, TOTAL, True)
         self.duty_cycle = False
+        self.duty_workers = 0
+        self.duty_owned = bytearray(TOTAL)
         self.susp_t0 = t
         self.all_susp_ms = None
         idx = [i for i in range(TOTAL) if self.agents[i] in (C1, C2, C3, C4)]
@@ -724,18 +775,27 @@ class Sim:
         r.prompt = rnd.randint(*STEADY_PROMPT) if steady else rnd.randint(284, 297)
         r.joke = rnd.choice(JOKES)
         r.text = (rnd.choice(OPENERS) + r.joke + rnd.choice(CLOSERS)).strip()
-        r.completion = max(20, min(45, int(len(r.text) / 4.0) + rnd.randint(10, 20)))
+        r.completion = max(14, min(48, int(len(r.text) / 4.0) + rnd.randint(3, 7)))   # ~25 tokens, as on the cluster
         return r
 
-    def _service_latency(self, pod, completion):
-        both = self.pod_up[0] and self.pod_up[1]
-        share = (self.p1 if pod == 0 else 1.0 - self.p1) if both else 1.0
-        load = self.rate * share if self.phase == "running" else 0.0
-        rnd = self.rnd
-        miss = 1.0 - self.hit              # prefix-cache misses re-prefill the team notes
-        ttft = max(18.0, 40.0 + 0.45 * load + 600.0 * miss + rnd.gauss(0, 5))
-        tpot = max(4.0, 6.3 + 0.018 * load + 25.0 * miss + rnd.gauss(0, 0.25))
-        return ttft, max(80.0, ttft + completion * tpot)
+    def _service_latency(self, pod, r):
+        """vLLM on one pod (mock): TTFT, E2E and the wait inside vLLM for a request that joins the pod now.
+
+        Decode slows as the batch grows (inter-token latency 6.0 ms with 1 request in flight, ~15 ms at 32 and
+        ~30 ms at 64, measured on 2026-10-02) and while the pod prefills prompt tokens that missed the prefix
+        cache: those take pf_rate / PREFILL_TPS of the pod (most of it at round robin's ~55-60 % hit). A pod runs
+        up to RUN_CAP requests at once; the rest wait inside vLLM for a slot.
+        """
+        n = self.pod_inflight[pod]          # requests on this pod, this one included
+        nr = min(n, RUN_CAP)
+        free = 1.0 - min(0.8, self.pf_rate[pod] / PREFILL_TPS)   # share of the pod left for decode
+        pre_ms = 1000.0 * (1.0 - self.hit_pod[pod]) * r.prompt / PREFILL_TPS   # misses re-prefill the team notes
+        itl = (6.0 + 0.29 * min(nr, 32) + 0.475 * max(0, nr - 32)) / free
+        ttft0 = (25.0 + 1.1 * min(nr, 64) + pre_ms) / free
+        e2e0 = ttft0 + r.completion * itl
+        vq = max(0, n - RUN_CAP) * e2e0 / RUN_CAP   # a slot frees about every e2e0 / RUN_CAP ms
+        j = self.rnd.uniform(0.9, 1.1)
+        return ttft0 * j + vq, e2e0 * j + vq, vq
 
     def _dispatch(self, t, r, queue_ms, e2e=None):
         rnd = self.rnd
@@ -750,21 +810,63 @@ class Sim:
             return
         r.pod = pod
         self.pod_inflight[pod] += 1
+        r.via_epp = r.mode != "roundrobin"
+        if r.via_epp:
+            self.epp_inflight += 1
+        self.pf_acc[pod] += (1.0 - self.hit_pod[pod]) * r.prompt
         self.dispatch_log.append((t, pod, -1 if r.mode == "roundrobin" else r.band, queue_ms))  # RR skips the EPP
         if e2e is None:
-            r.ttft, r.e2e = self._service_latency(pod, r.completion)
-            r.vq = rnd.uniform(0.5, 4.0)
+            r.ttft, r.e2e, r.vq = self._service_latency(pod, r)
         else:
             r.e2e = e2e
             r.ttft = e2e * rnd.uniform(0.22, 0.4)
             r.vq = max(0.0, e2e - 260.0) * rnd.uniform(0.4, 0.6)
         self._sched(t + r.e2e / 1000.0, "reply", r)
 
+    def _pool_room(self):
+        """Free slots as llm-d's concurrency detector counts them: POOL_CAP_PER_POD per pod that is up, minus the
+        requests the endpoint picker sent that are still in flight. Round robin requests skip the endpoint picker,
+        so a round robin backlog still running on a pod after the switch to Stage 2 doesn't block admissions."""
+        ups = int(self.pod_up[0]) + int(self.pod_up[1])
+        return POOL_CAP_PER_POD * ups - self.epp_inflight - self.fc_handoff
+
+    def _submit(self, t, r):
+        """A steady request leaves its agent. It counts as in flight from now on, and reaches the gateway after
+        the sandbox's script has started and sent it (AGENT_HOP_MS)."""
+        self.tr["sent"] += 1
+        self.tr["inflight"] += 1
+        self._sched(t + self.rnd.uniform(*AGENT_HOP_MS) / 1000.0, "arrive", r)
+
+    def _ev_arrive(self, t, r):
+        """The request reaches the gateway. Round robin goes straight to a vLLM pod; behind llm-d the endpoint
+        picker admits it while the pool has room and otherwise queues it in flow control, by tier."""
+        r.t_arrive = t
+        if (r.mode == "roundrobin" or not (self.pod_up[0] or self.pod_up[1])
+                or (self._pool_room() > 0 and not any(self.fcq))):
+            self._dispatch(t, r, self.rnd.uniform(0.2, 3.0))
+        else:
+            self.fcq[r.band].append(r)
+
+    def _fc_pump(self, t):
+        """llm-d flow control: hand queued requests to free slots, highest tier first, FIFO within a tier.
+        In round robin nothing goes through llm-d, so whatever is still queued is released at once."""
+        rr = self.strategy == "roundrobin"
+        room = self._pool_room()
+        while rr or room > 0:
+            q = self.fcq[0] or self.fcq[1] or self.fcq[2]
+            if not q:
+                return
+            r = q.popleft()
+            room -= 1
+            self.fc_handoff += 1
+            self._sched(t + self.rnd.uniform(*FC_DISPATCH_MS) / 1000.0, "dispatch", r)
+
     def _req_finished(self, t, r):
         i = r.agent
         if getattr(r, "suspend_after", False):
-            if self.phase == "running" and self.agents[i] in (C2, C3):
+            if self.agents[i] == C3:
                 self._set(i, C2)
+            if self.phase == "running" and self.agents[i] == C2:
                 self._sched(t + self.rnd.uniform(0.06, 0.14), "duty_park", i)
             return
         if self.agents[i] == C3 and not getattr(self, "duty_cycle", False):
@@ -775,10 +877,17 @@ class Sim:
             else:
                 self._susp_request(t, i)    # one-shot burst: every agent suspends right after its reply
 
+    def _duty_release(self, i):
+        """The duty worker that held agent i is free again (tick hands it the next paused agent)."""
+        if self.duty_owned[i]:
+            self.duty_owned[i] = 0
+            self.duty_workers -= 1
+
     def _ev_duty_wake(self, t, i):
         if self.phase != "running" or self.rate <= 0 or self.agents[i] != C1:
             if self.agents[i] == C1 and self.phase != "waking":
                 self._set(i, C0)
+            self._duty_release(i)
             return
         self._set(i, C2)
         self._sched(t + self.rnd.uniform(0.08, 0.16), "duty_send", (i, True))
@@ -788,25 +897,15 @@ class Sim:
         if self.phase != "running" or self.rate <= 0:
             if self.agents[i] in (C1, C2, C3) and self.phase != "suspending":
                 self._set(i, C0)
+            self._duty_release(i)
             return
         if suspend_after and self.agents[i] not in (C1, C2):
+            self._duty_release(i)
             return
         if suspend_after:
             self._set(i, C3)
-        r = self._new_req(i, True, t, suspend_after=suspend_after)
-        self.tr["sent"] += 1
-        self.tr["inflight"] += 1
-        if self.strategy == "flow" and self.pressure > 0.02:
-            w = BAND_WAIT_MS[r.band] * self.pressure * self.rnd.uniform(0.55, 1.45)
-            self.band_queue[r.band] += 1
-            if suspend_after:
-                # Don't block the sandbox's own ~1s wake-request-suspend visual cycle on a 1.1s best-effort queue wait:
-                # schedule its park after a realistic ~0.45s turn while the request finishes through the EPP queue.
-                r.suspend_after = False
-                self._sched(t + self.rnd.uniform(0.35, 0.55), "duty_park", i)
-            self._sched(t + w / 1000.0, "dispatch", r)
-        else:
-            self._dispatch(t, r, self.rnd.uniform(0.2, 3.0))
+        # The agent waits for its reply, queue included: that is what makes the duty cycle a closed loop.
+        self._submit(t, self._new_req(i, True, t, suspend_after=suspend_after))
 
     def _ev_duty_park(self, t, i):
         if self.phase != "running":
@@ -814,6 +913,8 @@ class Sim:
         if self.agents[i] in (C1, C2, C3):
             self._set(i, C4)
             self._sched(t + self.rnd.uniform(0.12, 0.22), "duty_susp_done", i)
+        else:
+            self._duty_release(i)
 
     def _ev_duty_susp_done(self, t, i):
         if self.phase == "suspending":
@@ -822,8 +923,9 @@ class Sim:
             self._set(i, C0)
             if self.t0 is not None:
                 bisect.insort(self.susp_ts, self._ms(t))
-            if self._up() <= 115:
+            if self._up() <= DUTY_TARGET * 1.15:
                 self.duty_Settled = True
+        self._duty_release(i)
 
     def _pick_suspended(self):
         rnd, a = self.rnd, self.agents
@@ -865,7 +967,7 @@ class Sim:
         self._req_finished(t, r)
 
     def _ev_dispatch(self, t, r):
-        self.band_queue[r.band] -= 1
+        self.fc_handoff -= 1
         self._dispatch(t, r, (t - r.t_arrive) * 1000.0)
 
     def _hermes_turn(self, t, r):
@@ -912,6 +1014,8 @@ class Sim:
     def _ev_reply(self, t, r):
         mem = self._hermes_turn(t, r) if HARNESS == "hermes" else None
         self.pod_inflight[r.pod] -= 1
+        if r.via_epp:
+            self.epp_inflight -= 1
         self.pod_total[r.pod] += 1
         tot = self.totals
         tot["requests"] += 1
@@ -940,6 +1044,7 @@ class Sim:
         if r.first and self.t0 is not None:
             bisect.insort(self.done_recs, (self._ms(t), r.prompt + r.completion))
         self._req_finished(t, r)
+        self._fc_pump(t)                    # the freed slot goes to the next queued request, if any
 
     def _pick_idle(self):
         rnd, a = self.rnd, self.agents
@@ -955,35 +1060,22 @@ class Sim:
         return j if j >= 0 else None
 
     def _steady(self, t):
+        if self.tr["inflight"] >= MAX_INFLIGHT:     # the driver's -max-inflight: skipped, not queued
+            self.tr["skipped"] += 1
+            return
         if getattr(self, "duty_cycle", False):
             i = self._pick_active_for_req()
             if i is None:
                 self.tr["skipped"] += 1
                 return
-            r = self._new_req(i, True, t, suspend_after=False)
-            self.tr["sent"] += 1
-            self.tr["inflight"] += 1
-            if self.strategy == "flow" and self.pressure > 0.02:
-                w = BAND_WAIT_MS[r.band] * self.pressure * self.rnd.uniform(0.55, 1.45)
-                self.band_queue[r.band] += 1
-                self._sched(t + w / 1000.0, "dispatch", r)
-            else:
-                self._dispatch(t, r, self.rnd.uniform(0.2, 3.0))
+            self._submit(t, self._new_req(i, True, t, suspend_after=False))
             return
         i = self._pick_idle()
         if i is None:
             self.tr["skipped"] += 1
             return
         self._set(i, C3)
-        r = self._new_req(i, True, t)
-        self.tr["sent"] += 1
-        self.tr["inflight"] += 1
-        if self.strategy == "flow" and self.pressure > 0.02:
-            w = BAND_WAIT_MS[r.band] * self.pressure * self.rnd.uniform(0.55, 1.45)
-            self.band_queue[r.band] += 1
-            self._sched(t + w / 1000.0, "dispatch", r)
-        else:
-            self._dispatch(t, r, self.rnd.uniform(0.2, 3.0))
+        self._submit(t, self._new_req(i, True, t))
 
     # ------------------------------------------------------------------- tick
     def tick(self):
@@ -997,35 +1089,37 @@ class Sim:
                 tgt = 0.5 + 0.004 * math.sin(now / 1.9)
             else:
                 tgt = 0.5 + 0.02 * math.sin(now / 3.1) + 0.012 * math.sin(now / 1.27)
+                # llm-d's queue scorer: a pod with requests waiting inside vLLM (a round robin backlog right after
+                # the switch to Stage 2) gets fewer of the new requests until it has caught up
+                w0, w1 = (max(0, self.pod_inflight[p] - RUN_CAP) for p in (0, 1))
+                tgt = min(0.85, max(0.15, tgt + (w1 - w0) / 150.0))
             self.p1 += (tgt - self.p1) * (1.0 - math.exp(-dt / 0.35))
-            want = 1.0 if (self.strategy == "flow" and self.phase == "running"
-                           and self.rate >= SATURATE_AT_RPS) else 0.0
-            self.pressure += (want - self.pressure) * (1.0 - math.exp(-dt / 0.9))
-            hit_tgt = HIT.get(self.strategy, 0.9) + 0.012 * math.sin(now / 2.3)
-            self.hit += (hit_tgt - self.hit) * (1.0 - math.exp(-dt / 1.5))  # caches warm up / thrash in ~seconds
+            hit_tgt = HIT_POD.get(self.strategy, (0.9, 0.9))
+            for p in (0, 1):                    # caches warm up / thrash in ~seconds
+                h = hit_tgt[p] + 0.012 * math.sin(now / 2.3 + 1.7 * p)
+                if self.strategy == "roundrobin":
+                    h -= HIT_RR_SLOPE * self.pod_inflight[p]
+                self.hit_pod[p] += (h - self.hit_pod[p]) * (1.0 - math.exp(-dt / 1.5))
+            if dt > 0:                          # each pod's prefill load: uncached prompt tokens/s over ~1 s
+                a = 1.0 - math.exp(-dt / 1.0)
+                for p in (0, 1):
+                    self.pf_rate[p] += (self.pf_acc[p] / dt - self.pf_rate[p]) * a
+                    self.pf_acc[p] = 0.0
             if self.phase == "running" and self.rate > 0 and dt > 0:
                 if getattr(self, "duty_cycle", False):
-                    # Maintain ~100 active agents (~90% idle rate) waking from C0 -> C1 -> C2 -> C3 -> C4 -> C0
-                    up = self._up()
-                    if up < 140:
-                        target_active = 100.0
-                        err = target_active - up
-                        wake_rate = max(15.0, min(190.0, 108.0 + err * 5.0))
-                        self.duty_acc = min(self.duty_acc + wake_rate * dt, 40.0)
-                        nw = int(self.duty_acc)
-                        if nw:
-                            self.duty_acc -= nw
-                            for k in range(nw):
-                                idx = self._pick_suspended()
-                                if idx is not None:
-                                    wt = now - dt + dt * (k + 1) / nw
-                                    self._set(idx, C1)
-                                    self._sched(wt + self.rnd.uniform(0.06, 0.11), "duty_wake", idx)
-                    else:
-                        self.duty_acc = 0.0
-                        nw = 0
-                    # Any extra req/s above the duty wake rate (e.g. 300 req/s in priority mode)
-                    extra_rate = max(0.0, float(self.rate) - 100.0)
+                    # The driver's duty workers, a closed loop: each wakes a paused agent (C0 -> C1 -> C2), sends
+                    # its LLM request (C3), waits for the reply (queue included), pauses it (C4 -> C0) and takes
+                    # the next one. Slow replies or long queues mean fewer requests per second, not more in flight.
+                    while self.duty_workers < DUTY_WORKERS:
+                        idx = self._pick_suspended()
+                        if idx is None:
+                            break
+                        self.duty_workers += 1
+                        self.duty_owned[idx] = 1
+                        self._set(idx, C1)
+                        self._sched(now + self.rnd.uniform(0.06, 0.11), "duty_wake", idx)
+                    # Any extra req/s above the duty cycle's base rate (Stage 3: +200 req/s)
+                    extra_rate = max(0.0, float(self.rate) - BASE_RATE)
                     self.arr_acc = min(self.arr_acc + extra_rate * dt, max(1.0, extra_rate))
                     n = int(self.arr_acc)
                     if n:
@@ -1041,7 +1135,6 @@ class Sim:
                             self._steady(now - dt + dt * (k + 1) / n)
             else:
                 self.arr_acc = 0.0
-                self.duty_acc = 0.0
             ev = self.events
             while ev and ev[0][0] <= now:
                 t, _, kind, p = heapq.heappop(ev)
@@ -1092,14 +1185,13 @@ class Sim:
                 bn[band] += 1
                 bw[band] += qms
         tot_d = dn[0] + dn[1]
-        epp_d = bn[0] + bn[1] + bn[2]
         up_frac = self._up() / float(TOTAL)
         fleet_active_scale = 1.0 if (getattr(self, "duty_cycle", False) and self.rate > 0) else up_frac
         rnd = self.rnd
         pods = []
         for p in range(2):
             inflight = self.pod_inflight[p]
-            running = min(inflight, MAX_SEQS)
+            running = min(inflight, RUN_CAP)
             k = n[p]
             pod_share = (dn[p] / float(tot_d)) if tot_d else 0.5
             kv_pct = (
@@ -1116,18 +1208,23 @@ class Sim:
                 "ttft_ms": int(round(ttft[p] / k)) if k else None,
                 "queue_ms": round(vq[p] / k, 1) if k else None,
                 "running": running,
-                "waiting": max(0, inflight - MAX_SEQS),
-                "cache_hit_pct": round(max(0.0, min(99.0, 100.0 * self.hit + rnd.gauss(0, 1.2))), 1) if k else None,
+                "waiting": max(0, inflight - RUN_CAP),
+                "cache_hit_pct": round(max(0.0, min(99.0, 100.0 * self.hit_pod[p] + rnd.gauss(0, 1.2))), 1) if k else None,
                 "kv_usage_pct": kv_pct,
                 "requests_total": self.pod_total[p],
             })
         split = [round(100.0 * dn[0] / tot_d, 1), round(100.0 * dn[1] / tot_d, 1)] if tot_d else [50.0, 50.0]
-        raw = min(0.85, 2.2 * (epp_d / W) / SAT_RPS)      # 0 in round robin: the EPP sees no traffic
-        raw = raw * (1.0 - self.pressure) + (1.02 + rnd.gauss(0, 0.04)) * self.pressure
-        self.sat += (raw - self.sat) * 0.35
+        queued = len(self.fcq[0]) + len(self.fcq[1]) + len(self.fcq[2])
+        if self.strategy == "roundrobin" and not queued:
+            raw = 0.0                       # round robin: the EPP sees no traffic
+        else:                               # pool fill as the EPP's detector sees it, just above 1 while queueing
+            cap = POOL_CAP_PER_POD * max(1, int(self.pod_up[0]) + int(self.pod_up[1]))
+            busy = self.epp_inflight + self.fc_handoff
+            raw = min(1.2, busy / float(cap)) + (0.06 if queued else 0.0) + (rnd.gauss(0, 0.025) if busy else 0.0)
+        self.sat += (max(0.0, raw) - self.sat) * 0.35
         if self.sat < 0.001:
             self.sat = 0.0
-        bands = [{"priority": prio, "name": name, "queue": max(0, self.band_queue[j]),
+        bands = [{"priority": prio, "name": name, "queue": len(self.fcq[j]),
                   "wait_ms": int(round(bw[j] / bn[j])) if bn[j] else None, "req_s": round(bn[j] / W, 1)}
                  for j, (prio, name) in enumerate(BANDS)]
         self.sample_unix = unix_ms()
@@ -1240,7 +1337,9 @@ class Sim:
                     if self.all_susp_ms is not None:
                         b["all_suspended_ms"] = int(round(self.all_susp_ms))
             cfg = {"total_agents": TOTAL, "model": MODEL, "pods": list(PODS),
-                   "accelerator": ACCEL, "max_tokens": MAX_TOKENS, "harness": HARNESS}
+                   "accelerator": ACCEL, "max_tokens": MAX_TOKENS, "harness": HARNESS,
+                   "fleet_idle_pct": FLEET_IDLE_PCT, "duty_target": DUTY_TARGET, "max_inflight": MAX_INFLIGHT,
+                   "stage_rates": {k: auto_rate(k) for k in STRATEGIES}}
             if SEND_CLUSTER:
                 cfg["cluster"] = dict(CLUSTERS[HARNESS])
             state = {
@@ -1355,6 +1454,7 @@ class Handler(BaseHTTPRequestHandler):
 def main():
     global HARNESS, SEND_CLUSTER
     port = 8765
+    idle = None
     args = sys.argv[1:]
     for j, a in enumerate(args):
         if a.isdigit():
@@ -1365,12 +1465,20 @@ def main():
             HARNESS = a.split("=", 1)[1]
         elif a == "--harness" and j + 1 < len(args):
             HARNESS = args[j + 1]
+        elif a.startswith("--fleet-idle-pct="):
+            idle = a.split("=", 1)[1]
     if HARNESS not in ("sandbox", "hermes"):
         sys.exit("--harness must be sandbox or hermes")
+    if idle is None:
+        idle = "90" if HARNESS == "hermes" else "80"   # what each variant's driver build runs
+    if not idle.isdigit() or not 1 <= int(idle) <= 99:
+        sys.exit("--fleet-idle-pct must be 1..99")
+    set_fleet_idle(int(idle))
     httpd = ThreadingHTTPServer(("0.0.0.0", port), Handler)
     httpd.daemon_threads = True
     threading.Thread(target=sim_loop, daemon=True).start()
-    print("mock keynote driver (harness %s): http://127.0.0.1:%d/  (Ctrl-C to stop)" % (HARNESS, port), flush=True)
+    print("mock keynote driver (harness %s, fleet idle %d%%): http://127.0.0.1:%d/  (Ctrl-C to stop)"
+          % (HARNESS, FLEET_IDLE_PCT, port), flush=True)
     try:
         httpd.serve_forever()
     except KeyboardInterrupt:

@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 """Replays the stage flow against the driver and samples its state.
 
-Wake Agents (wake_only) -> Simulate Traffic (Default 50:50, 100 req/s) ->
-Priority (300 req/s) -> Default 50:50 -> Suspend all. Prints one line per
-sample, so stuck agents, failed calls and flow-control saturation are
-visible. BAL_S=0 suspends straight from Priority, the worst case for calls in
-flight during the pause.
+Wake Agents (wake_only) -> Simulate Traffic (Default 50:50, today's Stage 2) ->
+Priority (Stage 3) -> Default 50:50 -> Suspend all, each at the driver's own
+stage rate (config.stage_rates: 200 and 400 req/s at the default 80% fleet
+idle). Prints one line per sample, so stuck agents, failed calls and
+flow-control saturation are visible. BAL_S=0 suspends straight from Priority,
+the worst case for calls in flight during the pause.
 
 Usage: python3 demo_soak.py [DRIVER_URL=http://localhost:8090/] [WARM_S=30] [PRIO_S=60] [BAL_S=20]
 """
@@ -78,12 +79,10 @@ for _ in range(60):
 line("woke")
 post("api/simulate_traffic", {"toggle": True})
 run_for("default", WARM_S)
-post("api/strategy", {"mode": "priority"})
-post("api/traffic", {"rate": 300})
+post("api/strategy", {"mode": "priority"})    # the driver switches to the stage's rate itself
 run_for("priority", PRIO_S)
 if BAL_S > 0:
     post("api/strategy", {"mode": "balanced"})
-    post("api/traffic", {"rate": 100})
     run_for("default2", BAL_S)
 t_susp = time.time()
 post("api/suspend", {})
