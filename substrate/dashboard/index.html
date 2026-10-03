@@ -21,7 +21,8 @@ html,body{margin:0;height:100%;overflow:hidden;background:var(--bg);color:var(--
 button{font-family:inherit;font-variant-numeric:tabular-nums}
 #stage{position:absolute;left:0;top:0;width:1920px;height:1080px;transform-origin:0 0;display:grid;
   grid-template-columns:954px 12px 954px;grid-template-rows:58px minmax(0,1fr);overflow:hidden;background:var(--bg)}
-.panel{position:relative;height:1022px;min-width:0;overflow:hidden}
+/* --xh: extra stage height in windows taller than 16:9 (set by fit(); 0 at 1920x1080) */
+.panel{position:relative;height:calc(1022px + var(--xh, 0px));min-width:0;overflow:hidden}
 /* fixed cells, so the Agents panel can be hidden (divider dragged all the way left) without moving the others */
 #left{grid-column:1;grid-row:2}
 .divider{grid-column:2;grid-row:2}
@@ -336,8 +337,9 @@ body.stale .data{opacity:.4;filter:saturate(.3);transition:opacity .3s,filter:sa
 .psm{display:grid;grid-template-columns:1fr 1.15fr 1fr;gap:6px}
 .mv{font-size:20px;font-weight:600;line-height:1.05;white-space:nowrap}
 
+/* the two charts share any extra stage height (--xh) evenly: the tokens chart takes what the latency chart leaves */
 .tokCard{flex:1;min-height:0;padding:10px 14px 6px;display:flex;flex-direction:column}
-.latCard{flex:none;height:118px;padding:9px 14px 6px;display:flex;flex-direction:column}
+.latCard{flex:none;height:calc(118px + var(--xh, 0px) / 2);padding:9px 14px 6px;display:flex;flex-direction:column}
 canvas.chart{flex:1 1 0px;min-height:0;width:100%;display:block}
 
 .flowCard{flex:none;height:206px;padding:8px 18px 9px;display:flex;flex-direction:column;transition:opacity .5s,border-color .4s,box-shadow .4s}
@@ -745,13 +747,20 @@ class Num {
   val(d = 0) { return this.cur === null ? d : this.cur; }
 }
 
-// ------------------------------------------------------------------ stage scaling (fit 1920x1080 to any viewport)
+// ------------------------------------------------------------------ stage scaling (fit the 1920-wide stage to any viewport)
+// The stage is 1920 px wide and 1080 tall at 16:9. A taller window (a 16:10 laptop screen, up to 4:3) gets a taller
+// stage instead of empty bands above and below it; the llm-d charts and the Agents ticker take the extra height
+// (--xh). A wider window still gets bands left and right.
+const STAGE_W = 1920, STAGE_H = 1080, STAGE_H_MAX = 1440;
 const stage = $('stage');
 let stageScale = 1;
 function fit() {
   const w = window.innerWidth, h = window.innerHeight;
-  stageScale = Math.min(w / 1920, h / 1080) || 1;
-  const x = Math.round((w - 1920 * stageScale) / 2), y = Math.round((h - 1080 * stageScale) / 2);
+  const sh = w > 0 && h > 0 ? clamp(Math.round((STAGE_W * h) / w), STAGE_H, STAGE_H_MAX) : STAGE_H;
+  stage.style.height = `${sh}px`;
+  stage.style.setProperty('--xh', `${sh - STAGE_H}px`);
+  stageScale = Math.min(w / STAGE_W, h / sh) || 1;
+  const x = Math.round((w - STAGE_W * stageScale) / 2), y = Math.round((h - sh * stageScale) / 2);
   stage.style.transform = (stageScale === 1 && !x && !y) ? 'none' : `translate(${x}px,${y}px) scale(${stageScale})`;
 }
 window.addEventListener('resize', fit);
