@@ -5,7 +5,9 @@ A keynote demo:
 - The agents call **Gemma 4 12B**, served by vLLM on **Cloud TPU v6e** behind the **llm-d** router.
 - The stage dashboard shows both sides live and walks the llm-d side through three stages: **No llm-d** (plain round robin at the gateway), the **llm-d Router** (KV-cache-aware routing) and **llm-d + Flow Control** (paid users first when the pool is saturated).
 
-This folder has the dashboard, the orchestrator ("keynote driver"), the patches, the manifests, and a step-by-step guide. The guide was re-verified against the running clusters on 2026-09-26 (see [How this guide was verified](#10-how-this-guide-was-verified)); the three stages were measured live on 2026-10-03, at 90% and then at 80% fleet idle, and finally with the same load in every stage (§2).
+This folder has the dashboard, the orchestrator ("keynote driver"), the patches, the manifests, and a step-by-step [user guide](./USER_GUIDE.md). Its steps were re-verified against the running clusters on 2026-09-26 and re-checked on 2026-10-04 (see [How this guide was verified](#10-how-this-guide-was-verified)); the three stages were measured live on 2026-10-03, at 90% and then at 80% fleet idle, and finally with the same load in every stage (§2).
+
+**To build, redeploy, update or tear down the stack, start with [USER_GUIDE.md](./USER_GUIDE.md).** This README has the results, the architecture, the pre-show health check, the stage runbook and the disclosures.
 
 > [!TIP]
 > **Hermes Agent variant:** [`hermes/`](./hermes/README.md) runs [Hermes Agent](https://github.com/NousResearch/hermes-agent) inside each of the 1,000 sandboxes. It runs a ~90% idle duty cycle (the light fleet runs 80% since 2026-10-03) and wakes all 1,000 in ~2.8 s on 18 × c4d-standard-16. On stage, each agent's memory visibly survives suspend (measured on 2026-09-28).
@@ -116,7 +118,7 @@ In steady traffic each request also carries its team's notes ahead of the questi
 >   - The sandbox's PID 1 never reaps orphaned processes. A `/process` call cut off mid-flight (atenet's 10 s route timeout, or a pause during a call) left its `wget` behind as a zombie inside the snapshot.
 >   - The 684 agents created before 10-02 had 3.5–14.2 MiB checkpoints (p50 5.7 MiB), against 1.4–3.0 MiB for fresh agents, and wakes had slowed to 2.7–3.1 s.
 > - **Fixes:**
->   - **Driver `4d45c260` (§6.3):**
+>   - **Driver `4d45c260` ([user guide Step 3](./USER_GUIDE.md#step-3-build-the-patched-binaries-and-the-driver)):**
 >     - backoff retries: 4 tries for the first joke, 3 for duty-cycle calls, 1 for overload traffic;
 >     - at most 2 LLM calls in flight per agent;
 >     - `wget -T 8`, so a call ends before atenet's timeout;
@@ -137,7 +139,7 @@ In steady traffic each request also carries its team's notes ahead of the questi
 > - Wake 1,000 (dashboard's Wake, no LLM calls): **1,907–1,953 ms** over 4 warm wakes, 0 failures; per-agent p50 1,045–1,084 ms. On C3 the median was 2,988 ms (below).
 > - Suspend all from idle: 1,623–1,734 ms.
 > - Simulate Traffic, 40 s: 6,993 LLM requests, 0 failed.
-> - The first wake after re-creating the agents restores from the golden snapshot in GCS and took 33.6 s, as §6.11 warns.
+> - The first wake after re-creating the agents restores from the golden snapshot in GCS and took 33.6 s, as [user guide Step 11](./USER_GUIDE.md#step-11-create-the-1000-agents-and-warm-them-up) warns.
 > - The Hermes variant, already on C4D, was re-checked after the move: wakes 2,500–2,923 ms, 60 s of traffic with 1,702 replies and 0 failures, and every recall correct, so agent memory survived the move of the CPU node and gateway.
 >
 > The tables below are the original C3 measurements.
@@ -299,7 +301,7 @@ In Stages 2 and 3, Envoy asks the EPP (`ext_proc`) which pod to use:
 | | Substrate cluster (`ikwak-substrate-ane1`) | TPU cluster (`ikwak-tpu-v6e-ane1`) |
 |---|---|---|
 | Location, version | `asia-northeast1-b`, GKE 1.35.8-gke.1036000, REGULAR channel | `asia-northeast1-b`, GKE 1.35.8-gke.1036000 (created at 1.35.7 and auto-upgraded), REGULAR |
-| Node pools | `substrate-c4-pool`: 25 × c4-standard-4 (hyperdisk-balanced 100 GB), which runs atelet and 1,600 worker pods (64 per node).<br>`keynote-driver-pool`: 4 × n2-standard-8, label `pool=keynote-driver`, taint `dedicated=keynote-driver:NoSchedule`, which runs Postgres, 1 ate-api, 4 atenet-router, 4 atenet-egress and the keynote driver. It stays on N2: C4 can't attach Postgres's pd-balanced volume.<br>The [Hermes variant](./hermes/README.md) adds `hermes-c4d-pool` (18 × c4d-standard-16). | 1 × c4-standard-4 CPU node (hyperdisk-balanced), which runs the EPP and Envoy. In the demo cluster this pool is `cpu-c4-pool`; §6.6 creates it as `default-pool`. Both manifests select it by `cloud.google.com/machine-family: c4`.<br>`tpu-v6e-spot` and `tpu-v6e-spot-decode`: 1 × ct6e-standard-4t each (TPU v6e, 2x2 topology, Spot, hyperdisk-balanced 100 GB, taint `google.com/tpu=present:NoSchedule`). |
+| Node pools | `substrate-c4-pool`: 25 × c4-standard-4 (hyperdisk-balanced 100 GB), which runs atelet and 1,600 worker pods (64 per node).<br>`keynote-driver-pool`: 4 × n2-standard-8, label `pool=keynote-driver`, taint `dedicated=keynote-driver:NoSchedule`, which runs Postgres, 1 ate-api, 4 atenet-router, 4 atenet-egress and the keynote driver. It stays on N2: C4 can't attach Postgres's pd-balanced volume.<br>The [Hermes variant](./hermes/README.md) adds `hermes-c4d-pool` (18 × c4d-standard-16). | 1 × c4-standard-4 CPU node (hyperdisk-balanced), which runs the EPP and Envoy. In the demo cluster this pool is `cpu-c4-pool`; [user guide Step 6](./USER_GUIDE.md#step-6-tpu-cluster) creates it as `default-pool`. Both manifests select it by `cloud.google.com/machine-family: c4`.<br>`tpu-v6e-spot` and `tpu-v6e-spot-decode`: 1 × ct6e-standard-4t each (TPU v6e, 2x2 topology, Spot, hyperdisk-balanced 100 GB, taint `google.com/tpu=present:NoSchedule`). |
 | Networking | VPC-native. Pods `10.56.0.0/14` and services `34.118.224.0/20`, both auto-assigned. Dataplane V2. | Pods `172.28.0.0/14` and services `172.24.16.0/20`, from the subnet's secondary ranges `pods` and `services`. Gateway API standard channel. |
 | Other | Workload Identity; beta APIs `podcertificaterequests` + `clustertrustbundles`; managed OpenTelemetry (all set by `setup-gcp`) | – |
 
@@ -321,7 +323,7 @@ In Stages 2 and 3, Envoy asks the EPP (`ext_proc`) which pod to use:
 | [ActorTemplate `sandbox-dense`](./manifests/substrate/sandbox-dense-template.yaml.tmpl) | The upstream sandbox demo app, sized to 1 CPU / 256 Mi | Matches the dense workers |
 | podcertificate-controller | `WORKERS_PER_SIGNER=16` | Signs the 1,600 worker certificates quickly |
 | [ate-node-tuner](./manifests/substrate/ate-node-tuner.yaml) | A privileged DaemonSet:<br>• remounts `/var` with `nobarrier,commit=600`;<br>• sets dirty-page sysctls, the THP setting and the performance CPU governor;<br>• runs a page-cache warmer that reads every local checkpoint every 20 s. | Faster restores. **Risks data loss on a node crash.** |
-| keynote driver ([main.go](./substrate-bench/keynote_driver/main.go)) | Rests agents with `PauseActor`, a node-local snapshot (`-rest-mode=pause`); uses 32 gRPC connections; runs a duty cycle of about 200 active agents (`-fleet-idle-pct`, default 80; 90 until 2026-10-03); cross-checks against ate-api after Suspend all.<br>Three stages (`roundrobin`, `kvaware`, `flow`) set per-request headers (§3); a retry is sent with the headers of the stage active at that moment (§9). Steady-traffic requests carry team notes (`-contexts 240`, `-agent-context-lines 60`); Stage 3 tags user tiers 30/40/30 (`-tier-mix`). Every stage offers the same 200 req/s; `-overload-rate` adds open-loop overload traffic to every stage alike (default 0; until the evening of 2026-10-03 Stage 3 alone added 200 req/s), held back while 220 requests are in flight (`-max-inflight`, auto = active agents + 20). These are the flag defaults, so the §6.10 args don't list them. | The demo orchestrator |
+| keynote driver ([main.go](./substrate-bench/keynote_driver/main.go)) | Rests agents with `PauseActor`, a node-local snapshot (`-rest-mode=pause`); uses 32 gRPC connections; runs a duty cycle of about 200 active agents (`-fleet-idle-pct`, default 80; 90 until 2026-10-03); cross-checks against ate-api after Suspend all.<br>Three stages (`roundrobin`, `kvaware`, `flow`) set per-request headers (§3); a retry is sent with the headers of the stage active at that moment (§9). Steady-traffic requests carry team notes (`-contexts 240`, `-agent-context-lines 60`); Stage 3 tags user tiers 30/40/30 (`-tier-mix`). Every stage offers the same 200 req/s; `-overload-rate` adds open-loop overload traffic to every stage alike (default 0; until the evening of 2026-10-03 Stage 3 alone added 200 req/s), held back while 220 requests are in flight (`-max-inflight`, auto = active agents + 20). These are the flag defaults, so the driver args in [`deploy-driver.sh`](./manifests/substrate/deploy-driver.sh) don't list them. | The demo orchestrator |
 | llm-d ([values](./manifests/tpu/gaie-values-flowctl.yaml)) | Scorers: precise prefix-cache (weight 3); `active-request-scorer` instead of `queue-scorer` (2); kv-cache-utilization (2); `header-label-affinity-scorer` on `x-target-pod` (100).<br>Flow control with bands 100 / 0 / −10 and a concurrency detector at **32** per pod (256 until 2026-10-02). | `queue-scorer` reads a lagging vLLM gauge; in a 1,000-request burst it sent about 750 requests in a row to one pod (86.5/13.5).<br>At 256 the pool never saturated, so flow control never queued (§2.2). Measured on one pod with prefix-cached ~1.7k-token prompts, 32 in flight served 66 req/s at 452 ms. |
 | Envoy gateway ([manifest](./manifests/tpu/llmd-envoy-gateway.yaml)) | A second route: requests with `x-route-mode: round-robin` have `ext_proc` disabled and go `ROUND_ROBIN` to cluster `vllm_round_robin` (`STRICT_DNS` on the new headless Service `gemma4-12b-vllm-pods`, which selects the InferencePool's pod labels). | Stage 1's "No llm-d" baseline, on the same gateway and pods, with no llm-d in the path |
 
@@ -329,7 +331,8 @@ In Stages 2 and 3, Envoy asks the EPP (`ext_proc`) which pod to use:
 
 ```text
 substrate/
-├── README.md                          this guide
+├── README.md                          results, architecture, health check, runbook and disclosures
+├── USER_GUIDE.md                      build, redeploy, recover, update and tear down the stack
 ├── plan.md                            status, decisions and open items
 ├── implementation.md                  engineering notes: patches, tuning, measurements, lessons
 ├── dashboard/
@@ -349,6 +352,7 @@ substrate/
 │   │   ├── sandbox-workerpool.yaml    1,600-worker WorkerPool
 │   │   ├── sandbox-dense-template.yaml.tmpl  ActorTemplate for the agents
 │   │   ├── ate-node-tuner.yaml        node tuning DaemonSet (see §9)
+│   │   ├── deploy-driver.sh           deploys or re-points the keynote driver and dashboard (idempotent, DRY_RUN=1)
 │   │   └── keynote-driver.yaml        driver namespace, RBAC and pod
 │   └── tpu/
 │       ├── prereqs.yaml               StorageClass, ServiceAccount and PVCs for the vLLM pods
@@ -376,281 +380,32 @@ substrate/
 
 ## 6. Reproduce it
 
-The measured setup used project `tpu-launchpad-playground`, VPC `ikwak-ane1-net` / subnet `ikwak-ane1-subnet`, and the cluster names in §3. Replace them with your own.
+On 2026-10-04 the build steps moved to the **[user guide](./USER_GUIDE.md)**, which also checks a running stack, recovers from restarts, updates one component at a time and tears everything down. The steps keep their numbers: former §6.N is Step N.
 
-### 6.0 Prerequisites and variables
-
-**Tools:**
-- `gcloud`, `kubectl`, `helm` 3, `git`, `python3`, `envsubst`, `gzip`, `curl`;
-- Go 1.21 or newer. The upstream `go.mod` requires Go 1.27.0, and with the default `GOTOOLCHAIN=auto` the `go` command downloads it (the demo builds ran on go1.27.0);
-- `gcc` with static glibc (the demo used gcc 15.2.0, Debian);
-- `docker`, to build the vLLM image;
-- for the mock screenshots only: Node 22 and Google Chrome.
-
-**Quota** in one zone:
-- 104 C4 vCPUs (25 × c4-standard-4 for workers, 1 × c4-standard-4 in the TPU cluster);
-- 8 C3 vCPUs, only while §6.2–§6.4 run (`setup-gcp` creates 2 × c3-standard-4, and §6.4 deletes them);
-- 32 N2 vCPUs (4 × n2-standard-8);
-- 8 Spot TPU v6e chips (2 × ct6e-standard-4t);
-- Hermes variant only: 288 C4D vCPUs (18 × c4d-standard-16).
-
-**Hugging Face:** a token with access to `google/gemma-4-12B-it`.
-
-```bash
-git clone https://github.com/saltysoup/jetski-playground.git
-cd jetski-playground/substrate
-export REPO_DIR="$PWD"
-
-export PROJECT_ID="<your-project>"
-export PROJECT_NUMBER="$(gcloud projects describe "${PROJECT_ID}" --format='value(projectNumber)')"
-export REGION="asia-northeast1" ZONE="asia-northeast1-b"
-export VPC_NAME="<vpc>" SUBNET_NAME="<subnet>"
-export SUBSTRATE_CLUSTER="<substrate-cluster>" TPU_CLUSTER="<tpu-cluster>"
-export BUCKET_NAME="ate-snapshots-${PROJECT_ID}-${SUBSTRATE_CLUSTER}"   # Substrate snapshot bucket
-export SUBSTRATE_SRC="$HOME/src/substrate"    # upstream Agent Substrate checkout
-export BIN_DIR="$HOME/src/keynote-bin"        # build outputs
-export CTX_SUB="gke_${PROJECT_ID}_${ZONE}_${SUBSTRATE_CLUSTER}"
-export CTX_TPU="gke_${PROJECT_ID}_${ZONE}_${TPU_CLUSTER}"
-read -rsp "Hugging Face token: " HF_TOKEN && export HF_TOKEN && echo
-mkdir -p "${BIN_DIR}"
-```
-
-### 6.1 Shared VPC
-
-Both clusters share one subnet, so the agents' sandboxes can reach the gateway's node IP directly.
-
-```bash
-gcloud compute networks create "${VPC_NAME}" --project="${PROJECT_ID}" --subnet-mode=custom
-gcloud compute networks subnets create "${SUBNET_NAME}" --project="${PROJECT_ID}" \
-  --network="${VPC_NAME}" --region="${REGION}" --range=172.24.0.0/20 \
-  --secondary-range=pods=172.28.0.0/14,services=172.24.16.0/20 \
-  --enable-private-ip-google-access
-gcloud compute firewall-rules create "${VPC_NAME}-allow-internal" --project="${PROJECT_ID}" \
-  --network="${VPC_NAME}" --direction=INGRESS --action=ALLOW --rules=tcp,udp,icmp \
-  --source-ranges=10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,100.64.0.0/10
-```
-
-### 6.2 Substrate cluster and Agent Substrate v0.1.0
-
-```bash
-git clone https://github.com/agent-substrate/substrate.git "${SUBSTRATE_SRC}"
-cd "${SUBSTRATE_SRC}" && git checkout fa6d949685a6318940a9a0195c867c864009b820   # tag v0.1.0
-
-gcloud auth application-default login          # setup-gcp uses Application Default Credentials
-GCE_REGION="${REGION}" CLUSTER_LOCATION="${ZONE}" CLUSTER_NAME="${SUBSTRATE_CLUSTER}" \
-NETWORK="${VPC_NAME}" SUBNETWORK="${SUBNET_NAME}" GVISOR_NODE_MACHINE_TYPE=c3-standard-4 \
-  go run ./tools/setup-gcp bootstrap           # APIs, cluster (2 nodes), bucket, IAM, dashboards
-# The 2 x c3-standard-4 bootstrap pool is temporary: §6.4 moves the workers to 25 x c4-standard-4 and deletes it.
-# setup-gcp doesn't set a boot disk type, so it keeps its default (C3) machine type here.
-gcloud container clusters get-credentials "${SUBSTRATE_CLUSTER}" --zone="${ZONE}" --project="${PROJECT_ID}"
-
-export KUBECTL_CONTEXT="${CTX_SUB}"
-go run ./cmd/ate-setup deploy ate-system --no-dev-env \
-  --image-repo us-docker.pkg.dev/gke-substrate-release/substrate --image-tag v0.1.0-gke.1
-go run ./cmd/ate-setup deploy demo sandbox --no-dev-env \
-  --image-repo us-docker.pkg.dev/gke-substrate-release/substrate --image-tag v0.1.0-gke.1
-
-go build -o "${BIN_DIR}/kubectl-ate" ./cmd/kubectl-ate && export PATH="${BIN_DIR}:${PATH}"
-envsubst < "${REPO_DIR}/manifests/substrate/sandbox-dense-template.yaml.tmpl" \
-  | kubectl ate --context="${CTX_SUB}" create actor-template -f -
-```
-
-> [!CAUTION]
-> `setup-gcp create cluster` **deletes and recreates** an existing cluster whose network or subnet differs from `NETWORK` / `SUBNETWORK`. Never re-run it against a live cluster with different values.
-
-Upstream Agent Substrate also warns about worker node pools:
-- Turn node **auto-upgrade** off on the pools that run workers: `gcloud container node-pools update substrate-c4-pool --cluster "${SUBSTRATE_CLUSTER}" --location "${ZONE}" --no-enable-autoupgrade`.
-- Don't use Spot nodes for workers.
-- An actor that is awake when its worker pod is killed ends up `CRASHED`.
-- Here, a paused actor also loses its node-local snapshot when its node is recreated.
-
-The demo clusters still have auto-upgrade on (see §9).
-
-### 6.3 Build the patched binaries and the driver
-
-These commands run in the upstream checkout.
-
-```bash
-cd "${SUBSTRATE_SRC}"
-git apply "${REPO_DIR}/patches/ateapi-atelet-fast-wake.patch"
-gcc -O3 -static -s -o cmd/atelet/runsc_fast "${REPO_DIR}/patches/runsc_fast_sync.c"   # embedded into atelet
-mkdir -p cmd/keynote_driver && cp "${REPO_DIR}"/substrate-bench/keynote_driver/*.go cmd/keynote_driver/
-
-export CGO_ENABLED=0
-go build -buildvcs=false -trimpath -ldflags="-s -w" -o "${BIN_DIR}/ateapi" ./cmd/ateapi
-go build -buildvcs=false -trimpath -ldflags="-s -w" -o "${BIN_DIR}/atelet" ./cmd/atelet
-go build -buildvcs=false -trimpath -o "${BIN_DIR}/keynote_driver" ./cmd/keynote_driver
-gzip -9n -c "${BIN_DIR}/ateapi" > "${BIN_DIR}/bin_ateapi.gz"
-gzip -9n -c "${BIN_DIR}/atelet" > "${BIN_DIR}/bin_atelet.gz"
-(cd "${REPO_DIR}/manifests/substrate" && go build -trimpath -ldflags="-s -w" -o "${BIN_DIR}/http_srv" http_srv.go)
-sha256sum cmd/atelet/runsc_fast "${BIN_DIR}/ateapi" "${BIN_DIR}/atelet" "${BIN_DIR}/keynote_driver"
-```
-
-With go1.27.0 (linux/amd64) and gcc 15.2.0 these builds are byte-for-byte reproducible, and match what runs in the demo cluster:
-
-| File | sha256 (prefix) |
+| Was | Now in the user guide |
 |---|---|
-| `runsc_fast` | `403b8d3d` |
-| `ateapi` | `c53a6b41` |
-| `atelet` | `c24d7425` |
-| `keynote_driver` | `1e92f74b` (source as of 2026-10-03 late evening: retries follow the current stage) |
+| 6.0 Prerequisites and variables | [Step 0](./USER_GUIDE.md#step-0-tools-quota-and-variables) |
+| 6.1 Shared VPC | [Step 1](./USER_GUIDE.md#step-1-shared-vpc) |
+| 6.2 Substrate cluster and Agent Substrate v0.1.0 | [Step 2](./USER_GUIDE.md#step-2-substrate-cluster-and-agent-substrate) |
+| 6.3 Build the patched binaries and the driver | [Step 3](./USER_GUIDE.md#step-3-build-the-patched-binaries-and-the-driver) |
+| 6.4 Size and tune the Substrate cluster | [Step 4](./USER_GUIDE.md#step-4-size-and-tune-the-substrate-cluster) |
+| 6.5 Run the patched ate-api and atelet | [Step 5](./USER_GUIDE.md#step-5-run-the-patched-ate-api-and-atelet) |
+| 6.6 TPU cluster | [Step 6](./USER_GUIDE.md#step-6-tpu-cluster) |
+| 6.7 vLLM image | [Step 7](./USER_GUIDE.md#step-7-vllm-image) |
+| 6.8 vLLM pods | [Step 8](./USER_GUIDE.md#step-8-vllm-pods) |
+| 6.9 llm-d: CRDs, priorities, endpoint picker, gateway | [Step 9](./USER_GUIDE.md#step-9-llm-d-crds-priorities-endpoint-picker-gateway). "Changing a running install" is now [§5.4](./USER_GUIDE.md#54-envoy-gateway) and [§5.5](./USER_GUIDE.md#55-epp-values). |
+| 6.10 Keynote driver and dashboard | [Step 10](./USER_GUIDE.md#step-10-keynote-driver-and-dashboard). The copy block is now the script [`deploy-driver.sh`](./manifests/substrate/deploy-driver.sh). |
+| 6.11 Create the 1,000 agents and warm them up | [Step 11](./USER_GUIDE.md#step-11-create-the-1000-agents-and-warm-them-up) |
+| 6.12 Open the dashboard, or rehearse offline | [Step 12](./USER_GUIDE.md#step-12-open-the-dashboard-or-rehearse-offline) |
+| 11. Cleanup and revert | [§6 Tear it down](./USER_GUIDE.md#6-tear-it-down) |
 
-Other toolchains produce different bytes but the same code. The light driver in the cluster runs `1e92f74b`. The Hermes driver there still runs `a709458a`, built from the source as of the C4 move (before the repair). Its 1,080 workers (namespace `keynote-hermes`) showed 0 restarts on 2026-10-02, when the light fleet was repaired.
-
-### 6.4 Size and tune the Substrate cluster
-
-```bash
-cd "${REPO_DIR}"
-PROJECT_ID="${PROJECT_ID}" ZONE="${ZONE}" SUBSTRATE_CLUSTER="${SUBSTRATE_CLUSTER}" \
-  DRY_RUN=1 ./manifests/substrate/scale-control-plane.sh     # shows what would change
-PROJECT_ID="${PROJECT_ID}" ZONE="${ZONE}" SUBSTRATE_CLUSTER="${SUBSTRATE_CLUSTER}" \
-  ./manifests/substrate/scale-control-plane.sh
-kubectl --context="${CTX_SUB}" apply -f manifests/substrate/ate-node-tuner.yaml   # used for the measured results; see §9
-```
-
-**What `scale-control-plane.sh` does:** every step is idempotent. It:
-1. creates `substrate-c4-pool` (25 × c4-standard-4, hyperdisk-balanced, worker label) and `keynote-driver-pool` (4 × n2-standard-8, label + taint), and cordons the bootstrap `substrate-node-pool`;
-2. keeps `keynote-driver-pool` on N2, because C4 can't attach Postgres's pd-balanced volume;
-3. labels the worker nodes `ate.dev/substrate-version=v0.1.0-gke.1`;
-4. tunes and pins Postgres;
-5. sets 1 ate-api replica with DB pool 160/64;
-6. sets 4 + 4 atenet replicas;
-7. sets podcert `WORKERS_PER_SIGNER=16`;
-8. applies the 1,600-worker WorkerPool, then deletes the bootstrap `substrate-node-pool`.
-
-Run it **before** the next step. It may restart `postgres-0`, and the next step starts a file server inside that pod.
-
-### 6.5 Run the patched ate-api and atelet
-
-```bash
-cd "${REPO_DIR}"
-BIN_DIR="${BIN_DIR}" CTX_SUB="${CTX_SUB}" DRY_RUN=1 ./manifests/substrate/deploy-patched-binaries.sh
-BIN_DIR="${BIN_DIR}" CTX_SUB="${CTX_SUB}" ./manifests/substrate/deploy-patched-binaries.sh
-```
-
-**How it works:**
-1. The script starts `http_srv` inside `postgres-0`. It serves the Postgres data directory on `:18888`, which is a security problem (see §9).
-2. It uploads `bin_ateapi.gz` / `bin_atelet.gz`, verifying the sha256.
-3. It adds `fetch-bin` init containers that download them into ate-api (an emptyDir) and atelet (the node's `/var/lib/ateom-gvisor`).
-4. It restarts only what changed.
-
-After `postgres-0` restarts, re-run the script before any ate-api or atelet pod restarts. The download URL uses the pod IP.
-
-### 6.6 TPU cluster
-
-```bash
-gcloud container clusters create "${TPU_CLUSTER}" --project="${PROJECT_ID}" --zone="${ZONE}" \
-  --release-channel=regular --network="${VPC_NAME}" --subnetwork="${SUBNET_NAME}" \
-  --enable-ip-alias --cluster-secondary-range-name=pods --services-secondary-range-name=services \
-  --machine-type=c4-standard-4 --disk-type=hyperdisk-balanced --num-nodes=1 --gateway-api=standard
-for pool in tpu-v6e-spot tpu-v6e-spot-decode; do
-  gcloud container node-pools create "${pool}" --project="${PROJECT_ID}" --zone="${ZONE}" \
-    --cluster="${TPU_CLUSTER}" --machine-type=ct6e-standard-4t --tpu-topology=2x2 --num-nodes=1 \
-    --spot --disk-type=hyperdisk-balanced --disk-size=100
-done
-gcloud container clusters get-credentials "${TPU_CLUSTER}" --zone="${ZONE}" --project="${PROJECT_ID}"
-```
-
-GKE adds the `google.com/tpu=present:NoSchedule` taint to TPU nodes by itself. The live TPU pools also show `transparentHugepageEnabled: ALWAYS` in their Linux node config. The commands above don't set it, and we didn't confirm whether it is a GKE default.
-
-### 6.7 vLLM image (upstream vllm-torchtpu, unmodified)
-
-```bash
-export VLLM_IMAGE="${REGION}-docker.pkg.dev/${PROJECT_ID}/<repo>/vllm-torchtpu:3eb7abb5"
-git clone https://github.com/vllm-project/vllm-torchtpu.git "$HOME/src/vllm-torchtpu"
-cd "$HOME/src/vllm-torchtpu" && git checkout 3eb7abb5cc6ff4bae816e988010cf7bee6e9225c
-./docker/build_image.sh -t "${VLLM_IMAGE}" --target prod
-docker push "${VLLM_IMAGE}"
-```
-
-### 6.8 vLLM pods
-
-```bash
-cd "${REPO_DIR}"
-kubectl --context="${CTX_TPU}" create secret generic llm-d-hf-token --from-literal=HF_TOKEN="${HF_TOKEN}"
-kubectl --context="${CTX_TPU}" apply -f manifests/tpu/prereqs.yaml
-sed "s|asia-northeast1-docker.pkg.dev/tpu-launchpad-playground/ikwak-vllm-torchtpu/vllm-torchtpu:3eb7abb5@sha256:699c7ccfce3a007298675dd8991950004b137171dac4c5738408599eadfec846|${VLLM_IMAGE}|" \
-  manifests/tpu/gemma4-12b-torchtpu-deployments.yaml | kubectl --context="${CTX_TPU}" apply -f -
-kubectl --context="${CTX_TPU}" apply -f manifests/tpu/gemma4-12b-render-svc.yaml
-kubectl --context="${CTX_TPU}" rollout status deploy/gemma4-12b-torchtpu-1 --timeout=1800s
-kubectl --context="${CTX_TPU}" rollout status deploy/gemma4-12b-torchtpu-2 --timeout=1800s
-```
-
-The first start downloads the weights into the PVC and compiles, which takes several minutes. Later restarts reuse the cache.
-
-### 6.9 llm-d: CRDs, priorities, endpoint picker, gateway
-
-```bash
-cd "${REPO_DIR}"
-kubectl --context="${CTX_TPU}" apply -f \
-  https://github.com/kubernetes-sigs/gateway-api-inference-extension/releases/download/v1.0.1/manifests.yaml
-kubectl --context="${CTX_TPU}" apply -f manifests/tpu/inference-objectives.yaml
-helm upgrade --install gaie-pd oci://registry.k8s.io/gateway-api-inference-extension/charts/inferencepool \
-  --version v1.2.0 --kube-context "${CTX_TPU}" -n default -f manifests/tpu/gaie-values-flowctl.yaml
-kubectl --context="${CTX_TPU}" rollout status deploy/gaie-pd-epp --timeout=300s
-
-EPP_SVC_IP=$(kubectl --context="${CTX_TPU}" get svc gaie-pd-epp -o jsonpath='{.spec.clusterIP}')
-sed "s|172.24.18.142|${EPP_SVC_IP}|g" manifests/tpu/llmd-envoy-gateway.yaml | kubectl --context="${CTX_TPU}" apply -f -
-kubectl --context="${CTX_TPU}" rollout status deploy/llmd-envoy-gateway --timeout=120s
-```
-
-The demo cluster ran exactly these CRDs: GAIE **v1.0.1**. With the Gateway API enabled, GKE's addon manager also manages the v1 `InferencePool` CRD and upgraded it to its own newer revision (v1.4.0 here). Expect that one CRD to differ.
-
-**Changing a running install** (how the 2026-10-03 changes were applied):
-- Gateway: re-run the `sed … | kubectl apply` line, then `kubectl --context="${CTX_TPU}" rollout restart deploy/llmd-envoy-gateway`. Envoy reads its config only at start.
-- EPP values: re-run the `helm upgrade` line, then `kubectl --context="${CTX_TPU}" rollout restart deploy/gaie-pd-epp` so the EPP restarts with the new values. Its pod IP changes, so re-run §6.10 (and the Hermes driver's `-epp` flag, if you run that variant).
-
-**Smoke test from any pod in the VPC:** `curl http://<gateway node IP>:8080/v1/chat/completions -H 'Content-Type: application/json' -d '{"model":"google/gemma-4-12B-it","messages":[{"role":"user","content":"hi"}],"max_tokens":8}'`. The gateway node IP is the `hostIP` of the `llmd-envoy-gateway` pod.
-
-### 6.10 Keynote driver and dashboard
-
-```bash
-cd "${REPO_DIR}"
-kubectl --context="${CTX_SUB}" apply -f manifests/substrate/keynote-driver.yaml
-kubectl --context="${CTX_SUB}" -n keynote-demo wait --for=condition=Ready pod/keynote-driver --timeout=120s
-
-GATEWAY_IP=$(kubectl --context="${CTX_TPU}" get pod -l app=llmd-envoy-gateway -o jsonpath='{.items[0].status.hostIP}')
-POD1_IP=$(kubectl --context="${CTX_TPU}" get pod -l app=gemma4-12b-torchtpu,llm-d.ai/replica=pod-1 -o jsonpath='{.items[0].status.podIP}')
-POD2_IP=$(kubectl --context="${CTX_TPU}" get pod -l app=gemma4-12b-torchtpu,llm-d.ai/replica=pod-2 -o jsonpath='{.items[0].status.podIP}')
-EPP_IP=$(kubectl --context="${CTX_TPU}" get pod -l inferencepool=gaie-pd-epp -o jsonpath='{.items[0].status.podIP}')
-echo "gateway=${GATEWAY_IP} pod-1=${POD1_IP} pod-2=${POD2_IP} epp=${EPP_IP}"
-
-D="kubectl --context=${CTX_SUB} -n keynote-demo"
-$D cp dashboard/index.html keynote-driver:/work/static/index.html
-$D cp "${BIN_DIR}/keynote_driver" keynote-driver:/work/keynote_driver.new
-# kubectl cp can report success on a truncated copy: compare checksums before switching.
-[ "$($D exec keynote-driver -- sha256sum /work/keynote_driver.new | cut -d' ' -f1)" = "$(sha256sum "${BIN_DIR}/keynote_driver" | cut -d' ' -f1)" ] || { echo "copy corrupted, re-run"; exit 1; }
-$D exec keynote-driver -- sh -c "
-  echo '-listen=:8090 -static-dir=/work/static -runs-dir=/work/runs -ateapi=api.ate-system.svc:443 -atenet=atenet-router.ate-system.svc:80 -atespace=ate-demo-sandbox -agents=1000 -model=google/gemma-4-12B-it -gateway-url=http://${GATEWAY_IP}:8080/v1/chat/completions -vllm=pod-1=${POD1_IP}:8000,pod-2=${POD2_IP}:8000 -epp=${EPP_IP}:9090 -max-tokens=50 -temperature=1.0 -rest-mode=pause -grpc-conns=32 -suspend-concurrency=200' > /work/args &&
-  chmod +x /work/keynote_driver.new && mv /work/keynote_driver.new /work/keynote_driver &&
-  { kill \$(pidof keynote_driver) 2>/dev/null || true; }"
-sleep 5 && $D exec keynote-driver -- tail -n 3 /work/driver.log
-```
-
-The pod's shell loop restarts `/work/keynote_driver` whenever it exits, so this sequence also upgrades a running driver. The pod IPs change when the vLLM or EPP pods restart; re-run the block after any restart.
-
-### 6.11 Create the 1,000 agents and warm them up
-
-```bash
-kubectl --context="${CTX_SUB}" -n keynote-demo port-forward pod/keynote-driver 8090:8090 &
-curl -s -X POST localhost:8090/api/reconcile -d '{}'            # creates agent-0001..1000 from sandbox-dense
-until curl -s localhost:8090/api/state | python3 -c 'import json,sys; sys.exit(json.load(sys.stdin)["phase"]!="idle")'; do sleep 5; done
-curl -s localhost:8090/api/state | python3 -c 'import json,sys; print(json.load(sys.stdin).get("note"))'
-```
-
-Then do the [health check](#7-pre-show-health-check) once. A new actor's first wake restores from the template's golden snapshot in GCS, which is slower. Pausing it afterwards leaves a node-local snapshot, which is what makes later wakes fast.
-
-### 6.12 Open the dashboard, or rehearse offline
-
-- **Live:** keep the port-forward running and open `http://localhost:8090/`.
-- **Offline rehearsal:** run `python3 dashboard/mock_server.py 8765` and open `http://localhost:8765/`. The mock simulates every number, including the three stages. It runs the light fleet at 80% idle like the driver (`--fleet-idle-pct=N` to change it; `--harness hermes` defaults to 90) with the same 200 req/s in every stage (`--overload-rate=N` adds N req/s to every stage, like the driver flag; the Hermes harness keeps its extra 200 req/s in Stage 3), and its pool model was fitted to the 80% live runs, so served req/s, queues and per-pod latency come out roughly as on the cluster.
-- **Screenshots of the mock:** with the mock running, `node dashboard/shoot.mjs --out=./shots` clicks through the demo in headless Chrome, Stages 1 to 3 included, and saves 17 PNGs in about a minute. `--scenario=edge` adds 5 error states; `--scenario=offline` adds 2 reconnect states and asks you to stop and restart the mock. It needs Node 22 and Google Chrome.
+New in the guide: a **Check** with its expected output after every step, [read-only checks of the whole stack](./USER_GUIDE.md#3-check-the-whole-stack), [recovery recipes](./USER_GUIDE.md#4-redeploy-and-recover) (a vLLM or EPP restart, a lost driver pod, a `postgres-0` restart, a recreated node, a RECONNECTING dashboard) and [updates of one component](./USER_GUIDE.md#5-update-one-component).
 
 ---
 
 ## 7. Pre-show health check
 
-Do this once before the show, with the port-forward from §6.11 running, and then don't touch the agents until the show. It makes sure the snapshots used on stage come from a clean, idle pause.
+Do this once before the show, with the port-forward from [user guide Step 11](./USER_GUIDE.md#step-11-create-the-1000-agents-and-warm-them-up) running, and then don't touch the agents until the show. It makes sure the snapshots used on stage come from a clean, idle pause.
 
 ```bash
 post() { curl -s -X POST -H 'Content-Type: application/json' "localhost:8090/api/$1" -d "${2:-{\}}"; echo; }
@@ -735,7 +490,7 @@ kubectl ate --context="${CTX_SUB}" get actors -a ate-demo-sandbox -o json \
   - Two things cut off a `/process` call: atenet's route timeout (10 s by default, not overridden here) and a pause during a call. Either way the shell is killed, its `wget` becomes a zombie, and the zombie is checkpointed with the agent.
   - Agents collected up to about 75 zombies, checkpoints grew to 14 MiB, and Wake 1,000 slowed from about 1.9 s to 2.7–3.1 s.
   - The driver now avoids both triggers (`wget -T 8`, and it waits for an agent's calls before pausing it). `ops/ck_scan.py` shows checkpoint growth.
-- **EPP in-flight leak and restarts.** The endpoint picker's in-flight count can leak. Flow-control saturation then stays high with no traffic (0.99 was seen), and llm-d sheds or queues calls. Its liveness probe (1 s timeout) also restarted it under load. If saturation stays above 0 while idle, restart it with `kubectl --context="${CTX_TPU}" rollout restart deployment/gaie-pd-epp`. The pod IP changes, so re-run §6.10.
+- **EPP in-flight leak and restarts.** The endpoint picker's in-flight count can leak. Flow-control saturation then stays high with no traffic (0.99 was seen), and llm-d sheds or queues calls. Its liveness probe (1 s timeout) also restarted it under load. If saturation stays above 0 while idle, restart it with `kubectl --context="${CTX_TPU}" rollout restart deployment/gaie-pd-epp`. The pod IP changes, so re-run `deploy-driver.sh` ([user guide §4.3](./USER_GUIDE.md#43-flow-control-saturation-stays-above-0-while-idle)).
 - **Failed resumes hold workers.** After a failed resume, the patched ate-api's worker cache can keep that worker marked as taken until its next relist (every 5 minutes). Repeated failed wakes can therefore use up a node's free workers. This is why the driver no longer retries a failed restore.
 - **vLLM is about half as fast as on 2026-09-26.** The vLLM pods were restarted on 2026-09-28 with `--max-model-len 65536` for the Hermes variant. Before that they ran 2048; the image digest and every other flag are unchanged.
   - Measured directly against each pod on 2026-10-02, with the driver's exact request: inter-token latency 6.0 ms at 1 request in flight, 15.4 ms at 32 and 30.5 ms at 64. At 64 a pod served 81.5 req/s with 752 ms mean latency. Both pods measured the same.
@@ -746,65 +501,51 @@ kubectl ate --context="${CTX_SUB}" get actors -a ate-demo-sandbox -o json \
 - **Node recreation destroys node-local snapshots.** This includes auto-upgrade, auto-repair and maintenance. Agents paused on the affected node can no longer be restored and must be re-created. Upstream also warns that actors awake when their worker dies go `CRASHED`.
   - **Auto-upgrade is on for every pool in both demo clusters, and there is no maintenance exclusion.** The TPU cluster already moved from 1.35.7 to 1.35.8.
   - Consider `--no-enable-autoupgrade` on the Substrate pools, and a maintenance exclusion, through the show.
-- **Spot TPU nodes can be preempted.** The vLLM pod then restarts on a new node, which takes minutes. The pod IPs change, so re-run §6.10.
-- **`postgres-0` restarts** stop `http_srv`. Re-run §6.5 before anything restarts ate-api or atelet.
+- **Spot TPU nodes can be preempted.** The vLLM pod then restarts on a new node, which takes minutes. The pod IPs change, so re-run `deploy-driver.sh` ([user guide §4.1](./USER_GUIDE.md#41-vllm-or-epp-pods-restarted)).
+- **`postgres-0` restarts** stop `http_srv`. Re-run `deploy-patched-binaries.sh` before anything restarts ate-api or atelet ([user guide §4.4](./USER_GUIDE.md#44-postgres-0-restarted)).
 - **Wake-time margin is thin.** The node with the most agents sets the wake time (§2.1). Every re-created agent lands on a random node, so rebalance after re-creating many (§7).
-- **`kubectl port-forward` can hang after the driver restarts.** It keeps running but logs `error creating forwarding stream … Timeout`, and the dashboard shows RECONNECTING. Stop it and start it again; `curl -m 6 localhost:8090/api/state` checks it.
+- **`kubectl port-forward` can hang after the driver restarts.** It keeps running but logs `error creating forwarding stream … Timeout`, and the dashboard shows RECONNECTING. Stop it and start it again; `curl -m 6 localhost:8090/api/state` checks it ([user guide §4.6](./USER_GUIDE.md#46-dashboard-says-reconnecting)).
 
 ## 10. How this guide was verified
 
-Done on 2026-09-26 against the live clusters. The rule was: run every build, deploy and demo step for real; check cluster, VPC and TPU creation read-only; recreate nothing. "As written" means the command block was copied out of this README and run unchanged, with only the §6.0 variables set.
+Done on 2026-09-26 against the live clusters. The rule was: run every build, deploy and demo step for real; check cluster, VPC and TPU creation read-only; recreate nothing. "As written" means the command block was copied out of this README (its §6 then; now the [user guide](./USER_GUIDE.md), where former §6.N is Step N) and run unchanged, with only the Step 0 variables set.
 
-**2026-10-03 (three stages):** not a full re-verification. The changed gateway manifest and EPP values were applied to the running TPU cluster as in §6.9 ("Changing a running install"), the new driver and dashboard were copied into the running driver pod (checksums compared) and its `-epp` flag was updated in place, and the three stages were measured live by clicking the dashboard's own buttons in headless Chrome while `api/state` was polled every 2 s (top of §2).
+**2026-10-03 (three stages):** not a full re-verification. The changed gateway manifest and EPP values were applied to the running TPU cluster as in user guide [§5.4](./USER_GUIDE.md#54-envoy-gateway) and [§5.5](./USER_GUIDE.md#55-epp-values) (then §6.9, "Changing a running install"), the new driver and dashboard were copied into the running driver pod (checksums compared) and its `-epp` flag was updated in place, and the three stages were measured live by clicking the dashboard's own buttons in headless Chrome while `api/state` was polled every 2 s (top of §2).
 
-**2026-10-03 (80% fleet idle):** the driver built from this folder (with `-fleet-idle-pct`) and the dashboard were copied into the running driver pod as in §6.10 (checksums compared); `/work/args` is unchanged, since 80 and the auto `-max-inflight` are the defaults. `api/state` then reported `fleet_idle_pct` 80, `duty_target` 200 and `max_inflight` 220. The three stages were measured twice, through the driver API and by clicking the dashboard in headless Chrome (top of §2). Nothing on the TPU side changed. The Hermes variant's driver was not touched.
+**2026-10-03 (80% fleet idle):** the driver built from this folder (with `-fleet-idle-pct`) and the dashboard were copied into the running driver pod with the copy block that was then §6.10 (checksums compared); `/work/args` is unchanged, since 80 and the auto `-max-inflight` are the defaults. `api/state` then reported `fleet_idle_pct` 80, `duty_target` 200 and `max_inflight` 220. The three stages were measured twice, through the driver API and by clicking the dashboard in headless Chrome (top of §2). Nothing on the TPU side changed. The Hermes variant's driver was not touched.
 
-**2026-10-03 evening (the same load in every stage):** the driver built from this folder (with `-overload-rate`) and the dashboard were copied into the running driver pod as in §6.10 (checksums compared), and the dashboard once more after the stage-title change; `/work/args` is unchanged. `api/state` then reported `stage_rates` 200 for every stage and `overload_rate` 0. The three stages were measured three times, once through the driver API and twice by clicking the dashboard in headless Chrome (top of §2). Nothing on the TPU side changed. The Hermes variant's driver was not touched; it serves the same dashboard file. Later that evening only the dashboard was copied again, for the banner's Output Tok/s, and one more dashboard run took the §2.3 screenshots.
+**2026-10-03 evening (the same load in every stage):** the driver built from this folder (with `-overload-rate`) and the dashboard were copied into the running driver pod with the copy block that was then §6.10 (checksums compared), and the dashboard once more after the stage-title change; `/work/args` is unchanged. `api/state` then reported `stage_rates` 200 for every stage and `overload_rate` 0. The three stages were measured three times, once through the driver API and twice by clicking the dashboard in headless Chrome (top of §2). Nothing on the TPU side changed. The Hermes variant's driver was not touched; it serves the same dashboard file. Later that evening only the dashboard was copied again, for the banner's Output Tok/s, and one more dashboard run took the §2.3 screenshots.
 
-**2026-10-03 late evening (retries follow the stage; the Agents panel can be hidden):** the driver built from this folder and the dashboard were copied into the running driver pod as in §6.10 (checksums compared); `/work/args` is unchanged. The §9 test (25 s in Stage 3, then 40 s in Stage 2, through the driver API) ran on the old driver and again on the new one. Then one run used the dashboard in headless Chrome with real mouse and keyboard input: `W`, `T`, `2`, `3`, the divider dragged all the way left, a click on Stage 2, `S` with the Agents panel hidden, and a double-click on the divider. It had 9,141 LLM requests with 0 failed (43 retried once); Wake 1,000 took 1,982 ms and Suspend all 1,323 ms. `shoot.mjs` on the mock gave all its screenshots with no console errors; only the new `04d_llmd_full_width.png` was added to `docs/images/`. Nothing on the TPU side changed. The Hermes variant's driver was not touched; it serves the same dashboard file. Then only the dashboard was copied again, so that windows taller than 16:9 fill their height: at 1920×1080 its layout matched the previous file box for box, on the mock and on the live page, and `shoot.mjs` again gave all its screenshots with no console errors (`07_1440x900.png` updated).
+**2026-10-03 late evening (retries follow the stage; the Agents panel can be hidden):** the driver built from this folder and the dashboard were copied into the running driver pod with the copy block that was then §6.10 (checksums compared); `/work/args` is unchanged. The §9 test (25 s in Stage 3, then 40 s in Stage 2, through the driver API) ran on the old driver and again on the new one. Then one run used the dashboard in headless Chrome with real mouse and keyboard input: `W`, `T`, `2`, `3`, the divider dragged all the way left, a click on Stage 2, `S` with the Agents panel hidden, and a double-click on the divider. It had 9,141 LLM requests with 0 failed (43 retried once); Wake 1,000 took 1,982 ms and Suspend all 1,323 ms. `shoot.mjs` on the mock gave all its screenshots with no console errors; only the new `04d_llmd_full_width.png` was added to `docs/images/`. Nothing on the TPU side changed. The Hermes variant's driver was not touched; it serves the same dashboard file. Then only the dashboard was copied again, so that windows taller than 16:9 fill their height: at 1920×1080 its layout matched the previous file box for box, on the mock and on the live page, and `shoot.mjs` again gave all its screenshots with no console errors (`07_1440x900.png` updated).
 
-The table below is from 2026-09-26.
+**2026-10-04 (user guide):** the build and deploy steps moved to the [user guide](./USER_GUIDE.md), with a check after every step. Step 3 was rebuilt from a fresh upstream clone (byte-identical), the Step 4 and Step 5 scripts' dry runs reported everything unchanged, `kubectl diff` and the Helm comparison found no spec differences, and the new `deploy-driver.sh` changed nothing on the live driver pod; its change paths were tested on a throwaway pod. Details, and what was not run: [user guide §7](./USER_GUIDE.md#7-how-this-guide-was-verified).
+
+The table below is from 2026-09-26. Its step numbers are the user guide's (then README §6.N).
 
 | Step | How it was checked | Result |
 |---|---|---|
-| 6.1 VPC | `gcloud compute networks describe`, `subnets describe`, `firewall-rules list` | Custom-mode VPC. Subnet 172.24.0.0/20 with private Google access and secondary ranges `pods` 172.28.0.0/14 and `services` 172.24.16.0/20 (GKE added one more for the Substrate cluster's pods). The internal-allow rule has an auto-generated name but the same direction, priority, source ranges and protocols. |
-| 6.2 Substrate cluster | `gcloud container clusters describe`; the `setup-gcp` and `ate-setup` sources at `fa6d949` (subcommands and environment variables); the clone, checkout and `kubectl-ate` build lines as written; the template rendered with `envsubst` compared with `kubectl ate get actor-template`; the create line as written | Matches §3. The rendered template equals the live one field for field, and the create line returns `AlreadyExists` without changing it. `setup-gcp` and `ate-setup` were **not** run: they would modify or recreate the live cluster. |
-| 6.3 Build | As written, in a new directory with a fresh clone of upstream | The patch applies cleanly. `runsc_fast`, the three binaries, both `.gz` files and `http_srv` are byte-identical to what runs in the cluster. |
-| 6.4 `scale-control-plane.sh` + node tuner | As written: dry run, real run, node-tuner apply | Everything `unchanged`; no pod restarted |
-| 6.5 `deploy-patched-binaries.sh` | As written, with the §6.3 build | Both binaries `unchanged`, served correctly over HTTP, specs unchanged, nothing restarted. An earlier real run, with a byte-different build of the same code, uploaded the binaries and restarted ate-api and all 25 atelets in 46 s. |
-| 6.6 TPU cluster | `gcloud container clusters describe`, including its node pools | Matches §3 |
-| 6.7 vLLM image | `gcloud artifacts docker images describe` at the digest in the manifest | Present, and both vLLM pods run that digest. **Not rebuilt** (TPU side is read-only). |
-| 6.8 vLLM pods | `kubectl diff` of `prereqs.yaml`, the deployments and the render Service; a positive control confirmed `diff` catches changes | No differences |
-| 6.9 llm-d | `kubectl diff` of the objectives and the gateway; `helm template` with the repo values against `helm get manifest`; `kubectl diff` of the v1.0.1 CRDs | No differences. All 7 Helm objects are identical. The only CRD difference is the GKE-managed `InferencePool`. |
-| 6.10 driver | As written, including `kubectl apply` of `keynote-driver.yaml` | Same args as before. The driver restarted with the §6.3 build (`fdef79b4`) and saw 1,000 paused agents. The pod itself was not recreated. |
-| 6.11 reconcile | The `reconcile`, wait and `note` lines as written | Works: `re-created 0 … 1000 paused, 0 not at rest`. All 1,000 agents already existed, so the create path was not exercised. |
-| 6.12 mock | `mock_server.py`, `curl` of the API, `shoot.mjs` as written | All 13 screenshots, no console errors. This check found a stale wait in `shoot.mjs` that timed out at the suspend step; it is fixed. |
-| 7 health check | As written | 1,000 RUNNING in 3,085 ms with 0 failed; then 1,000 PAUSED in 2,440 ms, and 0 sandboxes on the 25 nodes |
+| Step 1 VPC | `gcloud compute networks describe`, `subnets describe`, `firewall-rules list` | Custom-mode VPC. Subnet 172.24.0.0/20 with private Google access and secondary ranges `pods` 172.28.0.0/14 and `services` 172.24.16.0/20 (GKE added one more for the Substrate cluster's pods). The internal-allow rule has an auto-generated name but the same direction, priority, source ranges and protocols. |
+| Step 2 Substrate cluster | `gcloud container clusters describe`; the `setup-gcp` and `ate-setup` sources at `fa6d949` (subcommands and environment variables); the clone, checkout and `kubectl-ate` build lines as written; the template rendered with `envsubst` compared with `kubectl ate get actor-template`; the create line as written | Matches §3. The rendered template equals the live one field for field, and the create line returns `AlreadyExists` without changing it. `setup-gcp` and `ate-setup` were **not** run: they would modify or recreate the live cluster. |
+| Step 3 Build | As written, in a new directory with a fresh clone of upstream | The patch applies cleanly. `runsc_fast`, the three binaries, both `.gz` files and `http_srv` are byte-identical to what runs in the cluster. |
+| Step 4 `scale-control-plane.sh` + node tuner | As written: dry run, real run, node-tuner apply | Everything `unchanged`; no pod restarted |
+| Step 5 `deploy-patched-binaries.sh` | As written, with the Step 3 build | Both binaries `unchanged`, served correctly over HTTP, specs unchanged, nothing restarted. An earlier real run, with a byte-different build of the same code, uploaded the binaries and restarted ate-api and all 25 atelets in 46 s. |
+| Step 6 TPU cluster | `gcloud container clusters describe`, including its node pools | Matches §3 |
+| Step 7 vLLM image | `gcloud artifacts docker images describe` at the digest in the manifest | Present, and both vLLM pods run that digest. **Not rebuilt** (TPU side is read-only). |
+| Step 8 vLLM pods | `kubectl diff` of `prereqs.yaml`, the deployments and the render Service; a positive control confirmed `diff` catches changes | No differences |
+| Step 9 llm-d | `kubectl diff` of the objectives and the gateway; `helm template` with the repo values against `helm get manifest`; `kubectl diff` of the v1.0.1 CRDs | No differences. All 7 Helm objects are identical. The only CRD difference is the GKE-managed `InferencePool`. |
+| Step 10 driver | The copy block as then written (now `deploy-driver.sh`), including `kubectl apply` of `keynote-driver.yaml` | Same args as before. The driver restarted with the Step 3 build (`fdef79b4`) and saw 1,000 paused agents. The pod itself was not recreated. |
+| Step 11 reconcile | The `reconcile`, wait and `note` lines as written | Works: `re-created 0 … 1000 paused, 0 not at rest`. All 1,000 agents already existed, so the create path was not exercised. |
+| Step 12 mock | `mock_server.py`, `curl` of the API, `shoot.mjs` as written | All 13 screenshots, no console errors. This check found a stale wait in `shoot.mjs` that timed out at the suspend step; it is fixed. |
+| §7 health check | As written | 1,000 RUNNING in 3,085 ms with 0 failed; then 1,000 PAUSED in 2,440 ms, and 0 sandboxes on the 25 nodes |
 | Full demo cycle | Driver API plus ground truth (ate-api states, sandbox processes on the nodes) | See §2: Balanced → 80/20 → Priority → Balanced, 21,681 LLM requests with 0 failed, 1,000 PAUSED and 0 sandboxes after suspend |
 
 **Not run:**
 - cluster, VPC and node-pool creation;
 - the vLLM image build;
 - `setup-gcp` and `ate-setup`;
-- §6.11 creation of new agents (all 1,000 already existed);
-- §11.
+- Step 11's creation of new agents (all 1,000 already existed);
+- the teardown (now [user guide §6](./USER_GUIDE.md#6-tear-it-down)).
 
 ## 11. Cleanup and revert
 
-None of these were run during verification.
-
-```bash
-# Stop the node tuner (its mount/sysctl changes persist until the nodes are recreated)
-kubectl --context="${CTX_SUB}" -n ate-system delete ds ate-node-tuner
-# Stop the file server inside postgres-0 and remove the uploaded binaries
-kubectl --context="${CTX_SUB}" -n ate-system exec postgres-0 -c postgres -- sh -c \
-  'kill $(pidof http_srv); rm -f /var/lib/postgresql/data/bin_*.gz*'
-# Back to stock ate-api/atelet: the init containers were added by patch, so delete the objects and redeploy
-kubectl --context="${CTX_SUB}" -n ate-system delete deploy/ate-api-server ds/atelet-v0-1-0-gke-1
-(cd "${SUBSTRATE_SRC}" && git stash && KUBECTL_CONTEXT="${CTX_SUB}" go run ./cmd/ate-setup deploy ate-system \
-  --no-dev-env --image-repo us-docker.pkg.dev/gke-substrate-release/substrate --image-tag v0.1.0-gke.1)
-# Everything
-gcloud container clusters delete "${SUBSTRATE_CLUSTER}" --zone="${ZONE}" --project="${PROJECT_ID}"
-gcloud container clusters delete "${TPU_CLUSTER}" --zone="${ZONE}" --project="${PROJECT_ID}"
-gcloud storage rm --recursive "gs://${BUCKET_NAME}"
-```
+Moved to the user guide on 2026-10-04: [§6 Tear it down](./USER_GUIDE.md#6-tear-it-down). It either keeps the clusters and undoes the demo's changes, or deletes everything: both clusters, the snapshot bucket, the vLLM image, the firewall rule, the subnet and the VPC. None of it was run on the demo clusters.

@@ -17,7 +17,8 @@ jetski-playground/
 ├── inference/                # LLM Inference Workloads & Serving Benchmarks
 │   └── README.md             # Overview of inference workloads and recipes
 └── substrate/                # Agent Substrate on GKE × llm-d on Cloud TPU v6e (1,000-Agent Keynote Demo)
-    ├── README.md             # Results, architecture, step-by-step reproduction guide, runbook & disclosures
+    ├── README.md             # Results, architecture, runbook & disclosures
+    ├── USER_GUIDE.md         # Build, redeploy, recover, update & tear down the stack
     ├── plan.md               # Status, decisions & open items
     ├── implementation.md     # Engineering notes: patches, driver, llm-d config, incidents
     ├── dashboard/            # Stage dashboard UI + zero-dependency rehearsal mock server
@@ -34,7 +35,7 @@ jetski-playground/
   * 1,000 gVisor agent sandboxes wake from zero in about 2 s on 25 × c4-standard-4 (1,907–1,953 ms over 4 warm wakes; median 2,988 ms on the original C3 nodes). About 80% of the fleet sits idle at zero CPU during traffic.
   * A [Hermes Agent variant](./substrate/hermes/README.md) runs 1,000 Hermes agents on C4D whose conversation memory survives suspend and resume.
   * The agents call 2 × `google/gemma-4-12B-it` (`vllm-torchtpu`) pods in three stages with the same load: round robin without `llm-d`; `llm-d` KV-cache-aware routing (prefix-cache hit 45–72% → 80–98%, about 65 → 105 requests/s served, agent wait about 2.5 s → 1.3 s); and `llm-d` flow control, which serves paid user tiers first (`InferenceObjective` priorities).
-  * Includes the interactive stage dashboard and a verified end-to-end reproduction guide.
+  * Includes the interactive stage dashboard and a verified [user guide](./substrate/USER_GUIDE.md) to build, redeploy, update and tear down the stack.
 * **[`robotics/unitree-r1/`](./robotics/unitree-r1/README.md):** Complete offline deployment guide for Unitree R1 (Jetson Orin) running native CUDA `NeMo-Speech.cpp` (Nemotron ASR + Magpie TTS) with `google/gemma-4-E2B-it` VLM, hardware I/O audio testing, and multimodal vision streaming.
 * **[`reliability/`](./reliability/README.md):** Production multi-node reinforcement learning recipes, OOM bottleneck solutions (`/dev/shm`), Hopper/Blackwell kernel compatibility, and empirical AIME 2024 Olympiad benchmark reports for **Gemma 3 27B IT** (`google/gemma-3-27b-it`).
 * **[`inference/`](./inference/README.md):** Inference workloads, high-throughput serving recipes, and latency benchmarks.

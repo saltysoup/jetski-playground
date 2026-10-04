@@ -1,10 +1,10 @@
 # Status, decisions and open items
 
-Last updated 2026-10-03 (three llm-d stages; fleet idle rate 80%; the same load in every stage). The [README](./README.md) has the guide and the measured results. The engineering details are in [implementation.md](./implementation.md).
+Last updated 2026-10-04 (user guide; on 2026-10-03: three llm-d stages, fleet idle rate 80%, the same load in every stage). The [README](./README.md) has the measured results and the stage runbook; the [user guide](./USER_GUIDE.md) builds, redeploys, updates and tears down the stack. The engineering details are in [implementation.md](./implementation.md).
 
 ## Status
 
-The demo works end to end on the live clusters, and the guide was re-verified step by step on 2026-09-26 ([README §10](./README.md#10-how-this-guide-was-verified)).
+The demo works end to end on the live clusters. The build steps were re-verified one by one on 2026-09-26 ([README §10](./README.md#10-how-this-guide-was-verified)) and re-checked on 2026-10-04 ([user guide §7](./USER_GUIDE.md#7-how-this-guide-was-verified)).
 
 | What | Result (ground truth: ate-api states and sandbox processes on the nodes) |
 |---|---|
@@ -40,8 +40,9 @@ None of these are implemented. Each needs an owner's decision.
 3. **Wake-time margin.** The tail is set by uneven placement: 32–47 agents per node, and nodes with 40 or fewer finish by about 2.45 s. Rebalancing to about 40 per node would likely bring the wake to about 2.4–2.5 s. That estimate comes from the less-loaded nodes; it was not tested.
 4. **Safety net for an unrestorable snapshot.** It happened once in about 13,000 pause/restore cycles, and it makes "Wake 1,000" stop at 999. The driver could re-create an agent whose restore fails twice, which would cost about 4 s instead of a stuck wake. Today the fix is the manual repair in README §7.
 5. **Postgres data exposure.** `http_srv` in `postgres-0` serves the whole Postgres data directory on the pod network. Serve a separate directory that holds only the binaries, or bake the binaries into images.
-6. **Spot TPU nodes can be preempted.** A vLLM pod then takes minutes to come back, and the driver needs the new pod IPs (README §6.10). Consider on-demand or reserved TPU capacity for the show day.
+6. **Spot TPU nodes can be preempted.** A vLLM pod then takes minutes to come back, and the driver needs the new pod IPs (`deploy-driver.sh`, [user guide §4.1](./USER_GUIDE.md#41-vllm-or-epp-pods-restarted)). Consider on-demand or reserved TPU capacity for the show day.
 7. **After the show:**
    - delete `ate-node-tuner` and recreate the Substrate nodes, because its mount and sysctl changes persist;
    - restore Postgres `fsync` and `full_page_writes`;
-   - or delete the clusters (README §11).
+   - or delete the clusters ([user guide §6](./USER_GUIDE.md#6-tear-it-down)).
+8. **The driver pod is a bare Pod with an `emptyDir`.** If its node is drained, upgraded or repaired, nothing re-creates it, and `/work` is lost: the driver binaries, their flags, the dashboard page, the run records and the Hermes driver's files. `deploy-driver.sh` brings the light driver back in one run; the Hermes driver needs its key, binary and start again, and its agents must be taught again ([user guide §4.2](./USER_GUIDE.md#42-driver-pod-deleted)). A Deployment with a persistent volume would avoid this.

@@ -4,12 +4,12 @@
 #
 # - Image: upstream github.com/vllm-project/vllm-torchtpu @ 3eb7abb5 built with
 #   ./docker/build_image.sh --target prod (no code changes). Replace the image
-#   below with your own build (see README, step 3.2).
+#   below with your own build (see ../../USER_GUIDE.md, Step 7).
 # - Each pod uses a whole ct6e-standard-4t node (4 TPU v6e chips, TP=4):
 #   pod-1 -> node pool tpu-v6e-spot, pod-2 -> node pool tpu-v6e-spot-decode.
 # - --kv-events-config publishes KV-cache events over ZMQ (:5557) for the llm-d
 #   endpoint picker's precise prefix-cache scorer.
-# - Prerequisites (prereqs.yaml + README step 3.3): Secret llm-d-hf-token (key
+# - Prerequisites (prereqs.yaml + ../../USER_GUIDE.md Step 8): Secret llm-d-hf-token (key
 #   HF_TOKEN), ServiceAccount ms-pd-llm-d-modelservice, PVCs
 #   model-storage-ms-pd-llm-d-modelservice-prefill-0 and model-storage-decode
 #   (Hugging Face cache, so restarts do not re-download the weights).

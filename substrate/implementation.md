@@ -173,7 +173,12 @@ The Helm values are in [`manifests/tpu/gaie-values-flowctl.yaml`](./manifests/tp
    - During one manual upload, the served `bin_atelet.gz` was an empty file for 14 s. The rename happened before the checksum check.
    - Nothing restarted in that window.
    - `deploy-patched-binaries.sh` now uploads to a temporary name, checks the sha256, and only then renames.
-7. **`kubectl cp` can report success on a truncated copy.** Always compare checksums before switching binaries. The driver upgrade block in README §6.10 does.
+7. **`kubectl cp` can report success on a truncated copy.** Always compare checksums before switching binaries. `deploy-driver.sh` (USER_GUIDE.md Step 10) and `deploy-patched-binaries.sh` do.
+8. **A silent `kubectl exec -i` can lose its input.**
+   - On the demo workstation (kubectl v1.31.1), `kubectl exec -i … sh -c 'cat > f'` left `f` empty in 6 of 6 tries, over the WebSocket and the SPDY transport alike. One of them was the Hermes key write as then written in hermes/README.md §4.4, tested with a dummy value.
+   - When the command printed something after `cat` (`&& sha256sum f` or `&& wc -c < f`), the input arrived intact in 4 of 4 tries, including the 136,612-byte dashboard page.
+   - `kubectl cp` was not affected. The cause was not investigated.
+   - `deploy-driver.sh`, the Hermes key write and the Hermes driver copy now print a checksum or a byte count from the same exec.
 
 ## 7. How results were measured
 

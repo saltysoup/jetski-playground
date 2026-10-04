@@ -68,11 +68,11 @@ llm-d gateway ──▶ vLLM pod-1 / pod-2 (Gemma 4 12B, TPU v6e, --max-model-le
 
 ## 4. Reproduce it
 
-Start from a working light demo, following the main guide [§6](../README.md#6-reproduce-it) through §6.10. The variables below come from that guide's §6.0.
+Start from a working light demo, following the [user guide](../USER_GUIDE.md) through [Step 10](../USER_GUIDE.md#step-10-keynote-driver-and-dashboard). The variables below come from its [Step 0](../USER_GUIDE.md#step-0-tools-quota-and-variables).
 
 ### 4.1 vLLM context length
 
-Hermes refuses a model with a context window under 64k tokens, so the vLLM pods run `--max-model-len 65536`; [`gemma4-12b-torchtpu-deployments.yaml`](../manifests/tpu/gemma4-12b-torchtpu-deployments.yaml) already has it. Replies stay short, because the driver's proxy caps `max_tokens` at 50. Applying a change here restarts the vLLM pods, so re-run the main guide's §6.10 afterwards (the pod IPs change).
+Hermes refuses a model with a context window under 64k tokens, so the vLLM pods run `--max-model-len 65536`; [`gemma4-12b-torchtpu-deployments.yaml`](../manifests/tpu/gemma4-12b-torchtpu-deployments.yaml) already has it. Replies stay short, because the driver's proxy caps `max_tokens` at 50. Applying a change here restarts the vLLM pods, and their IPs change: afterwards re-run `deploy-driver.sh` ([user guide §4.1](../USER_GUIDE.md#41-vllm-or-epp-pods-restarted)) and restart the Hermes driver with the new addresses ([§4.5](#45-driver-in-hermes-mode)).
 
 ### 4.2 Node pool
 
@@ -120,7 +120,7 @@ kubectl --context="${CTX_SUB}" apply -f hermes/manifests/keynote-llm-proxy.yaml
 
 HERMES_API_KEY=$(openssl rand -hex 24)      # keep it out of git and shell history
 printf %s "${HERMES_API_KEY}" | kubectl --context="${CTX_SUB}" -n keynote-demo exec -i keynote-driver -- \
-  sh -c 'umask 077; cat > /work/hermes_api_key'
+  sh -c 'umask 077; cat > /work/hermes_api_key && wc -c < /work/hermes_api_key'   # prints 48
 
 kubectl ate --context="${CTX_SUB}" create atespace keynote-hermes
 HERMES_IMAGE="${HERMES_IMAGE}" HERMES_API_KEY="${HERMES_API_KEY}" BUCKET_NAME="${BUCKET_NAME}" \
@@ -128,7 +128,7 @@ LLM_PROXY_URL=http://keynote-llm-proxy.keynote-demo.svc.cluster.local:8091/llm/v
   envsubst < hermes/manifests/hermes-template.yaml.tmpl | kubectl ate --context="${CTX_SUB}" create actor-template -f -
 ```
 
-The rendered template contains the API key: pipe it straight into `kubectl ate` and never write it to the repo.
+The rendered template contains the API key: pipe it straight into `kubectl ate` and never write it to the repo. Keep the `wc -c` on the key write: on the demo workstation, a `kubectl exec -i` whose command printed nothing ended before its input arrived and left the file empty ([implementation.md §6](../implementation.md#6-incidents-and-lessons)).
 
 **Wait for the golden snapshot before creating or waking any agent.** Substrate builds it from the first agent that becomes ready. If 1,000 agents are woken before it exists, every one of them cold-starts at once: readyz times out, workers stay assigned, and the golden build can stall for several minutes. The driver refuses to start a burst until the template reports one:
 
@@ -141,7 +141,17 @@ kubectl ate --context="${CTX_SUB}" get actor-template -a keynote-hermes hermes-d
 
 ### 4.5 Driver in Hermes mode
 
-The Hermes driver runs as a second process in the `keynote-driver` pod, next to the light driver. It serves its own dashboard on `:8092` (from the same `index.html`) and the LLM proxy on `:8091`. Build the driver as in the main guide's §6.3 (`hermes.go` sits next to `main.go`), copy it to `/work/keynote_driver_hermes`, then start it:
+The Hermes driver runs as a second process in the `keynote-driver` pod, next to the light driver. It serves its own dashboard on `:8092` (from the same `index.html`) and the LLM proxy on `:8091`. Build the driver as in the user guide's [Step 3](../USER_GUIDE.md#step-3-build-the-patched-binaries-and-the-driver) (`hermes.go` sits next to `main.go`) and copy it into the pod. The first command prints a checksum; it must match the second:
+
+```bash
+kubectl --context="${CTX_SUB}" -n keynote-demo exec -i keynote-driver -- \
+  sh -c 'cat > /work/keynote_driver_hermes.new && sha256sum /work/keynote_driver_hermes.new' < "${BIN_DIR}/keynote_driver"
+sha256sum "${BIN_DIR}/keynote_driver"
+kubectl --context="${CTX_SUB}" -n keynote-demo exec keynote-driver -- \
+  sh -c 'chmod +x /work/keynote_driver_hermes.new && mv /work/keynote_driver_hermes.new /work/keynote_driver_hermes'
+```
+
+Then start it. `GATEWAY_IP`, `POD1_IP`, `POD2_IP` and `EPP_IP` come from the address lookups in the user guide's [Step 10](../USER_GUIDE.md#step-10-keynote-driver-and-dashboard):
 
 ```bash
 D="kubectl --context=${CTX_SUB} -n keynote-demo"
@@ -161,8 +171,8 @@ curl -s -X POST localhost:8092/api/reconcile -d '{}'      # creates agent-0001..
 ```
 
 - `-nodes`, `-node-type` and `-node-vcpus` only change the dashboard: one grid tile per node, and the per-node density label.
-- `-fleet-idle-pct=90` keeps the Hermes fleet at ~90% idle, as measured here. The driver's default is 80 since 2026-10-03 (light fleet, main guide §2). The Hermes driver running on the cluster is a build from before that flag, fixed at 90%, so its args don't include it; that older build would refuse the flag.
-- The driver keeps each agent's memory bookkeeping (codename generation, recalls, suspends survived) in `/work/runs-hermes/hermes_memory.json`, so it survives a driver restart.
+- `-fleet-idle-pct=90` keeps the Hermes fleet at ~90% idle, as measured here. The driver's default is 80 since 2026-10-03 (light fleet, main README §2). The Hermes driver running on the cluster is a build from before that flag, fixed at 90%, so its args don't include it; that older build would refuse the flag.
+- The driver keeps each agent's memory bookkeeping (codename generation, recalls, suspends survived) in `/work/runs-hermes/hermes_memory.json`, so it survives a driver restart, but not the loss of the pod ([user guide §4.2](../USER_GUIDE.md#42-driver-pod-deleted)).
 
 ## 5. Before the show
 
@@ -195,4 +205,4 @@ The llm-d buttons work as in the light demo. Clicking a grid cell shows that age
 - **Sandbox memory limit.** The sandbox's memory cgroup is charged for the page cache of the ~150 MB checkpoint it writes on every pause. At 512 MiB, about 1 pause in 400 ended with the kernel OOM-killing the gVisor sentry mid-checkpoint, and the agent went `CRASHED`. The template uses 1 GiB.
 - **Changing the template's memory limit.** Worker pods that already hosted an agent keep their old sandbox cgroup limit. Delete the WorkerPool's pods after changing the limit (the pool recreates them), then re-create any agent that went `CRASHED`.
 - **Hard 10 s turn limit.** atenet returns 504 at about 10 s. The driver does not retry a 504, because a Hermes turn is not idempotent.
-- **Node recreation** (upgrade, repair, maintenance) destroys the node-local snapshots of the agents on that node, including their memory, as in the light demo (main guide §9).
+- **Node recreation** (upgrade, repair, maintenance) destroys the node-local snapshots of the agents on that node, including their memory, as in the light demo (main README §9).
