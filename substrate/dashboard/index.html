@@ -19,54 +19,57 @@
 html,body{margin:0;height:100%;overflow:hidden;background:var(--bg);color:var(--text);font-family:var(--sans);
   font-variant-numeric:tabular-nums;font-feature-settings:"tnum" 1;-webkit-font-smoothing:antialiased}
 button{font-family:inherit;font-variant-numeric:tabular-nums}
-#stage{position:absolute;left:0;top:0;width:1920px;height:1080px;transform-origin:0 0;display:grid;
-  grid-template-columns:954px 12px 954px;grid-template-rows:58px minmax(0,1fr);overflow:hidden;background:var(--bg)}
-/* --xh: extra stage height in windows taller than 16:9 (set by fit(); 0 at 1920x1080) */
-.panel{position:relative;height:calc(1022px + var(--xh, 0px));min-width:0;overflow:hidden}
-/* fixed cells, so the Agents panel can be hidden (divider dragged all the way left) without moving the others */
-#left{grid-column:1;grid-row:2}
-.divider{grid-column:2;grid-row:2}
-#right{grid-column:3;grid-row:2}
-#left.gone{display:none}
-/* ---------- stage banner (page-wide): current routing stage + headline KPIs ---------- */
-#banner{grid-column:1/-1;display:flex;align-items:flex-end;justify-content:space-between;gap:28px;padding:0 26px 2px 26px;
-  min-width:0;--sc:var(--yellow-l)}
-#banner[data-stage="2"]{--sc:var(--blue-l)}
-#banner[data-stage="3"]{--sc:var(--green-l)}
-.bstage{font-family:var(--disp);font-size:35px;font-weight:700;line-height:1.1;letter-spacing:-.005em;color:var(--sc);
-  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;transition:color .4s}
-.bkpi{flex:none;display:flex;align-items:baseline;gap:12px;font-family:var(--disp);font-size:26px;font-weight:600;line-height:1.1;
-  color:var(--text2);white-space:nowrap;transition:opacity .4s}
-.bkpi b{color:#fff;font-weight:700}
-.bkpi .sep{color:#4a515b;font-style:normal;font-weight:400}
-.bkpi.quiet{opacity:.38}
-.bkpi [hidden]{display:none}
-.divider{position:relative;cursor:col-resize;user-select:none;touch-action:none;display:flex;align-items:center;justify-content:center;z-index:10}
-.divider::before{content:"";position:absolute;top:0;bottom:0;left:50%;width:2px;transform:translateX(-50%);
-  background:linear-gradient(to bottom,transparent,#2b333e 6%,#2b333e 94%,transparent);transition:background .2s,width .2s,box-shadow .2s}
-.dhandle{position:relative;z-index:1;width:10px;height:68px;border-radius:5px;background:#161c24;border:1px solid #364150;
-  display:flex;align-items:center;justify-content:center;transition:background .2s,border-color .2s,box-shadow .2s}
-.dhandle i{display:block;width:2px;height:26px;border-radius:1px;background:#86919e}
-.divider:hover::before,.divider.dragging::before{width:3px;
-  background:linear-gradient(to bottom,transparent,var(--blue) 6%,var(--blue-l) 50%,var(--blue) 94%,transparent);
-  box-shadow:0 0 12px rgba(66,133,244,.55)}
-.divider:hover .dhandle,.divider.dragging .dhandle{background:#1d2838;border-color:var(--blue-l);box-shadow:0 0 12px rgba(66,133,244,.45)}
-.divider:hover .dhandle i,.divider.dragging .dhandle i{background:#fff}
+/* The stage is 1920 px wide and 1080 tall at 16:9 (taller windows get a taller stage, see fit()). It holds three
+   sections, accordion style: one is open (1,776 px wide), the other two fold into 72 px rails, left of the open one
+   if they come before it, right of it if they come after. */
+#stage{position:absolute;left:0;top:0;width:1920px;height:1080px;transform-origin:0 0;overflow:hidden;background:var(--bg)}
+#acc{position:absolute;inset:0;display:flex}
+.sec{position:relative;flex:none;width:72px;height:100%;overflow:hidden;transition:width .5s cubic-bezier(.3,.75,.2,1)}
+.sec.open{width:1776px}
+.body{position:absolute;left:0;top:0;bottom:0;width:1776px;display:flex;flex-direction:column;gap:12px;padding:12px 26px 16px;
+  min-height:0;transition:opacity .4s .12s}
+.sec:not(.open) .body{opacity:0;visibility:hidden;pointer-events:none;transition:opacity .15s,visibility 0s .15s}
 
+/* ---------- rails (folded sections) ---------- */
+.rail{position:absolute;left:0;top:0;bottom:0;width:72px;display:flex;flex-direction:column;align-items:center;padding-top:20px;
+  cursor:pointer;user-select:none;background:linear-gradient(180deg,#0d141b,#090d12);
+  border-left:1.5px solid rgba(78,182,204,.42);border-right:1.5px solid rgba(78,182,204,.42);transition:opacity .3s .2s,background .2s}
+.sec.open .rail{opacity:0;visibility:hidden;pointer-events:none;transition:opacity .12s,visibility 0s .12s}
+.rail:hover{background:linear-gradient(180deg,#10202a,#0b141b)}
+.rdot{flex:none;width:10px;height:10px;border-radius:50%;background:var(--cyan-l);box-shadow:0 0 10px rgba(120,217,236,.85);opacity:.5}
+.rail.act .rdot{opacity:1;animation:pend 1.6s ease-in-out infinite}
+.rchip{flex:none;margin-top:14px;writing-mode:vertical-rl;transform:rotate(180deg);padding:10px 4px;border-radius:7px;border:1px solid;
+  font-size:11.5px;font-weight:800;letter-spacing:.08em;line-height:1;white-space:nowrap;text-transform:uppercase;transition:color .3s,border-color .3s,background .3s}
+.c-ag{color:var(--green-l);border-color:rgba(129,201,149,.6);background:rgba(52,168,83,.12)}
+.c-wk{color:var(--yellow-l);border-color:rgba(251,188,4,.55);background:rgba(251,188,4,.1)}
+.c-rt{color:var(--blue-l);border-color:rgba(138,180,248,.6);background:rgba(66,133,244,.12)}
+.c-fc{color:var(--purple-l);border-color:rgba(197,138,249,.6);background:rgba(161,66,244,.12)}
+.c-gn{color:#c9f0d3;border-color:rgba(129,201,149,.75);background:rgba(52,168,83,.2)}
+.c-dim{color:var(--dim);border-color:var(--line2);background:transparent}
+/* the button sits at the same height on every rail; the title hangs below it, read bottom to top */
+.rbtn{position:absolute;left:50%;top:50%;margin:-22px 0 0 -22px;width:44px;height:44px;border-radius:50%;display:flex;align-items:center;
+  justify-content:center;font-size:14px;color:#fff;background:#0a1016;border:1.5px solid var(--rc);box-shadow:0 0 0 4px rgba(0,0,0,.25);
+  transition:transform .2s,box-shadow .2s}
+.rail:hover .rbtn{transform:scale(1.08);box-shadow:0 0 16px var(--rc)}
+.rtitle{position:absolute;left:50%;top:calc(50% + 42px);writing-mode:vertical-rl;transform:translateX(-50%) rotate(180deg);white-space:nowrap;
+  line-height:1;font-size:16px;font-weight:800;letter-spacing:.2em;color:#fff;text-transform:uppercase}
+.rtitle .rsub{margin-inline-end:16px;font-size:11.5px;font-weight:700;letter-spacing:.14em;color:var(--cyan-l)}
+#secA{--rc:rgba(129,201,149,.7)} #secE{--rc:rgba(138,180,248,.75)} #secF{--rc:rgba(197,138,249,.75)}
+
+/* ---------- shared ---------- */
 .card{background:var(--card);border:1px solid var(--line);border-radius:14px;min-width:0}
 .ctitle{flex:none;height:22px;display:flex;align-items:center;justify-content:space-between;gap:12px;
   font-size:14px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--dim);white-space:nowrap}
-.leg{display:flex;gap:16px;align-items:center;font-size:14px;font-weight:500;letter-spacing:.02em;text-transform:none;color:var(--dim)}
+.leg{display:flex;gap:18px;align-items:center;font-size:14px;font-weight:500;letter-spacing:.02em;text-transform:none;color:var(--dim)}
 .leg i{display:inline-block;width:16px;height:4px;border-radius:2px;margin-right:7px;vertical-align:3px}
 .leg i.sq{width:12px;height:12px;border-radius:3px;vertical-align:-1px}
-body.stale .data{opacity:.4;filter:saturate(.3);transition:opacity .3s,filter:saturate(.3)}
-
-/* ---------- panel headers ---------- */
-.phead{flex:none;height:44px;display:flex;align-items:center;justify-content:space-between;gap:14px}
-.ptitle{font-size:21px;letter-spacing:.02em;color:var(--dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.leg i.dt{width:11px;height:11px;border-radius:50%;vertical-align:-1px}
+body.stale .data{opacity:.4;filter:saturate(.3);transition:opacity .3s,filter .3s}
+.phead{flex:none;height:50px;display:flex;align-items:center;justify-content:space-between;gap:16px}
+.ptitle{font-size:22px;letter-spacing:.02em;color:var(--dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .ptitle b{color:var(--text);font-weight:700;letter-spacing:.12em;margin-right:2px}
 .ptitle .pdot{display:inline-block;width:11px;height:11px;border-radius:50%;margin-right:12px;vertical-align:1px}
-.acts{display:flex;gap:8px;flex:none}
+.acts{display:flex;gap:10px;flex:none;align-items:center}
 .btn{height:42px;padding:0 18px;border-radius:21px;border:1px solid var(--line2);background:#141920;color:var(--text);
   font-size:17px;font-weight:600;cursor:pointer;white-space:nowrap;transition:opacity .2s,background .2s,border-color .2s,box-shadow .2s}
 .btn:hover:not(:disabled){border-color:#56606c}
@@ -77,25 +80,29 @@ body.stale .data{opacity:.4;filter:saturate(.3);transition:opacity .3s,filter:sa
 .btn:disabled{opacity:.32;cursor:default}
 .pending{animation:pend .8s ease-in-out infinite}
 @keyframes pend{50%{opacity:.55}}
+.live{position:relative;flex:none;height:42px;padding:0 12px 0 15px;display:flex;align-items:center;gap:8px;border:1px solid var(--line);
+  border-radius:21px;background:transparent;color:var(--green-l);font-size:13px;font-weight:700;letter-spacing:.12em;white-space:nowrap;cursor:pointer;
+  transition:border-color .2s}
+.live i{flex:none;width:9px;height:9px;border-radius:50%;background:currentColor;box-shadow:0 0 8px currentColor}
+.live .caret{font-size:10px;letter-spacing:0;color:var(--dim2)}
+.live:hover,.live.open{border-color:#56606c}
+.live.bad{color:var(--yellow);border-color:rgba(251,188,4,.6);background:rgba(251,188,4,.1);animation:pend 1s ease-in-out infinite;letter-spacing:.04em;gap:7px}
+.live.note::after{content:"";position:absolute;top:-2px;right:-2px;width:11px;height:11px;border-radius:50%;background:var(--yellow);border:2px solid var(--bg)}
 
-/* ---------- LEFT ---------- */
-#left{display:flex;flex-direction:column;gap:12px;padding:6px 24px 14px 26px;min-height:0}
-.hero{flex:none;height:156px;display:grid;grid-template-columns:280px 218px minmax(0,1fr);column-gap:14px;align-items:stretch}
+/* ---------- 1 · Agents fleet ---------- */
+.hero{flex:none;height:168px;display:grid;grid-template-columns:400px 340px minmax(0,1fr);column-gap:26px;align-items:stretch}
 .hcount{display:flex;flex-direction:column;justify-content:flex-end;min-width:0}
-.counter{font-family:var(--disp);font-weight:700;font-size:108px;line-height:.86;letter-spacing:-.025em;color:var(--text);
-  white-space:nowrap;transition:color .3s}
-.hsub{margin-top:10px;display:flex;flex-direction:column;align-items:flex-start;gap:2px;white-space:nowrap}
-.hlabel{font-size:14px;font-weight:700;letter-spacing:.15em;text-transform:uppercase;color:var(--text2)}
-.hstats{font-size:15px;color:var(--dim)}
-.hidle{display:flex;flex-direction:column;justify-content:space-between;padding:11px 14px 10px;border-radius:14px;
+.counter{font-family:var(--disp);font-weight:700;font-size:124px;line-height:.86;letter-spacing:-.025em;color:var(--text);white-space:nowrap;transition:color .3s}
+.hsub{margin-top:12px;display:flex;flex-direction:column;align-items:flex-start;gap:3px;white-space:nowrap}
+.hlabel{font-size:15px;font-weight:700;letter-spacing:.15em;text-transform:uppercase;color:var(--text2)}
+.hstats{font-size:16px;color:var(--dim)}
+.hidle{display:flex;flex-direction:column;justify-content:space-between;padding:13px 18px 12px;border-radius:14px;
   background:rgba(255,255,255,.025);border:1px solid var(--line2);min-width:0;transition:background .3s,border-color .3s,box-shadow .3s}
-.hidle .ilabel{font-size:12px;font-weight:700;letter-spacing:.11em;text-transform:uppercase;color:var(--dim);
-  display:flex;align-items:center;gap:7px;white-space:nowrap}
+.hidle .ilabel{font-size:13px;font-weight:700;letter-spacing:.11em;text-transform:uppercase;color:var(--dim);display:flex;align-items:center;gap:8px;white-space:nowrap}
 .hidle .ilabel i{width:8px;height:8px;border-radius:50%;background:var(--dim);flex:none;transition:background .3s,box-shadow .3s}
-.hidle .ival{font-family:var(--disp);font-size:66px;font-weight:700;line-height:.92;letter-spacing:-.02em;color:var(--text2);
-  white-space:nowrap;transition:color .3s}
+.hidle .ival{font-family:var(--disp);font-size:76px;font-weight:700;line-height:.92;letter-spacing:-.02em;color:var(--text2);white-space:nowrap;transition:color .3s}
 .hidle .iunit{font-size:.5em;font-weight:700;color:var(--dim);margin-left:2px;transition:color .3s}
-.hidle .isub{font-size:12.5px;font-weight:600;color:var(--dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;transition:color .3s}
+.hidle .isub{font-size:13.5px;font-weight:600;color:var(--dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;transition:color .3s}
 .hidle[data-state=burst]{background:rgba(52,168,83,.11);border-color:rgba(129,201,149,.48)}
 .hidle[data-state=burst] .ilabel{color:var(--green-l)}
 .hidle[data-state=burst] .ilabel i{background:var(--green-l);box-shadow:0 0 8px var(--green-l)}
@@ -108,28 +115,25 @@ body.stale .data{opacity:.4;filter:saturate(.3);transition:opacity .3s,filter:sa
 .hidle[data-state=duty] .ival{color:#fff}
 .hidle[data-state=duty] .iunit{color:var(--cyan-l)}
 .hidle[data-state=duty] .isub{color:#b8eef8}
-.hclock{display:flex;flex-direction:column;justify-content:flex-end;align-items:flex-start;padding-left:18px;
-  border-left:1px solid var(--line);min-width:0}
-.clabel{font-size:14.5px;font-weight:700;letter-spacing:.13em;text-transform:uppercase;color:var(--dim);height:19px;white-space:nowrap}
-.clabel .csub{margin-left:10px;font-size:14px;font-weight:500;letter-spacing:.01em;text-transform:none;color:var(--dim)}
-.clock{font-size:64px;font-weight:600;line-height:1;margin-top:8px;white-space:nowrap;color:var(--dim2);transition:color .3s}
+.hclock{display:flex;flex-direction:column;justify-content:flex-end;align-items:flex-start;padding-left:24px;border-left:1px solid var(--line);min-width:0}
+.clabel{font-size:15px;font-weight:700;letter-spacing:.13em;text-transform:uppercase;color:var(--dim);height:20px;white-space:nowrap}
+.clabel .csub{margin-left:10px;font-size:15px;font-weight:500;letter-spacing:.01em;text-transform:none;color:var(--dim)}
+.clock{font-size:72px;font-weight:600;line-height:1;margin-top:8px;white-space:nowrap;color:var(--dim2);transition:color .3s}
 .clock .tp{font-size:.5em;font-weight:600;color:var(--dim);margin-right:.2em}
 .clock .un{font-size:.44em;font-weight:600;color:var(--dim);margin-left:.16em}
 .brow{margin-top:12px;height:38px;display:flex;align-items:center;gap:10px;white-space:nowrap;max-width:100%}
-.badge{height:38px;display:none;align-items:center;gap:9px;padding:0 15px;border-radius:19px;font-size:17px;font-weight:600;
-  max-width:100%;overflow:hidden;text-overflow:ellipsis}
+.badge{height:38px;display:none;align-items:center;gap:9px;padding:0 15px;border-radius:19px;font-size:17px;font-weight:600;max-width:100%;overflow:hidden;text-overflow:ellipsis}
 .badge.on{display:inline-flex}
 .badge .bd{width:9px;height:9px;border-radius:50%;background:currentColor;flex:none}
 .badge.ok{background:rgba(52,168,83,.17);color:#a8e0b8;border:1px solid rgba(52,168,83,.6)}
-.badge.duty{background:rgba(36,193,224,.16);color:var(--cyan-l);border:1px solid rgba(120,217,236,.6);font-size:15.5px;padding:0 14px}
+.badge.duty{background:rgba(36,193,224,.16);color:var(--cyan-l);border:1px solid rgba(120,217,236,.6);font-size:16px;padding:0 15px}
 .badge.susp{background:rgba(161,66,244,.17);color:#dcb8fc;border:1px solid rgba(161,66,244,.6)}
 .badge.warn{background:rgba(251,188,4,.14);color:var(--yellow-l);border:1px solid rgba(251,188,4,.55)}
-.badge.busy{background:rgba(251,188,4,.1);color:var(--yellow-l);border:1px dashed rgba(251,188,4,.55);font-size:17px}
+.badge.busy{background:rgba(251,188,4,.1);color:var(--yellow-l);border:1px dashed rgba(251,188,4,.55)}
 .badge.busy .bd{animation:pend .9s ease-in-out infinite}
 .badge.pop{animation:pop .7s cubic-bezier(.2,1.6,.4,1)}
 @keyframes pop{0%{transform:scale(.6);opacity:0}100%{transform:scale(1);opacity:1}}
-.hero[data-mode=waking] .clock{color:var(--yellow)}
-.hero[data-mode=waking] .clabel{color:var(--yellow)}
+.hero[data-mode=waking] .clock,.hero[data-mode=waking] .clabel{color:var(--yellow)}
 .hero[data-mode=running] .clock,.hero[data-mode=partial] .clock,.hero[data-mode=spartial] .clock{color:var(--text)}
 .hero[data-mode=suspending] .clock,.hero[data-mode=suspending] .clabel{color:var(--purple-l)}
 .hero[data-mode=suspended] .clock{color:#d9b3fb}
@@ -138,47 +142,46 @@ body.stale .data{opacity:.4;filter:saturate(.3);transition:opacity .3s,filter:sa
 .hero[data-mode=reconciling] .clabel,.hero[data-mode=starting] .clabel{color:var(--yellow)}
 .hero[data-mode=reconciling] .clock{color:#4a5059}
 
-.gridCard{flex:none;height:338px;padding:10px 16px 9px;display:flex;flex-direction:column;gap:6px}
-.denspill{display:inline-flex;align-items:center;gap:6px;padding:2px 10px;border-radius:99px;
-  background:rgba(52,168,83,.13);border:1px solid rgba(129,201,149,.42);color:var(--green-l);
-  font-size:12px;font-weight:600;letter-spacing:.03em;text-transform:none;white-space:nowrap}
+.gridCard{position:relative;flex:none;height:372px;padding:11px 18px 10px;display:flex;flex-direction:column;gap:6px}
+.denspill{display:inline-flex;align-items:center;gap:6px;padding:3px 11px;border-radius:99px;background:rgba(52,168,83,.13);border:1px solid rgba(129,201,149,.42);
+  color:var(--green-l);font-size:12.5px;font-weight:600;letter-spacing:.03em;text-transform:none;white-space:nowrap}
 .denspill i{width:7px;height:7px;border-radius:2px;background:var(--green-l)}
 .denspill b{color:#fff;font-weight:700}
 #grid{flex:1 1 0px;min-height:0;width:100%;display:block}
-.legend{flex:none;height:20px;display:flex;align-items:center;gap:15px;font-size:14px;color:var(--dim);white-space:nowrap;overflow:hidden}
+.legend{flex:none;height:20px;display:flex;align-items:center;gap:16px;font-size:14px;color:var(--dim);white-space:nowrap;overflow:hidden}
 .legend i{display:inline-block;width:12px;height:12px;border-radius:3px;margin-right:6px;vertical-align:-1px}
-.legend .note{margin-left:auto;color:var(--text2);font-size:13px;font-weight:500}
+.legend .note{margin-left:auto;color:var(--text2);font-size:13.5px;font-weight:500}
 
 /* definite row track: an auto track would grow to the canvas' intrinsic height and overflow into the ticker */
-.mid{flex:none;height:142px;display:grid;grid-template-columns:280px minmax(0,1fr);grid-template-rows:minmax(0,1fr);gap:12px}
+.mid{flex:none;height:172px;display:grid;grid-template-columns:400px minmax(0,1fr);grid-template-rows:minmax(0,1fr);gap:12px}
 .tiles{display:grid;grid-template-rows:repeat(3,minmax(0,1fr));gap:8px;min-width:0;min-height:0}
-.tile{min-height:0;padding:0 16px;display:flex;flex-direction:column;justify-content:center;gap:1px;overflow:hidden}
-.tl{font-size:12px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--dim);line-height:1.1;white-space:nowrap}
-.tl small{font-weight:500;letter-spacing:.02em;text-transform:none;color:var(--dim2);font-size:12px;margin-left:6px}
+.tile{min-height:0;padding:0 18px;display:flex;flex-direction:column;justify-content:center;gap:2px;overflow:hidden}
+.tl{font-size:12.5px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--dim);line-height:1.1;white-space:nowrap}
+.tl small{font-weight:500;letter-spacing:.02em;text-transform:none;color:var(--dim2);font-size:12.5px;margin-left:6px}
 .tl small.tfail{color:var(--red-l);font-weight:600}
 .tl small.tfail:empty{display:none}
-.tv{font-size:25px;font-weight:600;line-height:1.05;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tv{font-size:27px;font-weight:600;line-height:1.15;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .tv .of{color:var(--dim);font-size:.8em}
-.rampCard{min-height:0;padding:9px 14px 6px;display:flex;flex-direction:column}
+.rampCard{min-height:0;padding:10px 16px 6px;display:flex;flex-direction:column}
 #ramp{flex:1 1 0px;min-height:0;width:100%;display:block}
 
-.tickCard{position:relative;flex:1;min-height:0;padding:9px 16px 0;display:flex;flex-direction:column;overflow:hidden}
-.thint{font-size:12px;font-weight:600;letter-spacing:.03em;text-transform:none;color:var(--blue-l);margin-left:6px}
-.prompt{font-size:13.5px;font-weight:500;letter-spacing:0;text-transform:none;color:var(--dim2);overflow:hidden;text-overflow:ellipsis}
-.prompt q{color:var(--dim);font-family:var(--mono);font-size:13px;quotes:"“" "”"}
+.tickCard{position:relative;flex:1;min-height:0;padding:10px 18px 0;display:flex;flex-direction:column;overflow:hidden}
+.thint{font-size:12.5px;font-weight:600;letter-spacing:.03em;text-transform:none;color:var(--blue-l);margin-left:6px}
+.prompt{font-size:14px;font-weight:500;letter-spacing:0;text-transform:none;color:var(--dim2);overflow:hidden;text-overflow:ellipsis}
+.prompt q{color:var(--dim);font-family:var(--mono);font-size:13.5px;quotes:"“" "”"}
 #ticker{flex:1 1 0px;min-height:0;overflow:hidden;margin-top:6px;
-  -webkit-mask-image:linear-gradient(to bottom,#000 78%,transparent);mask-image:linear-gradient(to bottom,#000 78%,transparent)}
+  -webkit-mask-image:linear-gradient(to bottom,#000 80%,transparent);mask-image:linear-gradient(to bottom,#000 80%,transparent)}
 .tempty{padding:30px 8px;font-size:18px;color:var(--dim2);text-align:center}
 .trow{overflow:hidden;cursor:pointer}
-.tin{display:grid;grid-template-columns:104px minmax(0,1fr) auto;column-gap:14px;align-items:baseline;padding:6px 8px;
-  border-top:1px solid rgba(255,255,255,.055);border-radius:8px;transition:background .15s,transform .15s}
+.tin{display:grid;grid-template-columns:118px minmax(0,1fr) auto;column-gap:16px;align-items:baseline;padding:7px 10px;
+  border-top:1px solid rgba(255,255,255,.055);border-radius:8px;transition:background .15s}
 .trow:hover .tin{background:rgba(66,133,244,.14)}
 .trow.fresh .tin{animation:fresh 1.4s ease-out}
 @keyframes fresh{0%{background:rgba(66,133,244,.22)}100%{background:rgba(66,133,244,0)}}
 .tmeta{font-family:var(--mono);font-size:15px;color:var(--dim);white-space:nowrap}
-.ttext{font-size:18.5px;line-height:1.28;color:var(--text);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;overflow-wrap:anywhere}
+.ttext{font-size:19px;line-height:1.28;color:var(--text);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;overflow-wrap:anywhere}
 .tright{display:flex;align-items:baseline;gap:10px;white-space:nowrap}
-.tlat{font-family:var(--mono);font-size:13px;color:var(--dim2);min-width:64px;text-align:right}
+.tlat{font-family:var(--mono);font-size:13.5px;color:var(--dim2);min-width:70px;text-align:right}
 .tchip{font-size:11.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;padding:3px 8px;border-radius:6px;white-space:nowrap;border:1px solid}
 .t-p1{color:var(--blue-l);border-color:rgba(66,133,244,.6);background:rgba(66,133,244,.14)}
 .t-p2{color:var(--green-l);border-color:rgba(52,168,83,.6);background:rgba(52,168,83,.14)}
@@ -187,9 +190,9 @@ body.stale .data{opacity:.4;filter:saturate(.3);transition:opacity .3s,filter:sa
 .t-be{color:#b8bec6;border-color:rgba(154,160,166,.45);background:rgba(154,160,166,.1)}
 .t-other{color:var(--text2);border-color:var(--line2);background:transparent}
 
-/* Magnified Joke Spotlight Overlay */
+/* magnified joke spotlight */
 .jspot{position:absolute;inset:0;z-index:15;background:rgba(12,16,22,.96);backdrop-filter:blur(8px);
-  border:2px solid var(--blue);border-radius:13px;padding:14px 20px 14px;display:none;flex-direction:column;justify-content:space-between;
+  border:2px solid var(--blue);border-radius:13px;padding:14px 22px 14px;display:none;flex-direction:column;justify-content:space-between;
   box-shadow:0 12px 36px rgba(0,0,0,.75),inset 0 0 24px rgba(66,133,244,.14)}
 .jspot.on{display:flex;animation:jpop .18s cubic-bezier(.2,.9,.3,1)}
 @keyframes jpop{0%{opacity:0;transform:scale(.96)}100%{opacity:1;transform:scale(1)}}
@@ -200,244 +203,15 @@ body.stale .data{opacity:.4;filter:saturate(.3);transition:opacity .3s,filter:sa
 .jspot-agent{font-family:var(--mono);font-size:18px;font-weight:700;color:#fff}
 .jspot-lat{font-family:var(--mono);font-size:15px;color:var(--green-l)}
 .jspot-acts{display:flex;align-items:center;gap:8px}
-.jspot-btn{height:34px;padding:0 13px;border-radius:8px;border:1px solid var(--line2);background:#18202c;color:var(--text);
-  font-size:14px;font-weight:600;cursor:pointer;white-space:nowrap}
+.jspot-btn{height:34px;padding:0 13px;border-radius:8px;border:1px solid var(--line2);background:#18202c;color:var(--text);font-size:14px;font-weight:600;cursor:pointer;white-space:nowrap}
 .jspot-btn:hover{border-color:var(--blue-l);background:#1f2a3a}
 .jspot-btn.close{background:rgba(234,67,53,.16);border-color:rgba(242,139,130,.5);color:var(--red-l)}
 .jspot-btn.close:hover{background:rgba(234,67,53,.28)}
 .jspot-prompt{font-family:var(--mono);font-size:14px;color:var(--dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:4px}
-.jspot-body{flex:1;display:flex;align-items:center;font-size:27px;font-weight:600;line-height:1.34;color:#fff;
-  letter-spacing:-.005em;padding:6px 4px;overflow-y:auto}
+.jspot-body{flex:1;display:flex;align-items:center;font-size:30px;font-weight:600;line-height:1.34;color:#fff;letter-spacing:-.005em;padding:6px 4px;overflow-y:auto}
 
-/* ---------- LEFT COMPACT (30/70 split) ---------- */
-#left.compact{padding:6px 16px 14px 18px}
-#left.compact .phead{gap:6px}
-#left.compact .ptitle{font-size:14.5px}
-#left.compact .ptitle .pdot{width:8px;height:8px;margin-right:6px}
-#left.compact .acts{gap:5px}
-#left.compact .btn{height:34px;padding:0 10px;font-size:13px}
-#left.compact .hero{grid-template-columns:154px 148px minmax(0,1fr);column-gap:8px}
-#left.compact .counter{font-size:60px;line-height:.88}
-#left.compact .hsub{margin-top:6px;gap:2px}
-#left.compact .hlabel{font-size:10.5px;letter-spacing:.08em}
-#left.compact .hstats{font-size:11px}
-#left.compact .hidle{padding:8px 10px 7px;border-radius:11px}
-#left.compact .hidle .ilabel{font-size:9.5px;letter-spacing:.05em;gap:5px}
-#left.compact .hidle .ilabel i{width:6px;height:6px}
-#left.compact .hidle .ival{font-size:42px}
-#left.compact .hidle .isub{font-size:10px}
-#left.compact .hclock{padding-left:10px}
-#left.compact .clabel{font-size:11.5px;letter-spacing:.08em}
-#left.compact .clabel .csub{display:none}
-#left.compact .clock{font-size:38px;margin-top:5px}
-#left.compact .brow{margin-top:8px;height:30px}
-#left.compact .badge{height:30px;padding:0 10px;font-size:12px;gap:6px}
-#left.compact .gridCard .ctitle{font-size:11px;letter-spacing:.04em}
-#left.compact .denspill{font-size:10px;padding:2px 7px}
-#left.compact .legend{gap:9px;font-size:12px}
-#left.compact .legend i{width:10px;height:10px;margin-right:4px}
-#left.compact .legend .note{display:none}
-#left.compact .mid{grid-template-columns:154px minmax(0,1fr);gap:8px}
-#left.compact .tile{padding:0 10px}
-#left.compact .tl{font-size:10.5px;letter-spacing:.06em}
-#left.compact .tl small{display:none}
-#left.compact .tv{font-size:20px}
-#left.compact .rampCard{padding:9px 10px 6px}
-#left.compact .rampCard .ctitle{font-size:11px;letter-spacing:.04em;gap:6px}
-#left.compact .rampCard .leg{font-size:11px;gap:8px}
-#left.compact .opt{display:none}
-#left.compact .prompt{display:none}
-#left.compact .thint{display:none}
-#left.compact .tin{grid-template-columns:88px minmax(0,1fr) auto;column-gap:8px}
-#left.compact .tmeta{font-size:13px}
-#left.compact .ttext{font-size:15px}
-#left.compact .tempty{font-size:14.5px;padding:24px 6px}
-#left.compact .jspot-body{font-size:20px}
-
-/* ---------- RIGHT ---------- */
-#right{display:flex;flex-direction:column;min-height:0}
-.rmain{flex:1;display:flex;flex-direction:column;gap:10px;padding:6px 26px 14px 24px;min-width:0;min-height:0}
-/* header controls (replace the old side rail): flow-control strategy switch + live pill that opens the operator menu */
-.rctl{display:flex;align-items:center;gap:10px;flex:none}
-/* the three stages: No llm-d (round robin) -> llm-d Router (KV-aware) -> llm-d + Flow (priority SLA) */
-.stages{display:flex;align-items:center;gap:7px}
-.stg{height:40px;padding:0 13px;border-radius:20px;border:1.5px solid var(--line2);background:#0e1218;color:var(--text2);
-  display:flex;align-items:baseline;gap:6px;font-size:15px;font-weight:700;letter-spacing:.01em;cursor:pointer;white-space:nowrap;
-  --sc:var(--yellow-l);--sg:rgba(251,188,4,.13);transition:border-color .25s,background .25s,color .25s,box-shadow .25s}
-.stg small{font-size:11.5px;font-weight:600;letter-spacing:.02em;color:var(--dim);transition:color .25s}
-.stg[data-n="2"]{--sc:var(--blue-l);--sg:rgba(66,133,244,.15)}
-.stg[data-n="3"]{--sc:var(--green-l);--sg:rgba(52,168,83,.15)}
-.stg:hover:not(.active){border-color:#56606c;color:#fff}
-.stg.active{border-color:var(--sc);background:var(--sg);color:#fff;box-shadow:0 0 14px var(--sg),inset 0 0 0 1px var(--sg)}
-.stg.active small{color:var(--sc)}
-.live{position:relative;flex:none;height:42px;padding:0 12px 0 15px;display:flex;align-items:center;gap:8px;border:1px solid var(--line);
-  border-radius:21px;background:transparent;color:var(--green-l);font-size:13px;font-weight:700;letter-spacing:.12em;white-space:nowrap;cursor:pointer;
-  transition:border-color .2s}
-.live i{flex:none;width:9px;height:9px;border-radius:50%;background:currentColor;box-shadow:0 0 8px currentColor}
-.live .caret{font-size:10px;letter-spacing:0;color:var(--dim2)}
-.live:hover,.live.open{border-color:#56606c}
-.live.bad{color:var(--yellow);border-color:rgba(251,188,4,.6);background:rgba(251,188,4,.1);animation:pend 1s ease-in-out infinite;
-  letter-spacing:.04em;gap:7px}
-.live.note::after{content:"";position:absolute;top:-2px;right:-2px;width:11px;height:11px;border-radius:50%;background:var(--yellow);border:2px solid var(--bg)}
-.splitCard{flex:none;height:138px;padding:10px 18px 12px;display:flex;flex-direction:column;transition:opacity .4s}
-.splitCard.quiet .sbar,.splitCard.quiet .srow{opacity:.42}
-.srow{display:grid;grid-template-columns:1fr auto 1fr;align-items:end;transition:opacity .4s}
-.spn{font-size:17px;font-weight:700;letter-spacing:.05em;display:flex;align-items:center;gap:8px;color:var(--text2)}
-.spn i{width:12px;height:12px;border-radius:3px;display:inline-block}
-.spc{font-family:var(--disp);font-size:72px;font-weight:700;line-height:.9;margin-top:4px;white-space:nowrap}
-.sp1 .spc{color:var(--blue-l)}
-.sp2{text-align:right}.sp2 .spn{justify-content:flex-end}.sp2 .spc{color:var(--green-l)}
-.smode{align-self:center;text-align:center;display:flex;flex-direction:column;align-items:center;gap:5px}
-.smode .m1{display:inline-block;font-size:14px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--text);
-  border:1px solid var(--line2);border-radius:8px;padding:4px 12px;background:#181e26;white-space:nowrap}
-.kvpill{display:inline-flex;align-items:center;gap:8px;padding:4px 16px 5px;border-radius:12px;
-  background:linear-gradient(180deg,rgba(36,193,224,.14),rgba(36,193,224,.05));border:1.5px solid rgba(120,217,236,.55);
-  color:var(--cyan-l);font-size:13px;font-weight:700;letter-spacing:.08em;white-space:nowrap;box-shadow:0 0 16px rgba(36,193,224,.12)}
-.kvpill i{width:8px;height:8px;border-radius:50%;background:var(--cyan-l);box-shadow:0 0 6px var(--cyan-l)}
-.kvpill b{font-family:var(--disp);font-size:25px;line-height:1.1;letter-spacing:0;color:#fff;font-weight:700}
-.kvpill b.hit{color:var(--green-l)}
-.kvpill .dot{color:#5f6b78}
-.smode .m2{font-size:13px;color:var(--dim);white-space:nowrap}
-.swrap{position:relative;margin-top:10px}
-.sbar{height:24px;border-radius:12px;overflow:hidden;background:#1d232b;display:flex;transition:opacity .4s}
-.sb1{height:100%;background:linear-gradient(90deg,#2f6fd6,var(--blue))}
-.sb2{height:100%;flex:1;background:linear-gradient(90deg,var(--green),#2a8d45);border-left:3px solid var(--bg)}
-.star{position:absolute;top:-5px;bottom:-5px;width:0;border-left:2px dashed rgba(255,255,255,.9);transition:left .6s ease}
-.star span{position:absolute;top:50%;left:9px;transform:translateY(-50%);font-size:12px;font-weight:700;letter-spacing:.08em;color:#fff;
-  white-space:nowrap;text-transform:uppercase;text-shadow:0 0 3px rgba(0,0,0,.9),0 1px 2px #000}
-.star.flip span{left:auto;right:9px}
-
-.pods{flex:none;height:252px;display:grid;grid-template-columns:1fr 1fr;gap:12px}
-.pod{position:relative;overflow:hidden;padding:10px 14px 10px;display:flex;flex-direction:column;justify-content:space-between;gap:7px;transition:opacity .3s}
-.pod::before{content:"";position:absolute;left:0;top:0;right:0;height:4px;background:var(--pc)}
-.pod.down{opacity:.55}
-.phd{display:flex;justify-content:space-between;align-items:center;height:22px}
-.pnm{font-size:20px;font-weight:700;letter-spacing:.03em;display:flex;align-items:center;gap:8px;white-space:nowrap}
-.pnm i{width:12px;height:12px;border-radius:3px;background:var(--pc)}
-.pst{font-size:12px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;padding:3px 9px;border-radius:6px;
-  color:var(--green-l);background:rgba(52,168,83,.14);border:1px solid rgba(52,168,83,.45);white-space:nowrap}
-.pod.down .pst{color:#fff;background:var(--red);border-color:var(--red)}
-.pbig{display:grid;grid-template-columns:1fr 1.15fr 1fr;gap:6px}
-.bv{font-family:var(--disp);font-size:32px;font-weight:700;line-height:1;white-space:nowrap}
-.bv u,.mv u,.kvv u{text-decoration:none;font-size:.52em;color:var(--dim);margin-left:3px;font-weight:600}
-.bl,.ml{font-size:12px;color:var(--dim);margin-top:4px;letter-spacing:.03em;white-space:nowrap}
-.ml{margin-top:0;margin-bottom:2px}
-.pkv{display:grid;grid-template-columns:1fr 1fr;gap:10px}
-.kvbox{background:linear-gradient(180deg,rgba(66,133,244,.13),rgba(66,133,244,.04));
-  border:1px solid rgba(138,180,248,.45);border-radius:10px;padding:7px 11px 8px;
-  box-shadow:inset 0 1px 0 rgba(255,255,255,.06);min-width:0}
-#pod1 .kvbox{background:linear-gradient(180deg,rgba(52,168,83,.13),rgba(52,168,83,.04));border-color:rgba(129,201,149,.45)}
-.kvl{font-size:11px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:var(--blue-l);white-space:nowrap}
-#pod1 .kvl{color:var(--green-l)}
-.kvv{font-family:var(--disp);font-size:32px;font-weight:700;line-height:1;margin-top:4px;color:#fff;white-space:nowrap}
-.kvbar{height:10px;border-radius:5px;background:#181e27;border:1px solid rgba(255,255,255,.09);overflow:hidden;margin-top:6px}
-.kvbar b{display:block;height:100%;width:0;border-radius:4px;background:linear-gradient(90deg,var(--blue),var(--cyan-l));
-  box-shadow:0 0 10px rgba(66,133,244,.45)}
-#pod1 .kvbar b{background:linear-gradient(90deg,var(--green),#81C995);box-shadow:0 0 10px rgba(52,168,83,.45)}
-.psm{display:grid;grid-template-columns:1fr 1.15fr 1fr;gap:6px}
-.mv{font-size:20px;font-weight:600;line-height:1.05;white-space:nowrap}
-
-/* the two charts share any extra stage height (--xh) evenly: the tokens chart takes what the latency chart leaves */
-.tokCard{flex:1;min-height:0;padding:10px 14px 6px;display:flex;flex-direction:column}
-.latCard{flex:none;height:calc(118px + var(--xh, 0px) / 2);padding:9px 14px 6px;display:flex;flex-direction:column}
-canvas.chart{flex:1 1 0px;min-height:0;width:100%;display:block}
-
-.flowCard{flex:none;height:206px;padding:8px 18px 9px;display:flex;flex-direction:column;transition:opacity .5s,border-color .4s,box-shadow .4s}
-.flowCard.quiet{opacity:.45}
-.flowCard.on{border-color:rgba(52,168,83,.75);box-shadow:0 0 0 1px rgba(52,168,83,.22),0 0 26px rgba(52,168,83,.1)}
-.frow.paid .fv.w{color:var(--green-l)}
-.frow.paid .fv.w u{color:rgba(129,201,149,.75)}
-.sat{display:flex;align-items:center;gap:10px;font-size:13.5px;font-weight:500;letter-spacing:.02em;text-transform:none;color:var(--dim)}
-.satbar{width:128px;height:12px;border-radius:6px;background:#232a33;overflow:hidden}
-.satbar b{display:block;height:100%;width:0;border-radius:6px;background:var(--green);transition:background .4s}
-.satv{font-size:22px;font-weight:700;color:var(--text);min-width:52px;text-align:right}
-.fcols,.frow{display:grid;grid-template-columns:236px minmax(0,1fr) 68px 104px 108px;align-items:center;column-gap:12px}
-.fcols{margin-top:6px;height:16px;font-size:11.5px;font-weight:700;letter-spacing:.09em;text-transform:uppercase;color:var(--dim2)}
-.fcols span:nth-child(n+3){text-align:right}
-.frow{height:37px;border-top:1px solid rgba(255,255,255,.05)}
-.fname{font-size:16.5px;font-weight:600;display:flex;align-items:center;gap:8px;white-space:nowrap}
-.fname i{width:11px;height:11px;border-radius:3px;display:inline-block;flex:none}
-.fname small{font-size:11.5px;color:var(--dim2);font-family:var(--mono);font-weight:500}
-.qbar{height:16px;border-radius:5px;background:#1d232b;overflow:hidden}
-.qbar b{display:block;height:100%;width:0;border-radius:5px}
-.fv{font-size:21px;font-weight:600;text-align:right;white-space:nowrap}
-.fv u{text-decoration:none;font-size:.6em;color:var(--dim);margin-left:4px}
-.fhint{margin-top:auto;height:26px;flex:none;font-size:13.5px;color:var(--dim);text-align:center;display:flex;align-items:center;justify-content:center;
-  border-radius:7px;border:1px solid var(--line);padding:0 10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.fhint.sla{background:rgba(52,168,83,.13);border-color:rgba(52,168,83,.6);color:#d3f0dc;font-weight:600}
-.fhint.sla b{color:#fff}
-.fhint [hidden]{display:none}
-
-/* operator menu: opened from the LIVE pill; holds what used to sit in the side rail (traffic stats, driver note, keys, admin) */
-.ops{position:absolute;z-index:16;top:54px;right:26px;width:330px;display:none;flex-direction:column;gap:9px;padding:12px 16px 13px;
-  background:#0c1016;border:1px solid var(--line2);border-radius:14px;box-shadow:0 14px 40px rgba(0,0,0,.72)}
-.ops.on{display:flex;animation:jpop .16s ease-out}
-.ops-h{font-size:12px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--dim)}
-.rstats{display:grid;grid-template-columns:1fr auto;row-gap:5px;font-size:14px;color:var(--dim)}
-.rstats b{color:var(--text2);font-weight:600;text-align:right}
-.rmsg{font-size:12.5px;line-height:1.35;color:var(--yellow-l);overflow-wrap:anywhere;border-top:1px solid var(--line);padding-top:8px}
-.rmsg:empty{display:none}
-.rkeys{font-size:12px;line-height:1.45;color:var(--dim2);border-top:1px solid var(--line);padding-top:8px}
-.radrow{display:flex;gap:8px;border-top:1px solid var(--line);padding-top:9px}
-.radmin{flex:none;height:30px;padding:0 12px;border-radius:8px;border:1px solid var(--line2);background:#161c24;color:var(--text2);
-  font-family:inherit;font-size:13px;font-weight:600;cursor:pointer;white-space:nowrap}
-.radmin:hover:not(:disabled){border-color:#56606c;color:var(--text)}
-.radmin.arm{color:var(--yellow);border-color:rgba(251,188,4,.6);background:rgba(251,188,4,.1)}
-.radmin:disabled{opacity:.45;cursor:default}
-
-/* the wide CONNECTING… / RECONNECTING… pill takes the subtitle's room: drop it instead of truncating it */
-#right:has(#live.bad) .ptitle .opt{display:none}
-
-/* ---------- RIGHT COMPACT (70/30 split) ---------- */
-#right.compact .rmain{padding:6px 14px 14px 14px}
-#right.compact .phead{gap:8px}
-#right.compact .ptitle{font-size:15.5px}
-#right.compact .ptitle .pdot{width:9px;height:9px;margin-right:7px}
-#right.compact .rctl{gap:6px}
-#right.compact .stages{gap:4px}
-#right.compact .stg{height:34px;padding:0 9px;font-size:12.5px}
-#right.compact .stg small{display:none}
-#right.compact .live{height:36px;padding:0 9px 0 11px;font-size:11.5px;letter-spacing:.06em;gap:6px}
-#right.compact .ops{right:14px;top:50px}
-#right.compact .splitCard{padding:9px 12px 10px}
-#right.compact .spn{font-size:14px;gap:6px}
-#right.compact .spc{font-size:44px}
-#right.compact .smode .m1{font-size:12px;padding:3px 8px}
-#right.compact .kvpill{font-size:10px;padding:2px 8px;gap:4px;letter-spacing:.03em}
-#right.compact .kvpill b{font-size:17px}
-#right.compact .smode .m2{font-size:11.5px}
-#right.compact .pods{gap:8px}
-#right.compact .pod{padding:9px 10px 9px;gap:6px}
-#right.compact .pnm{font-size:16px;gap:6px}
-#right.compact .pst{font-size:10.5px;padding:2px 6px}
-#right.compact .bv{font-size:22px}
-#right.compact .bl,#right.compact .ml{font-size:10px}
-#right.compact .pkv{gap:6px}
-#right.compact .kvbox{padding:6px 7px 7px}
-#right.compact .kvl{font-size:9px;letter-spacing:.03em}
-#right.compact .kvv{font-size:22px}
-#right.compact .kvbar{height:8px;margin-top:5px}
-#right.compact .mv{font-size:14.5px}
-#right.compact .opt{display:none}
-#right.compact .tokCard .ctitle,#right.compact .latCard .ctitle,#right.compact .flowCard .ctitle{font-size:11.5px;letter-spacing:.05em;gap:6px}
-#right.compact .leg{font-size:11.5px;gap:10px}
-#right.compact .flowCard{padding:9px 12px 9px}
-#right.compact .sat{gap:6px;font-size:11.5px}
-#right.compact .satbar{width:68px;height:10px}
-#right.compact .satv{font-size:16px;min-width:38px}
-#right.compact .fcols,#right.compact .frow{grid-template-columns:150px minmax(24px,1fr) 44px 70px 78px;column-gap:6px}
-#right.compact .fcols{font-size:9.5px;letter-spacing:.03em}
-#right.compact .fname{font-size:12.5px;gap:5px}
-#right.compact .fname i{width:8px;height:8px}
-#right.compact .fname small{display:none}
-#right.compact .fv{font-size:15px}
-#right.compact .fhint{font-size:11px}
-
-/* ---------- Hermes Agent memory (only used when config.harness == "hermes") ---------- */
-.gridCard{position:relative}
-.mid.hermes{height:160px;grid-template-columns:318px minmax(0,1fr)}
+/* Hermes Agent memory (only used when config.harness == "hermes") */
 .mid.hermes .tiles{grid-template-rows:1fr 1fr 1.5fr}
-#left.compact .mid.hermes{grid-template-columns:186px minmax(0,1fr)}
 .mtile{gap:2px;transition:border-color .4s,background .4s}
 .mtile .tv{font-size:27px;font-weight:700;line-height:32px}
 .mtile .mck{color:var(--green-l);margin-right:8px;font-size:.86em;line-height:0}
@@ -450,29 +224,21 @@ canvas.chart{flex:1 1 0px;min-height:0;width:100%;display:block}
 .mtile.good .tl,.mtile.good .msub{color:var(--green-l)}
 .mtile.warn{border-color:rgba(251,188,4,.6);background:linear-gradient(180deg,rgba(251,188,4,.13),rgba(251,188,4,.03))}
 .mtile.warn .tl,.mtile.warn .msub,.mtile.warn .mck{color:var(--yellow-l)}
-#left.compact .mtile .tv{font-size:21px;line-height:26px}
-#left.compact .mtile .mnone{font-size:14px}
-#left.compact .msub{font-size:10.5px}
-
 .m-ok{color:var(--green-l);border-color:rgba(52,168,83,.65);background:rgba(52,168,83,.15)}
 .m-taught{color:var(--blue-l);border-color:rgba(138,180,248,.5);background:rgba(138,180,248,.1)}
 .m-forgot{color:var(--red-l);border-color:rgba(234,67,53,.65);background:rgba(234,67,53,.15)}
-.tin.mem{grid-template-columns:160px minmax(0,1fr) auto}
+.tin.mem{grid-template-columns:170px minmax(0,1fr) auto}
 .tmeta .mchip{display:flex;flex-direction:column;align-items:flex-start;width:max-content;max-width:100%;margin-top:3px;padding:2px 7px;
   border-radius:6px;border:1px solid;font-family:var(--sans);font-size:11.5px;line-height:1.12;white-space:nowrap;overflow:hidden}
 .mchip b{font-weight:700}
 .mchip span{font-weight:600;opacity:.9}
 .mchip .cnm{font-family:var(--mono);font-size:11px}
-#left.compact .tin.mem{grid-template-columns:118px minmax(0,1fr) auto}
-#left.compact .tmeta .mchip{font-size:10.5px;padding:2px 6px}
-#left.compact .mchip span{display:none}
 mark.cn{background:rgba(52,168,83,.26);color:#e2f7e8;border-radius:5px;padding:0 4px;box-shadow:inset 0 -2px 0 var(--green);
   -webkit-box-decoration-break:clone;box-decoration-break:clone}
 mark.cn.given{background:rgba(138,180,248,.14);color:inherit;box-shadow:inset 0 -2px 0 rgba(138,180,248,.75)}
 .jspot-mem{display:none;margin-top:6px}
 .jspot-mem.on{display:flex}
 .mchip1{display:inline-flex;align-items:center;padding:4px 12px;border-radius:8px;border:1px solid;font-size:15.5px;font-weight:700;white-space:nowrap}
-
 .ains{position:absolute;z-index:12;left:0;top:0;width:430px;max-height:calc(100% - 12px);display:none;flex-direction:column;gap:7px;
   padding:11px 14px 11px;background:rgba(12,16,22,.97);border:1.5px solid rgba(129,201,149,.75);border-radius:14px;overflow:hidden;
   box-shadow:0 14px 40px rgba(0,0,0,.72),inset 0 0 24px rgba(52,168,83,.08)}
@@ -480,8 +246,7 @@ mark.cn.given{background:rgba(138,180,248,.14);color:inherit;box-shadow:inset 0 
 .ai-hd{flex:none;display:flex;align-items:center;gap:10px}
 .ai-name{font-family:var(--mono);font-size:17px;font-weight:700;color:#fff}
 .ai-st{font-size:11.5px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;padding:3px 8px;border-radius:6px;border:1px solid;white-space:nowrap}
-.ai-x{margin-left:auto;height:28px;width:28px;border-radius:7px;border:1px solid var(--line2);background:#18202c;color:var(--text2);
-  font-size:14px;cursor:pointer;line-height:1}
+.ai-x{margin-left:auto;height:28px;width:28px;border-radius:7px;border:1px solid var(--line2);background:#18202c;color:var(--text2);font-size:14px;cursor:pointer;line-height:1}
 .ai-x:hover{border-color:var(--red-l);color:var(--red-l)}
 .ai-cl{font-size:11.5px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--dim)}
 .ai-cn{font-family:var(--disp);font-size:36px;font-weight:700;line-height:1.05;color:var(--green-l);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -495,6 +260,139 @@ mark.cn.given{background:rgba(138,180,248,.14);color:inherit;box-shadow:inset 0 
 .ai-none{font-size:14px;color:var(--dim2)}
 .ai-ft{flex:none;font-size:11.5px;color:var(--dim2);font-family:var(--mono);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 
+/* ---------- 2 · llm-d routing (efficiency) and 3 · flow control ---------- */
+.rctl{display:flex;align-items:center;gap:12px;flex:none}
+.seg{display:flex;gap:4px;padding:4px;border-radius:25px;background:#0b0f14;border:1px solid var(--line2)}
+.seg button{height:38px;padding:0 18px 0 8px;border-radius:19px;border:1.5px solid transparent;background:transparent;color:var(--dim);
+  font-size:15.5px;font-weight:600;display:flex;align-items:center;gap:9px;cursor:pointer;white-space:nowrap;transition:background .2s,border-color .2s,color .2s}
+.seg button i{width:23px;height:23px;border-radius:50%;background:#1b222b;color:var(--text2);font-style:normal;font-size:12.5px;font-weight:700;
+  display:flex;align-items:center;justify-content:center}
+.seg button:hover:not(.on){color:#fff}
+.seg button.on{border-color:var(--blue-l);background:rgba(66,133,244,.16);color:#fff;box-shadow:0 0 14px rgba(66,133,244,.18)}
+.seg button.on i{background:var(--blue);color:#fff}
+.qcard{flex:none;padding:16px 20px 18px;display:flex;flex-direction:column;gap:14px}
+.qtext{font-family:var(--disp);font-size:29px;font-weight:700;line-height:1.2;color:#fff;letter-spacing:-.005em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.qtext em{font-style:normal;color:var(--blue-l)}
+.tgls{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.tgl{height:54px;border-radius:27px;border:1.5px solid var(--line2);background:#0c1015;color:var(--text);display:flex;align-items:center;justify-content:center;gap:12px;
+  font-size:19px;cursor:pointer;white-space:nowrap;transition:border-color .25s,background .25s,box-shadow .25s}
+.tgl b{font-weight:700}
+.tgl small{font-size:14.5px;font-weight:600;color:var(--dim);transition:color .25s}
+.tgl kbd{flex:none;width:24px;height:24px;border-radius:6px;border:1px solid #3a4450;background:#161c24;color:var(--dim);font-family:var(--sans);
+  font-size:12.5px;font-weight:700;display:inline-flex;align-items:center;justify-content:center;box-shadow:inset 0 -2px 0 rgba(0,0,0,.4)}
+.tgl:hover:not(.on){border-color:#56606c}
+.tgl.bad.on{border-color:var(--red);background:linear-gradient(180deg,rgba(234,67,53,.22),rgba(234,67,53,.09));box-shadow:0 0 22px rgba(234,67,53,.16)}
+.tgl.bad.on small{color:var(--red-l)}
+.tgl.good.on{border-color:var(--green);background:linear-gradient(180deg,rgba(52,168,83,.22),rgba(52,168,83,.09));box-shadow:0 0 22px rgba(52,168,83,.16)}
+.tgl.good.on small{color:var(--green-l)}
+.tgl.on kbd{color:#fff;border-color:rgba(255,255,255,.35)}
+
+.cmp{flex:none;height:344px;padding:16px 18px 8px;display:grid;grid-template-columns:minmax(0,1fr) 300px minmax(0,1fr);
+  grid-template-rows:minmax(0,1fr) 18px;column-gap:20px;row-gap:8px}
+.cmp.fl{height:300px}
+.cbox{min-width:0;min-height:0;border-radius:14px;border:1px solid var(--line2);background:#0d1218;padding:16px 22px 18px;display:flex;flex-direction:column;
+  transition:border-color .4s,box-shadow .4s}
+.cbox.now.good{border-color:rgba(52,168,83,.6);box-shadow:inset 0 0 0 1px rgba(52,168,83,.16),0 0 26px rgba(52,168,83,.07)}
+.cbox.now.bad{border-color:rgba(234,67,53,.55);box-shadow:inset 0 0 0 1px rgba(234,67,53,.14),0 0 26px rgba(234,67,53,.06)}
+/* first SETTLE_MS of a run: the live window still mixes in the previous stage, so its numbers are shown dimmed */
+.cbox .sv{transition:opacity .4s}
+.cbox.settle .sv:not(.none){opacity:.5}
+.chd{flex:none;height:30px;display:flex;align-items:center;justify-content:space-between;gap:10px}
+.clab{font-size:15px;font-weight:800;letter-spacing:.15em;text-transform:uppercase}
+.cbox.bad .clab{color:var(--red-l)}
+.cbox.good .clab{color:var(--green-l)}
+.cbadge{height:30px;padding:0 13px;border-radius:15px;display:inline-flex;align-items:center;gap:8px;font-size:11.5px;font-weight:800;letter-spacing:.12em;
+  text-transform:uppercase;border:1px solid var(--line2);color:var(--dim2);white-space:nowrap}
+.cbadge i{width:7px;height:7px;border-radius:50%;background:currentColor}
+.cbadge.run{color:var(--green-l);border-color:rgba(52,168,83,.7);background:rgba(52,168,83,.14)}
+.cbadge.run i{box-shadow:0 0 8px currentColor;animation:pend 1.2s ease-in-out infinite}
+.cbadge.meas{color:var(--text2);border-color:#3c4652;background:#141a21}
+.cbadge.sel{color:var(--yellow-l);border-color:rgba(251,188,4,.45);background:rgba(251,188,4,.07)}
+.cstats{flex:none;margin-top:14px;display:grid;grid-template-columns:1.32fr 1fr 1fr;column-gap:18px}
+.sl{font-size:12.5px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sv{font-family:var(--disp);font-size:56px;font-weight:700;line-height:1.18;color:#fff;margin-top:2px;white-space:nowrap;letter-spacing:-.01em}
+.sv u{text-decoration:none;font-family:var(--sans);font-size:17px;font-weight:600;color:var(--dim);margin-left:7px;letter-spacing:0;line-height:0}
+.sv.md{font-size:46px}
+.sv.kv{font-size:40px}
+.sv.none span{display:inline-block;width:2.2em;height:.56em;border-radius:7px;background:#252c35;color:transparent;overflow:hidden;vertical-align:baseline}
+.cbox.empty .sv u{color:var(--dim2)}
+.ckv{margin-top:auto}
+.kbar{height:8px;border-radius:4px;background:#1a2129;overflow:hidden;margin-top:10px}
+.kbar b{display:block;height:100%;width:0;border-radius:4px;background:var(--red)}
+.cbox.good .kbar b{background:var(--green)}
+.cmid{min-width:0;min-height:0;display:flex;flex-direction:column;justify-content:center;align-items:stretch}
+.gain{display:flex;flex-direction:column;align-items:center;padding:8px 0;min-width:0}
+.gain + .gain{border-top:1px solid var(--line)}
+/* E2E | TTFT side by side between the throughput hero and the KV gain */
+.gpair{display:grid;grid-template-columns:1fr 1fr;border-top:1px solid var(--line);border-bottom:1px solid var(--line)}
+.gpair .gain + .gain{border-top:0;border-left:1px solid var(--line)}
+.gv{font-family:var(--disp);font-size:34px;font-weight:700;line-height:1.05;color:var(--green-l);white-space:nowrap;position:relative}
+.gain.big .gv{font-size:54px}
+.gl{font-size:12px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--dim);margin-top:4px;white-space:nowrap}
+.gain.worse .gv{color:var(--yellow-l)}
+.gain.pop .gv{animation:pop .6s cubic-bezier(.2,1.6,.4,1)}
+.gain.none .gv{color:transparent}
+.gain.none .gv::after{content:"";position:absolute;left:50%;top:50%;width:76px;height:12px;margin:-6px 0 0 -38px;border-radius:6px;background:#252c35}
+.gpair .gain.none .gv::after{width:56px;margin-left:-28px}
+.gain.pend .gv{color:var(--dim);font-family:var(--sans);font-size:16px!important;font-weight:600;letter-spacing:.05em;line-height:36px;animation:pend 1s ease-in-out infinite}
+.gain.big.pend .gv{line-height:57px}
+.cfoot{grid-column:1 / -1;font-size:12.5px;color:var(--dim2);text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:18px}
+.frow1{flex:none;margin-top:14px}
+.frow2{flex:none;margin-top:auto}
+
+.chcard{flex:1 1 0px;min-height:0;padding:11px 18px 8px;display:flex;flex-direction:column}
+canvas.chart{flex:1 1 0px;min-height:0;width:100%;display:block}
+
+.ftab{flex:1 1 0px;min-height:0;padding:12px 20px 14px;display:flex;flex-direction:column}
+.fgrid{flex:1 1 0px;min-height:0;display:grid;grid-template-columns:350px minmax(0,1fr) 120px 150px 170px;
+  grid-template-rows:22px repeat(3,minmax(74px,136px));align-content:center;column-gap:22px;row-gap:12px;padding:14px 14px 4px}
+.fh{grid-row:1;align-self:end;font-size:11.5px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--dim2);white-space:nowrap}
+.fh.r{text-align:right}
+.frbg{grid-column:1 / -1;border-radius:12px;background:#0d1218;border:1px solid var(--line);margin:0 -14px}
+.fname{grid-column:1;align-self:center;display:flex;align-items:center;gap:11px;font-size:19px;font-weight:700;white-space:nowrap;min-width:0}
+.fname .fd{width:11px;height:11px;border-radius:50%;flex:none}
+.fname small{font-family:var(--mono);font-size:12px;font-weight:600;color:var(--dim);padding:2px 7px;border-radius:6px;border:1px solid var(--line2);background:#141a21}
+.fsl{grid-column:2;align-self:center;position:relative;height:16px;border-radius:8px;background:#1a2129}
+.fsl b{position:absolute;left:0;top:0;bottom:0;width:0;border-radius:8px}
+.fsl i{position:absolute;top:50%;left:0;width:14px;height:26px;margin:-13px 0 0 -7px;border-radius:5px;background:#fff;box-shadow:0 1px 6px rgba(0,0,0,.6)}
+.fsl.none i{display:none}
+.fv{align-self:center;text-align:right;font-family:var(--disp);font-size:30px;font-weight:700;white-space:nowrap}
+.fv u{text-decoration:none;font-family:var(--sans);font-size:14px;color:var(--dim);margin-left:5px;font-weight:600}
+.fshared{grid-column:3 / span 3;grid-row:2 / span 3;display:none;flex-direction:column;justify-content:center;align-items:center;gap:8px;
+  border-radius:12px;border:1.5px dashed rgba(242,139,130,.55);background:#140f11;z-index:1;margin-right:-6px;text-align:center;padding:0 10px}
+.fgrid.shared .fshared{display:flex}
+.fgrid.shared .fv{visibility:hidden}
+.fs1{font-size:12px;font-weight:800;letter-spacing:.13em;text-transform:uppercase;color:var(--red-l);white-space:nowrap}
+.fs2{display:flex;gap:30px;align-items:baseline;white-space:nowrap}
+.fs2 span{font-size:14px;color:var(--dim);font-weight:600}
+.fs2 b{font-family:var(--disp);font-size:40px;font-weight:700;color:#fff;margin-right:6px}
+.ffoot{flex:none;height:46px;margin-top:10px;display:flex;align-items:center;gap:14px;padding:0 16px;border-radius:11px;border:1px solid var(--line);background:#0c1116;min-width:0}
+.satl{font-size:12px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--dim);white-space:nowrap}
+.satbar{width:180px;height:10px;border-radius:5px;background:#232a33;overflow:hidden;flex:none}
+.satbar b{display:block;height:100%;width:0;border-radius:5px;background:var(--green)}
+.satv{font-size:20px;font-weight:700;min-width:52px;white-space:nowrap}
+.fmsg{margin-left:auto;font-size:16.5px;font-weight:600;color:var(--dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.fmsg.good{color:var(--green-l)}
+.fmsg.bad{color:var(--red-l)}
+.fmsg b{color:#fff}
+
+/* operator menu: opened from a LIVE pill (traffic stats, driver note, keys, admin) */
+.ops{position:absolute;z-index:16;top:64px;right:26px;width:340px;display:none;flex-direction:column;gap:9px;padding:12px 16px 13px;
+  background:#0c1016;border:1px solid var(--line2);border-radius:14px;box-shadow:0 14px 40px rgba(0,0,0,.72)}
+.ops.on{display:flex;animation:jpop .16s ease-out}
+.ops-h{font-size:12px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--dim)}
+.rstats{display:grid;grid-template-columns:1fr auto;row-gap:5px;font-size:14px;color:var(--dim)}
+.rstats b{color:var(--text2);font-weight:600;text-align:right}
+.rmsg{font-size:12.5px;line-height:1.35;color:var(--yellow-l);overflow-wrap:anywhere;border-top:1px solid var(--line);padding-top:8px}
+.rmsg:empty{display:none}
+.rkeys{font-size:12px;line-height:1.5;color:var(--dim2);border-top:1px solid var(--line);padding-top:8px}
+.radrow{display:flex;gap:8px;border-top:1px solid var(--line);padding-top:9px}
+.radmin{flex:none;height:30px;padding:0 12px;border-radius:8px;border:1px solid var(--line2);background:#161c24;color:var(--text2);
+  font-family:inherit;font-size:13px;font-weight:600;cursor:pointer;white-space:nowrap}
+.radmin:hover:not(:disabled){border-color:#56606c;color:var(--text)}
+.radmin.arm{color:var(--yellow);border-color:rgba(251,188,4,.6);background:rgba(251,188,4,.1)}
+.radmin:disabled{opacity:.45;cursor:default}
+
 #toast{position:absolute;left:50%;bottom:26px;transform:translate(-50%,16px);opacity:0;pointer-events:none;z-index:20;
   background:#3b1b19;border:1px solid var(--red);color:#fce8e6;font-size:19px;padding:12px 22px;border-radius:12px;
   transition:opacity .25s,transform .25s;max-width:1100px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -503,173 +401,274 @@ mark.cn.given{background:rgba(138,180,248,.14);color:inherit;box-shadow:inset 0 
 </head>
 <body>
 <div id="stage">
-  <header id="banner" data-stage="1">
-    <div class="bstage" id="bStage">Stage 1: No llm-d (Round Robin)</div>
-    <div class="bkpi data quiet" id="bKpi">
-      <span><b id="bHit">—</b>% KV Hit</span><i class="sep">|</i>
-      <span><b id="bTok">—</b> Output Tok/s</span><i class="sep">|</i>
-      <span id="bE2Ew"><b id="bE2E">—</b> ms E2E</span>
-      <span id="bSlaw" hidden><b id="bPaid">—</b> ms Paid vs <b id="bFree">—</b> ms Free (<b id="bRatio">—</b>x)</span><i class="sep">|</i>
-      <span><b id="bTtft">—</b> ms TTFT</span>
+<div id="acc">
+
+  <!-- ============================== 1 · Agents fleet ============================== -->
+  <section class="sec open" id="secA" data-sec="agents">
+    <div class="rail" data-open="agents" title="Open 1 · Agents fleet (A)">
+      <i class="rdot"></i><span class="rchip c-dim" id="rchipA">idle</span>
+      <span class="rbtn">▶</span>
+      <span class="rtitle"><span class="rsub" id="rsubA">live · 1,000 agents</span>1 · Agents fleet</span>
     </div>
-  </header>
-  <section id="left" class="panel">
-    <header class="phead">
-      <div class="ptitle"><span class="pdot" style="background:var(--green)"></span><b>AGENTS</b><span class="opt" id="ptitleL"> · Agent Substrate on GKE</span></div>
-      <div class="acts">
-        <button id="btnWake" class="btn primary" title="Wake all 1,000 agents (W)">Wake Agents</button>
-        <button id="btnTraffic" class="btn traffic" title="Send LLM requests from awake agents (T)" disabled>Simulate Traffic</button>
-        <button id="btnSuspend" class="btn" title="Suspend all agents (S)">Suspend all</button>
-      </div>
-    </header>
-    <div class="hero data" id="hero" data-mode="ready">
-      <div class="hcount">
-        <div class="counter" id="counter">0</div>
-        <div class="hsub"><span class="hlabel" id="hlabel">agents running</span><span class="hstats" id="hstats">&nbsp;</span></div>
-      </div>
-      <div class="hidle" id="idleBox" data-state="rest">
-        <div class="ilabel"><i></i><span>FLEET IDLE RATE</span></div>
-        <div class="ival"><span id="idlePct">100</span><span class="iunit">%</span></div>
-        <div class="isub" id="idleSub">1,000 at 0 CPU · snapshot ready</div>
-      </div>
-      <div class="hclock">
-        <div class="clabel"><span id="clabel">ready</span><span class="csub" id="clabelSub"></span></div>
-        <div class="clock" id="clock"><span class="tp">T+</span><span id="clockv">0</span><span class="un">ms</span></div>
-        <div class="brow"><span class="badge" id="badge"><span class="bd"></span><span id="badgeText"></span></span></div>
-      </div>
-    </div>
-    <div class="card gridCard data">
-      <div class="ctitle">
-        <span><span id="gridHdr">1,000 gVisor Sandboxes</span><span class="opt" id="gridHdrOpt"> · 25 GKE Nodes (5×5 Node Tiles)</span></span>
-        <span class="denspill"><i></i><b id="densNode">40 sandboxes / node</b><span id="densSep">·</span><b id="densVcpu">10 / vCPU</b><span class="opt" id="densIdle">· Idle: 100% (0 CPU)</span></span>
-      </div>
-      <canvas id="grid"></canvas>
-      <div class="legend">
-        <span><i style="background:#2a313a"></i>suspended</span>
-        <span><i style="background:var(--yellow)"></i>waking</span>
-        <span><i style="background:var(--green)"></i>running</span>
-        <span><i style="background:var(--blue)"></i>request in flight</span>
-        <span><i style="background:var(--purple)"></i>suspending</span>
-        <span><i style="background:var(--red)"></i>failed</span>
-        <span class="note" id="gridNote">1 tile = 1 node (40 gVisor sandboxes · 4 vCPU)</span>
-      </div>
-      <div class="ains" id="ains" aria-hidden="true">
-        <div class="ai-hd"><span class="ai-name" id="aiName">agent-0001</span><span class="ai-st" id="aiSt"></span>
-          <button class="ai-x" id="aiX" title="Close (Esc)">✕</button></div>
-        <div><div class="ai-cl" id="aiCl">🧠 codename</div><div class="ai-cn" id="aiCn">—</div></div>
-        <div class="ai-l" id="aiMem"></div>
-        <div class="ai-l" id="aiWake"></div>
-        <div class="ai-reps" id="aiReps"></div>
-        <div class="ai-ft" id="aiFt"></div>
-      </div>
-    </div>
-    <div class="mid data" id="mid">
-      <div class="tiles">
-        <div class="card tile"><div class="tl">LLM requests<small class="tfail" id="tFail"></small></div><div class="tv" id="tReq">0</div></div>
-        <div class="card tile"><div class="tl">tokens<small>prompt + completion</small></div><div class="tv" id="tTok">0</div></div>
-        <div class="card tile" id="uniqTile"><div class="tl">unique replies</div><div class="tv"><span id="tUniq">0</span><span class="of"> / <span id="tRep">0</span></span></div></div>
-        <div class="card tile mtile none" id="memTile" style="display:none" title="Correct codename recalls after the agent was suspended to zero compute and restored">
-          <div class="tl">🧠 memory after suspend</div>
-          <div class="tv"><span class="mrec"><span class="mck">✓</span><span id="mOk">0</span><span class="of"> / <span id="mTot">0</span></span></span><span class="mnone" id="mNone">codenames given: 0</span></div>
-          <div class="msub" id="mSub">&nbsp;</div>
-        </div>
-      </div>
-      <div class="card rampCard">
-        <div class="ctitle"><span>Agents running per 1,000 ms</span>
-          <span class="leg"><span><i class="sq" style="background:var(--green)"></i>running</span><span><i style="background:var(--blue-l)"></i>replies<span class="opt"> (cumulative)</span></span></span></div>
-        <canvas id="ramp"></canvas>
-      </div>
-    </div>
-    <div class="card tickCard data">
-      <div class="ctitle"><span>Replies · newest first<span class="thint">· click any joke to magnify &amp; freeze</span></span><span class="prompt" id="promptLine"><q id="promptQ">hello from agent-0421, tell me a short joke about pytorch.</q></span></div>
-      <div id="ticker"><div class="tempty" id="tempty">replies from the agents stream in here once traffic starts</div></div>
-      <div class="jspot" id="jokeSpotlight" aria-hidden="true">
-        <div class="jspot-hd">
-          <div class="jspot-meta">
-            <span class="jspot-pin">📌 MAGNIFIED &amp; FROZEN</span>
-            <span class="jspot-agent" id="jsAgent">agent-0001</span>
-            <span class="tchip" id="jsTag" style="display:none"></span>
-            <span class="jspot-lat" id="jsLat"></span>
-          </div>
-          <div class="jspot-acts">
-            <button class="jspot-btn" id="jsNext" title="Cycle to another joke from the reply stream">🎲 Next Joke</button>
-            <button class="jspot-btn close" id="jsClose" title="Close magnified view (Esc)">✕ Close</button>
-          </div>
-        </div>
-        <div class="jspot-prompt" id="jsPrompt"></div>
-        <div class="jspot-mem" id="jsMemRow"><span class="mchip1" id="jsMem"></span></div>
-        <div class="jspot-body" id="jsBody"></div>
-      </div>
-    </div>
-  </section>
-  <div class="divider" id="divider" title="Drag to adjust the Agents vs llm-d view split; drag all the way left to hide Agents (double-click for 50/50)">
-    <div class="dhandle"><i></i></div>
-  </div>
-  <section id="right" class="panel">
-    <div class="rmain">
+    <div class="body" id="left">
       <header class="phead">
-        <div class="ptitle"><span class="pdot" style="background:var(--blue)"></span><b>LLM-D</b><span class="opt"> · Gemma 4</span></div>
-        <div class="rctl">
-          <div class="stages" role="group" aria-label="routing stage">
-            <button class="stg" data-mode="roundrobin" data-n="1" title="Stage 1: no llm-d. The gateway spreads requests round robin over the two vLLM pods (1)">No llm-d<small>Round Robin</small></button>
-            <button class="stg" data-mode="kvaware" data-n="2" title="Stage 2: the llm-d router sends each request to the pod that already has its prefix in KV cache (2)">llm-d Router<small>KV-Aware</small></button>
-            <button class="stg" data-mode="flow" data-n="3" title="Stage 3: llm-d router + flow control. Requests carry a user tier; when the pool is saturated, paid tiers are dispatched first (3)">llm-d + Flow<small>Priority SLA</small></button>
-          </div>
-          <button class="live" id="live" title="Connection to the driver · click for the operator menu"><i></i><span id="liveText">CONNECTING…</span><span class="caret">▾</span></button>
+        <div class="ptitle"><span class="pdot" style="background:var(--green)"></span><b>AGENTS</b><span id="ptitleL"> · Agent Substrate on GKE</span></div>
+        <div class="acts">
+          <button id="btnWake" class="btn primary" title="Wake all 1,000 agents (W)">Wake Agents</button>
+          <button id="btnTraffic" class="btn traffic" title="Send LLM requests from awake agents (T)" disabled>Simulate Traffic</button>
+          <button id="btnSuspend" class="btn" title="Suspend all agents (S)">Suspend all</button>
+          <button class="live" title="Connection to the driver · click for the operator menu"><i></i><span class="lt">CONNECTING…</span><span class="caret">▾</span></button>
         </div>
       </header>
-      <div class="card flowCard data quiet" id="flowCard">
-        <div class="ctitle"><span>Paid Tier SLA &amp; Queue Depth<span class="opt"> · Paid vs Free</span></span>
-          <span class="sat">pool saturation<span class="satbar"><b id="satb"></b></span><span class="satv" id="satv">0%</span></span></div>
-        <div class="fcols"><span>user tier (priority)</span><span>queue depth</span><span>queued</span><span>queue wait</span><span>dispatched</span></div>
-        <div id="frows"></div>
-        <div class="fhint" id="fhint"><span id="fhMsg">llm-d flow control: 💎 Paid Members jump ahead of 🆓 Free Users</span><span id="fhSla" hidden>🟢 llm-d + Flow Control: 💎 Paid Members served <b id="fhRatio">—</b>x faster (<b id="fhPaid">—</b> ms wait vs <b id="fhFree">—</b> ms for 🆓 Free Users)</span></div>
-      </div>
-      <div class="card splitCard data" id="splitCard">
-        <div class="srow">
-          <div class="sp1"><div class="spn"><i style="background:var(--blue)"></i><span id="spn1">pod-1</span></div><div class="spc" id="spc1">50%</div></div>
-          <div class="smode">
-            <div class="kvpill" id="kvSummary"><i></i><span>⚡ KV CACHE HIT</span><b class="hit" id="kvSumHit">—</b><span class="dot">·</span><span>USAGE</span><b id="kvSumUse">—</b></div>
-            <div class="m2" id="scap">share of requests · last 3 s</div>
-          </div>
-          <div class="sp2"><div class="spn"><span id="spn2">pod-2</span><i style="background:var(--green)"></i></div><div class="spc" id="spc2">50%</div></div>
+      <div class="hero data" id="hero" data-mode="ready">
+        <div class="hcount">
+          <div class="counter" id="counter">0</div>
+          <div class="hsub"><span class="hlabel" id="hlabel">agents running</span><span class="hstats" id="hstats">&nbsp;</span></div>
         </div>
-        <div class="swrap"><div class="sbar"><div class="sb1" id="sb1" style="width:50%"></div><div class="sb2"></div></div>
-          <div class="star" id="star" style="left:50%"><span id="starl">target</span></div></div>
+        <div class="hidle" id="idleBox" data-state="rest">
+          <div class="ilabel"><i></i><span>FLEET IDLE RATE</span></div>
+          <div class="ival"><span id="idlePct">100</span><span class="iunit">%</span></div>
+          <div class="isub" id="idleSub">1,000 at 0 CPU · snapshot ready</div>
+        </div>
+        <div class="hclock">
+          <div class="clabel"><span id="clabel">ready</span><span class="csub" id="clabelSub"></span></div>
+          <div class="clock" id="clock"><span class="tp">T+</span><span id="clockv">0</span><span class="un">ms</span></div>
+          <div class="brow"><span class="badge" id="badge"><span class="bd"></span><span id="badgeText"></span></span></div>
+        </div>
       </div>
-      <div class="pods data">
-        <div class="card pod" id="pod0" style="--pc:var(--blue)"></div>
-        <div class="card pod" id="pod1" style="--pc:var(--green)"></div>
+      <div class="card gridCard data">
+        <div class="ctitle">
+          <span><span id="gridHdr">1,000 gVisor Sandboxes</span><span id="gridHdrOpt"> · 25 GKE Nodes (5×5 Node Tiles)</span></span>
+          <span class="denspill"><i></i><b id="densNode">40 sandboxes / node</b><span id="densSep">·</span><b id="densVcpu">10 / vCPU</b><span id="densIdle">· Idle: 100% (0 CPU)</span></span>
+        </div>
+        <canvas id="grid"></canvas>
+        <div class="legend">
+          <span><i style="background:#2a313a"></i>suspended</span>
+          <span><i style="background:var(--yellow)"></i>waking</span>
+          <span><i style="background:var(--green)"></i>running</span>
+          <span><i style="background:var(--blue)"></i>request in flight</span>
+          <span><i style="background:var(--purple)"></i>suspending</span>
+          <span><i style="background:var(--red)"></i>failed</span>
+          <span class="note" id="gridNote">1 tile = 1 node (40 gVisor sandboxes · 4 vCPU)</span>
+        </div>
+        <div class="ains" id="ains" aria-hidden="true">
+          <div class="ai-hd"><span class="ai-name" id="aiName">agent-0001</span><span class="ai-st" id="aiSt"></span>
+            <button class="ai-x" id="aiX" title="Close (Esc)">✕</button></div>
+          <div><div class="ai-cl" id="aiCl">🧠 codename</div><div class="ai-cn" id="aiCn">—</div></div>
+          <div class="ai-l" id="aiMem"></div>
+          <div class="ai-l" id="aiWake"></div>
+          <div class="ai-reps" id="aiReps"></div>
+          <div class="ai-ft" id="aiFt"></div>
+        </div>
       </div>
-      <div class="card tokCard data">
-        <div class="ctitle"><span>Output tokens/s per pod<span class="opt"> · last 60 s</span></span>
-          <span class="leg"><span><i style="background:var(--blue)"></i><span class="lp1">pod-1</span></span><span><i style="background:var(--green)"></i><span class="lp2">pod-2</span></span><span class="opt"><i style="background:none;border-top:2px dashed #cfd3d8;height:0"></i>strategy change</span></span></div>
-        <canvas class="chart" id="tokChart"></canvas>
+      <div class="mid data" id="mid">
+        <div class="tiles">
+          <div class="card tile"><div class="tl">LLM requests<small class="tfail" id="tFail"></small></div><div class="tv" id="tReq">0</div></div>
+          <div class="card tile"><div class="tl">tokens<small>prompt + completion</small></div><div class="tv" id="tTok">0</div></div>
+          <div class="card tile" id="uniqTile"><div class="tl">unique replies</div><div class="tv"><span id="tUniq">0</span><span class="of"> / <span id="tRep">0</span></span></div></div>
+          <div class="card tile mtile none" id="memTile" style="display:none" title="Correct codename recalls after the agent was suspended to zero compute and restored">
+            <div class="tl">🧠 memory after suspend</div>
+            <div class="tv"><span class="mrec"><span class="mck">✓</span><span id="mOk">0</span><span class="of"> / <span id="mTot">0</span></span></span><span class="mnone" id="mNone">codenames given: 0</span></div>
+            <div class="msub" id="mSub">&nbsp;</div>
+          </div>
+        </div>
+        <div class="card rampCard">
+          <div class="ctitle"><span>Agents running per 1,000 ms</span>
+            <span class="leg"><span><i class="sq" style="background:var(--green)"></i>running</span><span><i style="background:var(--blue-l)"></i>replies (cumulative)</span></span></div>
+          <canvas id="ramp"></canvas>
+        </div>
       </div>
-      <div class="card latCard data">
-        <div class="ctitle"><span>E2E latency per pod · ms</span>
-          <span class="leg"><span><i style="background:var(--blue)"></i><span class="lp1">pod-1</span></span><span><i style="background:var(--green)"></i><span class="lp2">pod-2</span></span></span></div>
-        <canvas class="chart" id="latChart"></canvas>
-      </div>
-    </div>
-    <div class="ops" id="ops" aria-hidden="true">
-      <div class="ops-h">Operator</div>
-      <div class="rstats data">
-        <span>traffic rate</span><b id="rsRate">—</b>
-        <span>in flight</span><b id="rsInf">—</b>
-        <span>sent</span><b id="rsSent">—</b>
-        <span>replies</span><b id="rsRep">—</b>
-        <span>failed</span><b id="rsFail">—</b>
-      </div>
-      <div class="rmsg" id="rmsg"></div>
-      <div class="rkeys">Keys: W wake · T traffic · S suspend<br>1 No llm-d · 2 llm-d Router · 3 llm-d + Flow · Esc close</div>
-      <div class="radrow">
-        <button class="radmin" id="btnRecon" title="Admin: POST api/reconcile (heal all agents back to suspended). Click twice.">reconcile agents</button>
-        <button class="radmin" id="btnMemReset" style="display:none" title="Admin: POST api/memory/reset (new codenames + fresh Hermes sessions, idle only). Click twice.">reset memory</button>
+      <div class="card tickCard data">
+        <div class="ctitle"><span>Replies · newest first<span class="thint">· click any joke to magnify &amp; freeze</span></span><span class="prompt" id="promptLine"><q id="promptQ">hello from agent-0421, tell me a short joke about pytorch.</q></span></div>
+        <div id="ticker"><div class="tempty" id="tempty">replies from the agents stream in here once traffic starts</div></div>
+        <div class="jspot" id="jokeSpotlight" aria-hidden="true">
+          <div class="jspot-hd">
+            <div class="jspot-meta">
+              <span class="jspot-pin">📌 MAGNIFIED &amp; FROZEN</span>
+              <span class="jspot-agent" id="jsAgent">agent-0001</span>
+              <span class="tchip" id="jsTag" style="display:none"></span>
+              <span class="jspot-lat" id="jsLat"></span>
+            </div>
+            <div class="jspot-acts">
+              <button class="jspot-btn" id="jsNext" title="Cycle to another joke from the reply stream">🎲 Next Joke</button>
+              <button class="jspot-btn close" id="jsClose" title="Close magnified view (Esc)">✕ Close</button>
+            </div>
+          </div>
+          <div class="jspot-prompt" id="jsPrompt"></div>
+          <div class="jspot-mem" id="jsMemRow"><span class="mchip1" id="jsMem"></span></div>
+          <div class="jspot-body" id="jsBody"></div>
+        </div>
       </div>
     </div>
   </section>
-  <div id="toast"></div>
+
+  <!-- ============================== 2 · llm-d routing (efficiency) ============================== -->
+  <section class="sec" id="secE" data-sec="eff">
+    <div class="rail" data-open="eff" title="Open 2 · llm-d routing (E)">
+      <i class="rdot"></i><span class="rchip c-rt" id="rchipE">routing</span>
+      <span class="rbtn">◀</span>
+      <span class="rtitle"><span class="rsub">kv-cache efficiency</span>2 · llm-d routing</span>
+    </div>
+    <div class="body" id="effBody">
+      <header class="phead">
+        <div class="ptitle"><span class="pdot" style="background:var(--blue)"></span><b>LLM-D</b><span> · Gemma 4</span></div>
+        <div class="rctl">
+          <div class="seg"><button data-open="eff" title="llm-d routing: KV-cache efficiency (E)"><i>1</i>Efficiency</button><button data-open="flow" title="llm-d flow control: priority lanes (F)"><i>2</i>Flow control</button></div>
+          <button class="live" title="Connection to the driver · click for the operator menu"><i></i><span class="lt">CONNECTING…</span><span class="caret">▾</span></button>
+        </div>
+      </header>
+      <div class="card qcard">
+        <div class="qtext">Same accelerators. Same model. How does <em>llm-d's routing</em> improve cache hit rate, throughput and latency?</div>
+        <div class="tgls">
+          <button class="tgl bad" data-mode="roundrobin" data-view="eff" title="Stage 1 · no llm-d: the gateway spreads requests round robin over the two vLLM pods (1)"><kbd>1</kbd><b>Without llm-d</b><small>round-robin</small></button>
+          <button class="tgl good" data-mode="kvaware" data-view="eff" title="Stage 2 · llm-d router: each request goes to the pod that already holds its prefix in KV cache (2)"><b>With llm-d</b><small>KV-cache-aware router</small><kbd>2</kbd></button>
+        </div>
+      </div>
+      <div class="card cmp data">
+        <div class="cbox bad empty" id="eA">
+          <div class="chd"><span class="clab">Without llm-d</span><span class="cbadge"><i></i><span>not run yet</span></span></div>
+          <div class="cstats">
+            <div title="Output tokens per second generated by both vLLM pods"><div class="sl">Throughput</div><div class="sv none"><span data-k="tok">—</span><u>tok/s</u></div></div>
+            <div title="Agent-observed end-to-end latency: from the driver asking an agent to call the LLM until its reply, including every queue (llm-d's or vLLM's) and retries"><div class="sl">E2E latency</div><div class="sv md none"><span data-k="e2e">—</span><u data-u="e2e">ms</u></div></div>
+            <div title="Time to first token at the gateway: llm-d's flow-control queue wait + vLLM's time to first token (which includes vLLM's own queue). Without llm-d there is no llm-d queue: vLLM's TTFT alone"><div class="sl">TTFT</div><div class="sv md none"><span data-k="ttft">—</span><u data-u="ttft">ms</u></div></div>
+          </div>
+          <div class="ckv" title="Share of prompt tokens served from the vLLM prefix cache, both pods (weighted by prompt tokens)">
+            <div class="sl">⚡ KV-cache hit rate</div>
+            <div class="sv kv none"><span data-k="hit">—</span><u>%</u></div>
+            <div class="kbar"><b></b></div>
+          </div>
+        </div>
+        <div class="cmid">
+          <div class="gain big none" id="gTok"><div class="gv">—</div><div class="gl">throughput</div></div>
+          <div class="gpair">
+            <div class="gain none" id="gE2E"><div class="gv">—</div><div class="gl">lower E2E</div></div>
+            <div class="gain none" id="gTtft"><div class="gv">—</div><div class="gl">lower TTFT</div></div>
+          </div>
+          <div class="gain none" id="gKv"><div class="gv">—</div><div class="gl">KV-cache hit</div></div>
+        </div>
+        <div class="cbox good empty" id="eB">
+          <div class="chd"><span class="clab">With llm-d</span><span class="cbadge"><i></i><span>not run yet</span></span></div>
+          <div class="cstats">
+            <div title="Output tokens per second generated by both vLLM pods"><div class="sl">Throughput</div><div class="sv none"><span data-k="tok">—</span><u>tok/s</u></div></div>
+            <div title="Agent-observed end-to-end latency: from the driver asking an agent to call the LLM until its reply, including every queue (llm-d's or vLLM's) and retries"><div class="sl">E2E latency</div><div class="sv md none"><span data-k="e2e">—</span><u data-u="e2e">ms</u></div></div>
+            <div title="Time to first token at the gateway: llm-d's flow-control queue wait + vLLM's time to first token (which includes vLLM's own queue)"><div class="sl">TTFT</div><div class="sv md none"><span data-k="ttft">—</span><u data-u="ttft">ms</u></div></div>
+          </div>
+          <div class="ckv" title="Share of prompt tokens served from the vLLM prefix cache, both pods (weighted by prompt tokens)">
+            <div class="sl">⚡ KV-cache hit rate</div>
+            <div class="sv kv none"><span data-k="hit">—</span><u>%</u></div>
+            <div class="kbar"><b></b></div>
+          </div>
+        </div>
+        <div class="cfoot">Each side: mean of its last 10 s with traffic on (counted from 5 s after the switch) · E2E: agent request → reply, every queue included · TTFT: gateway → first token, llm-d's queue included</div>
+      </div>
+      <div class="card chcard data">
+        <div class="ctitle"><span>Cluster throughput · output tok/s · last 60 s</span>
+          <span class="leg"><span><i class="dt" style="background:var(--red)"></i>without llm-d</span><span><i class="dt" style="background:var(--green)"></i>with llm-d</span></span></div>
+        <canvas class="chart" id="tputChart"></canvas>
+      </div>
+      <div class="card chcard data">
+        <div class="ctitle"><span>KV-cache hit rate · % of prompt tokens served from cache</span></div>
+        <canvas class="chart" id="kvChart"></canvas>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================== 3 · flow control ============================== -->
+  <section class="sec" id="secF" data-sec="flow">
+    <div class="rail" data-open="flow" title="Open 3 · flow control (F)">
+      <i class="rdot"></i><span class="rchip c-fc" id="rchipF">flw ctrl</span>
+      <span class="rbtn">◀</span>
+      <span class="rtitle"><span class="rsub">priority lanes</span>3 · flow control</span>
+    </div>
+    <div class="body" id="flowBody">
+      <header class="phead">
+        <div class="ptitle"><span class="pdot" style="background:var(--blue)"></span><b>LLM-D</b><span> · Gemma 4</span></div>
+        <div class="rctl">
+          <div class="seg"><button data-open="eff" title="llm-d routing: KV-cache efficiency (E)"><i>1</i>Efficiency</button><button data-open="flow" title="llm-d flow control: priority lanes (F)"><i>2</i>Flow control</button></div>
+          <button class="live" title="Connection to the driver · click for the operator menu"><i></i><span class="lt">CONNECTING…</span><span class="caret">▾</span></button>
+        </div>
+      </header>
+      <div class="card qcard">
+        <div class="qtext">Traffic spikes across Paid, Premium &amp; Regular tiers. How does <em>Flow Control</em> protect <em>💎 Paid Members (Pro)</em>?</div>
+        <div class="tgls">
+          <button class="tgl bad" data-mode="kvaware" data-view="flow" title="Stage 2 · llm-d router, requests carry no tier: llm-d queues them all in one band (2)"><kbd>2</kbd><b>Without flow control</b><small>one shared queue</small></button>
+          <button class="tgl good" data-mode="flow" data-view="flow" title="Stage 3 · llm-d router + flow control: requests carry a payment tier; when the pool is saturated, higher tiers are dispatched first (3)"><b>With flow control</b><small>priority payment tiers</small><kbd>3</kbd></button>
+        </div>
+      </div>
+      <div class="card cmp fl data">
+        <div class="cbox bad empty" id="fA">
+          <div class="chd"><span class="clab">No flow control</span><span class="cbadge"><i></i><span>not run yet</span></span></div>
+          <div class="frow1"><div class="sl">💎 Paid Members (Pro) · queue latency</div><div class="sv none"><span data-k="pro">—</span><u data-u="pro">ms</u></div></div>
+          <div class="frow2"><div class="sl">🆓 Regular tier · queue latency</div><div class="sv md none"><span data-k="reg">—</span><u data-u="reg">ms</u></div></div>
+        </div>
+        <div class="cmid">
+          <div class="gain big none" id="gPro"><div class="gv">—</div><div class="gl">lower Pro latency</div></div>
+          <div class="gain none" id="gReg"><div class="gv">—</div><div class="gl">Regular tier absorbs</div></div>
+        </div>
+        <div class="cbox good empty" id="fB">
+          <div class="chd"><span class="clab">Flow control on</span><span class="cbadge"><i></i><span>not run yet</span></span></div>
+          <div class="frow1"><div class="sl">💎 Paid Members (Pro) · queue latency</div><div class="sv none"><span data-k="pro">—</span><u data-u="pro">ms</u></div></div>
+          <div class="frow2"><div class="sl">🆓 Regular tier · queue latency</div><div class="sv md none"><span data-k="reg">—</span><u data-u="reg">ms</u></div></div>
+        </div>
+        <div class="cfoot">Queue latency: mean wait in llm-d's flow-control queue over the last 10 s of each side (counted from 5 s after the switch) · without flow control every request waits in one shared queue</div>
+      </div>
+      <div class="card ftab data">
+        <div class="ctitle"><span>Flow control · payment tiers &amp; live queue latency sliders</span>
+          <span class="leg"><span><i style="background:var(--yellow)"></i>Paid Members (Pro)</span><span><i style="background:var(--blue-l)"></i>Paid Standard</span><span><i style="background:#9AA0A6"></i>Regular / Free Tier</span></span></div>
+        <div class="fgrid" id="fgrid">
+          <div class="fh" style="grid-column:1">payment tier</div>
+          <div class="fh" style="grid-column:2">queue latency slider · ms</div>
+          <div class="fh r" style="grid-column:3">queued</div>
+          <div class="fh r" style="grid-column:4">mean wait</div>
+          <div class="fh r" style="grid-column:5">rate</div>
+          <div class="frbg" style="grid-row:2"></div><div class="frbg" style="grid-row:3"></div><div class="frbg" style="grid-row:4"></div>
+          <div class="fname" style="grid-row:2"><i class="fd" style="background:var(--yellow)"></i>💎 Paid Members (Pro)<small>p100</small></div>
+          <div class="fsl none" style="grid-row:2" data-tier="premium"><b style="background:var(--yellow)"></b><i></i></div>
+          <div class="fv" style="grid-row:2;grid-column:3"><span data-k="premium.q">—</span></div>
+          <div class="fv" style="grid-row:2;grid-column:4"><span data-k="premium.w">—</span><u>ms</u></div>
+          <div class="fv" style="grid-row:2;grid-column:5"><span data-k="premium.r">—</span><u>req/s</u></div>
+          <div class="fname" style="grid-row:3"><i class="fd" style="background:var(--blue-l)"></i>🔹 Paid Standard<small>p0</small></div>
+          <div class="fsl none" style="grid-row:3" data-tier="standard"><b style="background:var(--blue-l)"></b><i></i></div>
+          <div class="fv" style="grid-row:3;grid-column:3"><span data-k="standard.q">—</span></div>
+          <div class="fv" style="grid-row:3;grid-column:4"><span data-k="standard.w">—</span><u>ms</u></div>
+          <div class="fv" style="grid-row:3;grid-column:5"><span data-k="standard.r">—</span><u>req/s</u></div>
+          <div class="fname" style="grid-row:4"><i class="fd" style="background:#9AA0A6"></i>🆓 Regular / Free Tier<small>p−10</small></div>
+          <div class="fsl none" style="grid-row:4" data-tier="best-effort"><b style="background:#9AA0A6"></b><i></i></div>
+          <div class="fv" style="grid-row:4;grid-column:3"><span data-k="best-effort.q">—</span></div>
+          <div class="fv" style="grid-row:4;grid-column:4"><span data-k="best-effort.w">—</span><u>ms</u></div>
+          <div class="fv" style="grid-row:4;grid-column:5"><span data-k="best-effort.r">—</span><u>req/s</u></div>
+          <div class="fshared" id="fshared">
+            <div class="fs1">One shared queue · requests carry no tier</div>
+            <div class="fs2"><span><b id="fsQ">—</b>queued</span><span><b id="fsW">—</b>ms mean wait</span><span><b id="fsR">—</b>req/s</span></div>
+          </div>
+        </div>
+        <div class="ffoot">
+          <span class="satl">pool saturation</span><span class="satbar"><b id="satb"></b></span><span class="satv" id="satv">0%</span>
+          <span class="fmsg" id="fmsg">Queues form only when the pool is saturated</span>
+        </div>
+      </div>
+    </div>
+  </section>
+</div>
+
+<div class="ops" id="ops" aria-hidden="true">
+  <div class="ops-h">Operator</div>
+  <div class="rstats data">
+    <span>traffic rate</span><b id="rsRate">—</b>
+    <span>routing stage</span><b id="rsMode">—</b>
+    <span>in flight</span><b id="rsInf">—</b>
+    <span>sent</span><b id="rsSent">—</b>
+    <span>replies</span><b id="rsRep">—</b>
+    <span>failed</span><b id="rsFail">—</b>
+  </div>
+  <div class="rmsg" id="rmsg"></div>
+  <div class="rkeys">Keys: W wake · T traffic · S suspend · Esc close<br>1 without llm-d · 2 with llm-d · 3 + flow control<br>A / E / F or ← → switch views</div>
+  <div class="radrow">
+    <button class="radmin" id="btnRecon" title="Admin: POST api/reconcile (heal all agents back to suspended). Click twice.">reconcile agents</button>
+    <button class="radmin" id="btnMemReset" style="display:none" title="Admin: POST api/memory/reset (new codenames + fresh Hermes sessions, idle only). Click twice.">reset memory</button>
+  </div>
+</div>
+<div id="toast"></div>
 </div>
 <script>
 (() => {
@@ -687,19 +686,20 @@ const TICKER_EVERY_MS = 250;    // release at most 4 ticker lines per second
 const TICKER_BACKLOG = 12;
 const TICKER_DOM_MAX = 10;
 const SPAN_MS = 60000;          // time-series window
-// The three stages the dashboard offers (driver strategies). The driver API also accepts 'steer8020' (header
-// steering); if something else sets it, the banner and chart markers show the raw mode name and no pill is lit.
-const STRAT = {
-  roundrobin: {n: 1, title: 'No llm-d (Round Robin)', marker: 'No llm-d', target: 50},          // gateway round robin, EPP bypassed
-  kvaware: {n: 2, title: 'llm-d Router (KV-Aware)', marker: 'llm-d Router', target: 50},         // EPP: prefix-cache + load scoring
-  flow: {n: 3, title: 'llm-d + Flow (Priority SLA)', marker: 'llm-d + Flow Control', target: 50}, // + flow control by user tier
-};
+// Stage comparisons (Efficiency, Flow control). A "run" is a stretch of one routing stage with traffic on. Its
+// numbers count from SETTLE_MS after it starts (by then the driver's 3 s metric windows and the requests the previous
+// stage still had in flight are through) and each side shows the mean over the last MEAS_MS of its run: live while
+// the stage runs, frozen ("measured") once it stops.
+const SETTLE_MS = 5000;
+const MEAS_MS = 10000;
 const STRAT_ALIAS = {balanced: 'kvaware', priority: 'flow', 'round-robin': 'roundrobin', rr: 'roundrobin', 'kv-aware': 'kvaware'};
-const stratKey = (s) => (s && STRAT_ALIAS[s]) || s;
+const stratKey = (s) => (s && STRAT_ALIAS[s]) || s || null;
+const MODE_NAME = {roundrobin: 'Stage 1 · without llm-d', kvaware: 'Stage 2 · with llm-d', flow: 'Stage 3 · + flow control', steer8020: 'steer 80/20'};
+const MODE_C = {roundrobin: '#EA4335', kvaware: '#34A853', flow: '#34A853'};    // chart colour: without / with llm-d
+const MARK = {roundrobin: ['without llm-d', '#EA4335'], kvaware: ['with llm-d', '#34A853'], flow: ['+ flow control', '#A142F4']};
 const CELL = {48: '#262c35', 49: '#FBBC04', 50: '#34A853', 51: '#4285F4', 52: '#A142F4', 57: '#EA4335'};
 const CELL_OTHER = '#5f6368';
-const POD_C = ['#4285F4', '#34A853'];
-const BAND_C = {premium: '#34A853', standard: '#5BB974', 'best-effort': '#80868B'};   // paid tiers green, free gray
+const TIERS = ['premium', 'standard', 'best-effort'];
 const FONT = getComputedStyle(document.documentElement).getPropertyValue('--sans').trim() || 'sans-serif';
 
 // ------------------------------------------------------------------ helpers
@@ -714,21 +714,28 @@ const NF0 = new Intl.NumberFormat('en-US', {maximumFractionDigits: 0});
 const NF1 = new Intl.NumberFormat('en-US', {minimumFractionDigits: 1, maximumFractionDigits: 1});
 const fInt = (v) => NF0.format(Math.round(v) + 0);
 const fRate = (v) => (Math.abs(v) >= 100 ? fInt(v) : NF1.format(v));
-const fTok = (v) => (Math.abs(v) >= 1e4 ? NF1.format(v / 1e3) + 'k' : fInt(v));
 const fBig = (v) => (Math.abs(v) >= 1e8 ? NF1.format(v / 1e6) + 'M' : fInt(v));
 const fAxis = (v) => (v >= 1e6 ? +(v / 1e6).toFixed(1) + 'M' : v >= 1e3 ? +(v / 1e3).toFixed(1) + 'k' : String(Math.round(v)));
+const fLatV = (v) => (v >= 10000 ? NF1.format(v / 1000) : fInt(v));   // latency number: ms, or s from 10 s up ...
+const fLatU = (v) => (v >= 10000 ? 's' : 'ms');                       // ... and its unit
+const fRatio = (v) => (v >= 10 ? fInt(v) : NF1.format(v));
 function niceStep(range, n) {
   const raw = Math.max(range, 1e-9) / n, p = Math.pow(10, Math.floor(Math.log10(raw))), f = raw / p;
   return (f <= 1 ? 1 : f <= 2 ? 2 : f <= 2.5 ? 2.5 : f <= 5 ? 5 : 10) * p;
 }
 const niceMax = (v, n) => { const s = niceStep(v, n); return Math.ceil(v / s - 1e-9) * s; };
 function setText(el, t) { if (el && el.__t !== t) { el.__t = t; el.textContent = t; } }
+function setHTML(el, h) { if (el && el.__h !== h) { el.__h = h; el.innerHTML = h; } }
 function setCls(el, c, on) { if (el && el.classList.contains(c) !== !!on) el.classList.toggle(c, !!on); }
 
-// Tweened number: fixed-duration ease-out toward each new target (<= 220 ms), '—' when null.
+// Tweened number: fixed-duration ease-out toward each new target (<= 220 ms), '—' when null. An optional unit element
+// follows the value (latencies switch from ms to s at 10 s).
 const nums = [];
 class Num {
-  constructor(el, fmt, dur = 220) { this.el = el; this.fmt = fmt; this.dur = dur; this.cur = null; this.to = null; this.from = 0; this.t0 = 0; nums.push(this); }
+  constructor(el, fmt, dur = 220, uel = null, ufmt = null) {
+    this.el = el; this.fmt = fmt; this.dur = dur; this.uel = uel; this.ufmt = ufmt; this.u0 = uel ? uel.textContent : '';
+    this.cur = null; this.to = null; this.from = 0; this.t0 = 0; nums.push(this);
+  }
   set(v) {
     if (!isNum(v)) { this.to = null; this.cur = null; return; }
     if (this.to === null || this.cur === null) { this.cur = this.from = this.to = v; this.t0 = 0; return; }
@@ -743,14 +750,15 @@ class Num {
     }
     if (Array.isArray(this.el)) for (const e of this.el) setText(e, t);
     else setText(this.el, t);
+    if (this.uel) setText(this.uel, this.to === null ? this.u0 : this.ufmt(this.cur));
   }
   val(d = 0) { return this.cur === null ? d : this.cur; }
 }
 
 // ------------------------------------------------------------------ stage scaling (fit the 1920-wide stage to any viewport)
 // The stage is 1920 px wide and 1080 tall at 16:9. A taller window (a 16:10 laptop screen, up to 4:3) gets a taller
-// stage instead of empty bands above and below it; the llm-d charts and the Agents ticker take the extra height
-// (--xh). A wider window still gets bands left and right.
+// stage instead of empty bands above and below it; the charts, the tier table and the Agents ticker take the extra
+// height. A wider window still gets bands left and right.
 const STAGE_W = 1920, STAGE_H = 1080, STAGE_H_MAX = 1440;
 const stage = $('stage');
 let stageScale = 1;
@@ -758,7 +766,6 @@ function fit() {
   const w = window.innerWidth, h = window.innerHeight;
   const sh = w > 0 && h > 0 ? clamp(Math.round((STAGE_W * h) / w), STAGE_H, STAGE_H_MAX) : STAGE_H;
   stage.style.height = `${sh}px`;
-  stage.style.setProperty('--xh', `${sh - STAGE_H}px`);
   stageScale = Math.min(w / STAGE_W, h / sh) || 1;
   const x = Math.round((w - STAGE_W * stageScale) / 2), y = Math.round((h - sh * stageScale) / 2);
   stage.style.transform = (stageScale === 1 && !x && !y) ? 'none' : `translate(${x}px,${y}px) scale(${stageScale})`;
@@ -789,7 +796,6 @@ const S = {
   series: [],          // counter playback points {k: server ms, v: running}
   bursts: [],          // timing info per burst (for the ms clock)
   gridStr: '', gridKey: null,
-  strategy: null, rate: null, markers: [],
   hist: [], burstSeen: null,
 };
 const estNow = () => Date.now() - S.offset;   // estimated server clock (ms)
@@ -875,6 +881,12 @@ function onState(js) {
   if (st.total !== S.total) { S.total = st.total; S.gridStr = ''; }
   if (st.pods) S.pods = st.pods;
   S.latest = st;
+  // the driver clears its ticker and totals at every burst's T0: start the reply list and the stage comparisons fresh
+  // (keyed by id + T0: a restarted driver can reuse burst ids)
+  const bk = st.burst.id ? `${st.burst.id}|${st.burst.t0}` : '';
+  if (bk && S.burstSeen != null && bk !== S.burstSeen) { resetTicker(); resetMeas(bk); }
+  else if (bk && S.burstSeen == null) loadMeas(bk);
+  if (bk) S.burstSeen = bk;
   if (key > S.latestKey) {
     S.prevKey = isFinite(S.latestKey) ? S.latestKey : null;
     S.latestKey = key;
@@ -882,18 +894,15 @@ function onState(js) {
     pushPoint(key, st.burst.running);
     ingestGrid(st, key);
     ingestHistory(st);
-    ingestMarkers(st, key);
+    ingestMetrics(st, key);
   }
-  // the driver clears its ticker and totals at every burst's T0: start the reply list fresh as well
-  if (st.burst.id && S.burstSeen != null && st.burst.id !== S.burstSeen) resetTicker();
-  if (st.burst.id) S.burstSeen = st.burst.id;
   ingestTicker(st);
   updateFromState(st);
 }
 
 function resetTimeline() {
   S.series = []; S.bursts = []; S.gridStr = ''; S.gridKey = null; S.latestKey = -Infinity; S.prevKey = null;
-  S.markers = []; S.offsets = []; G.pending = []; G.pi = 0;
+  S.offsets = []; G.pending = []; G.pi = 0;
 }
 
 // ------------------------------------------------------------------ burst timing (ms clock)
@@ -1036,42 +1045,211 @@ function applyGrid(rt, nowPerf) {
   }
 }
 
-// ------------------------------------------------------------------ history + strategy markers
+// ------------------------------------------------------------------ llm-d history (cluster throughput chart)
 function ingestHistory(st) {
   const h = [];
   for (const e of st.llmd.history) {
     const o = obj(e);
     if (!isNum(o.t)) continue;
-    h.push({t: o.t, p: arr(o.pods).map((q) => { q = obj(q); return {req: nn(q.req_s), gen: nn(q.gen_tok_s), e2e: nn(q.e2e_ms)}; })});
+    let v = 0, n = 0;
+    for (const q of arr(o.pods)) { const g = nn(obj(q).gen_tok_s); if (g != null) { v += g; n++; } }
+    h.push({t: o.t, v: n ? v : null});
   }
   h.sort((a, b) => a.t - b.t);
   S.hist = h;
 }
-const markerLabel = (mode) => (STRAT[stratKey(mode)] || {marker: mode}).marker;
-const rateLabel = (r) => (r ? fInt(r) + ' req/s' : 'traffic off');
-function ingestMarkers(st, key) {
-  const s = st.traffic.strategy, r = st.traffic.rate, ch = st.traffic.changes;
-  // The driver keeps the latest strategy switches ({t, mode}) and, since 2026-10-03, rate changes ({t, rate}):
-  // draw from that history so markers survive a reload. Older backends: strategy history only, or none.
-  const srvRate = !!ch && ch.some((c) => isNum(c.rate));
+
+// ------------------------------------------------------------------ live metrics + stage comparisons
+// Every poll gives one sample: the routing stage, whether traffic is on, and the pool's numbers over the driver's
+// last window_s (3 s): output tokens/s, KV-cache hit, TTFT at the gateway (llm-d queue wait + vLLM TTFT) and the
+// flow-control queue per band. Agent-observed E2E comes from the ticker, which carries every successful reply with
+// its latency (time from the driver's first call to the agent until the reply, retries included); a reply belongs to
+// the stage that was active when it was sent (received time - latency).
+const M = {samp: [], rep: [], lastSeq: -Infinity, obs: [], tl: [{t: -Infinity, mode: null}], store: {}, storeBurst: '',
+  live: null, dirty: false, saveAt: 0, cmp: null};
+function updateTimeline(st, key) {
+  const cur = stratKey(st.traffic.strategy);
+  if (cur && (!M.obs.length || M.obs[M.obs.length - 1].mode !== cur)) {
+    M.obs.push({t: M.obs.length ? key - POLL_MS / 2 : key, mode: cur, first: !M.obs.length});
+    if (M.obs.length > 64) M.obs.splice(1, M.obs.length - 64);
+  }
+  const ch = st.traffic.changes, first = M.obs[0];
+  let tl;
   if (ch) {
-    S.markers = S.markers.filter((m) => m.kind !== 's' && !(srvRate && m.kind === 'r'));
-    for (const c of ch) {
-      if (typeof c.mode === 'string') S.markers.push({t: c.t, kind: 's', label: markerLabel(c.mode)});
-      else if (isNum(c.rate)) S.markers.push({t: c.t, kind: 'r', label: rateLabel(c.rate)});
-    }
-    S.strategy = s;
-  } else if (s) {
-    if (S.strategy !== null && s !== S.strategy) S.markers.push({t: key, kind: 's', label: markerLabel(s)});
-    S.strategy = s;
+    // the driver's own switch times (it keeps the latest 16 strategy and rate changes); before the oldest one it
+    // remembers, the mode is what this page saw first if it was open by then, else unknown
+    const srv = ch.filter((c) => typeof c.mode === 'string').map((c) => ({t: c.t, mode: stratKey(c.mode)})).sort((a, b) => a.t - b.t);
+    const init = !srv.length || (first && first.t < srv[0].t) ? (first ? first.mode : cur) : null;
+    tl = [{t: -Infinity, mode: init}];
+    for (const o of M.obs) if (!o.first && !srv.some((s) => s.mode === o.mode && Math.abs(s.t - o.t) < 3000)) tl.push(o);
+    for (const s of srv) tl.push(s);
+  } else {                                     // older drivers: the switches this page saw
+    tl = [{t: -Infinity, mode: first ? first.mode : cur}];
+    for (const o of M.obs) if (!o.first) tl.push(o);
   }
-  if (r !== null) {
-    if (!srvRate && S.rate !== null && r !== S.rate) S.markers.push({t: key, kind: 'r', label: rateLabel(r)});
-    S.rate = r;
+  tl.sort((a, b) => a.t - b.t);
+  M.tl = tl;
+}
+function modeAt(t) {
+  const tl = M.tl;
+  let lo = 0, hi = tl.length - 1, r = null;
+  while (lo <= hi) { const m = (lo + hi) >> 1; if (tl[m].t <= t) { r = tl[m].mode; lo = m + 1; } else hi = m - 1; }
+  return r;
+}
+function liveMetrics(st) {
+  const L = st.llmd;
+  let tok = 0, tokN = 0, hitW = 0, hitTok = 0, rq = 0, ttW = 0, ttR = 0;
+  for (const p of L.pods) {
+    if (p.up === false) continue;
+    if (isNum(p.gen_tok_s)) { tok += p.gen_tok_s; tokN++; }
+    const r = num(p.req_s, 0), pt = num(p.prompt_tok_s, 0);
+    rq += r;
+    // Weight by prompt tokens/s: vLLM counts a request's prompt tokens when its first token is out, so this follows
+    // first tokens/s. A pod stuck behind a long queue can produce first tokens while completing nothing in the
+    // window; weighting by req/s (completions) would drop its TTFT. Falls back to req/s.
+    const w = pt > 0 ? pt : r;
+    if (w <= 0) continue;
+    if (isNum(p.cache_hit_pct)) { hitW += w * p.cache_hit_pct; hitTok += w; }
+    if (isNum(p.ttft_ms)) { ttW += w * p.ttft_ms; ttR += w; }
   }
-  S.markers = S.markers.filter((m) => m.t > key - SPAN_MS - 5000);
+  const bands = {};
+  let qW = 0, qR = 0, qN = 0;
+  for (const b of arr(L.flow.bands).map(obj)) {
+    if (b.name == null) continue;
+    const w = nn(b.wait_ms), r = num(b.req_s, 0), q = nn(b.queue);
+    bands[String(b.name)] = {w, r, q};
+    if (w != null && r > 0) { qW += w * r; qR += r; }
+    if (q != null) qN += q;
+  }
+  const vttft = ttR > 0 ? ttW / ttR : null;
+  const qwait = qR > 0 ? qW / qR : null;      // llm-d flow-control queue, all bands (null: nothing went through llm-d)
+  return {tok: tokN ? tok : null, hit: hitTok > 0 ? hitW / hitTok : null, req: rq, vttft, qwait,
+    ttft: vttft != null ? vttft + (qwait != null ? qwait : 0) : null,
+    bands, qtot: qN, qrate: qR, sat: clamp(num(L.flow.saturation, 0), 0, 1)};
+}
+function ingestMetrics(st, key) {
+  updateTimeline(st, key);
+  const x = liveMetrics(st);
+  x.t = key; x.mode = stratKey(st.traffic.strategy); x.on = st.phase === 'running' && num(st.traffic.rate, 0) > 0;
+  M.samp.push(x); M.live = x;
+  if (M.samp.length > 4000) M.samp.splice(0, M.samp.length - 3600);      // ~15 min at 4 Hz
+  const t0 = st.burst.t0;
+  const list = st.ticker.map(obj).filter((e) => isNum(e.seq)).sort((a, b) => a.seq - b.seq);
+  if (list.length && list[list.length - 1].seq < M.lastSeq) M.lastSeq = -Infinity;   // seq went back: driver restarted
+  for (const e of list) {
+    if (e.seq <= M.lastSeq) continue;
+    M.lastSeq = e.seq;
+    if (!isNum(e.latency_ms) || e.latency_ms < 0) continue;
+    const recv = t0 > 0 && isNum(e.t_ms) ? t0 + e.t_ms : key, send = recv - e.latency_ms;
+    M.rep.push({recv, send, lat: e.latency_ms, mode: modeAt(send)});
+  }
+  if (M.rep.length > 70000) M.rep.splice(0, M.rep.length - 60000);
+}
+const bandW = (x, name) => { const b = x.bands[name]; return b && b.w != null ? b.w : null; };
+function repFrom(t) {   // first reply received at or after t (replies are kept in the order the driver recorded them)
+  const R = M.rep;
+  let lo = 0, hi = R.length;
+  while (lo < hi) { const m = (lo + hi) >> 1; if (R[m].recv < t) lo = m + 1; else hi = m; }
+  return lo;
+}
+function runsOf(mode, max = 3) {   // newest first
+  const s = M.samp, out = [];
+  let i = s.length - 1;
+  while (i >= 0 && out.length < max) {
+    while (i >= 0 && !(s[i].on && s[i].mode === mode)) i--;
+    if (i < 0) break;
+    const i1 = i;
+    while (i >= 0 && s[i].on && s[i].mode === mode) i--;
+    out.push({i0: i + 1, i1, start: s[i + 1].t, end: s[i1].t});
+  }
+  return out;
+}
+function summarizeRun(mode, run) {
+  const a = run.start + SETTLE_MS;
+  if (run.end < a) return null;                            // never settled
+  const lo = Math.max(a, run.end - MEAS_MS), s = M.samp;
+  const acc = {tok: [0, 0], hit: [0, 0], ttft: [0, 0], shared: [0, 0], prem: [0, 0], std: [0, 0], be: [0, 0]};
+  const add = (k, v) => { if (isNum(v)) { acc[k][0] += v; acc[k][1]++; } };
+  for (let i = run.i1; i >= run.i0 && s[i].t >= lo; i--) {
+    const x = s[i];
+    add('tok', x.tok); add('hit', x.hit); add('ttft', x.ttft); add('shared', x.qwait);
+    add('prem', bandW(x, 'premium')); add('std', bandW(x, 'standard')); add('be', bandW(x, 'best-effort'));
+  }
+  const v = {};
+  for (const k in acc) v[k] = acc[k][1] ? acc[k][0] / acc[k][1] : null;
+  let e = 0, n = 0;
+  const R = M.rep;
+  for (let i = repFrom(lo); i < R.length && R[i].recv <= run.end; i++) {
+    const r = R[i];
+    if (r.mode === mode && r.send >= run.start) { e += r.lat; n++; }
+  }
+  v.e2e = n ? e / n : null; v.e2eN = n;
+  return {v, start: run.start, end: run.end};
+}
+function liveVals(mode, run) {   // a run that is still settling: the latest window as is
+  const x = M.samp[M.samp.length - 1], R = M.rep;
+  let e = 0, n = 0;
+  for (let i = repFrom(x.t - 3000); i < R.length; i++) { const r = R[i]; if (r.mode === mode && r.send >= run.start) { e += r.lat; n++; } }
+  return {tok: x.tok, hit: x.hit, ttft: x.ttft, shared: x.qwait, prem: bandW(x, 'premium'), std: bandW(x, 'standard'),
+    be: bandW(x, 'best-effort'), e2e: n ? e / n : null};
+}
+// state: run (running, settled) | settle (running, first SETTLE_MS) | meas (measured earlier) | sel (selected, traffic
+// off) | none (not run yet)
+function summarize(mode) {
+  const s = M.samp, last = s.length ? s[s.length - 1] : null;
+  const running = !!last && last.on && last.mode === mode, sel = !!last && last.mode === mode;
+  const runs = runsOf(mode), st = M.store[mode];
+  let res = null;
+  for (const r of runs) {
+    const isCur = running && r === runs[0];
+    // a run that ended over a minute ago has all its replies in: keep what was stored for it
+    if (!isCur && st && st.start === r.start && st.end === r.end && last.t - r.end > 60000) { res = st; break; }
+    const sm = summarizeRun(mode, r);
+    if (sm) { res = sm; break; }
+  }
+  if (res && res !== st) { M.store[mode] = res; M.dirty = true; }
+  if (!res && st) res = st;                                // measured before this page (re)loaded, same burst
+  if (running) {
+    if (res && res.start === runs[0].start) return {state: 'run', v: res.v};
+    return {state: 'settle', v: liveVals(mode, runs[0])};
+  }
+  if (res) return {state: sel ? 'sel' : 'meas', v: res.v};
+  return {state: sel ? 'sel' : 'none', v: null};
+}
+// the comparisons survive a page reload for the same burst (localStorage); a new Wake starts them fresh
+const MEAS_KEY = 'kd.meas.v1';
+function loadMeas(burst) {
+  try {
+    const js = JSON.parse(localStorage.getItem(MEAS_KEY) || 'null');
+    if (js && js.burst === burst && js.store && typeof js.store === 'object') M.store = js.store;
+  } catch (e) { /* no storage */ }
+  M.storeBurst = burst;
+}
+function resetMeas(burst) { M.samp = []; M.rep = []; M.store = {}; M.storeBurst = burst; M.dirty = true; }
+function saveMeas(now) {
+  if (!M.dirty || now < M.saveAt || !M.storeBurst) return;
+  M.dirty = false; M.saveAt = now + 2000;
+  try { localStorage.setItem(MEAS_KEY, JSON.stringify({burst: M.storeBurst, store: M.store})); } catch (e) { /* full or blocked */ }
 }
 
+// ------------------------------------------------------------------ sections (accordion)
+const SECS = ['agents', 'eff', 'flow'];
+const SEC_EL = {agents: $('secA'), eff: $('secE'), flow: $('secF')};
+let openName = '';
+function openSec(name) {
+  if (!SEC_EL[name] || name === openName) return;
+  openName = name;
+  const oi = SECS.indexOf(name);
+  SECS.forEach((n, i) => { setCls(SEC_EL[n], 'open', n === name); setText(SEC_EL[n].querySelector('.rbtn'), i < oi ? '▶' : '◀'); });
+  document.querySelectorAll('.seg button').forEach((b) => setCls(b, 'on', b.dataset.open === name));
+  if (name !== 'agents') { closeInspector(); hideSpotlight(); }
+  setOps(false);
+  try { localStorage.setItem('kd.sec', name); } catch (e) { /* no storage */ }
+}
+const stepSec = (d) => openSec(SECS[clamp(SECS.indexOf(openName) + d, 0, SECS.length - 1)]);
+window.__openSec = (n) => openSec(n);
+document.querySelectorAll('.rail').forEach((r) => r.addEventListener('click', () => openSec(r.dataset.open)));
+document.querySelectorAll('.seg button').forEach((b) => b.addEventListener('click', () => openSec(b.dataset.open)));
 
 // ------------------------------------------------------------------ UI refs
 const PROMPT = 'hello from {agent}, tell me a short joke about pytorch.';   // display only (the backend owns the real prompt)
@@ -1080,145 +1258,46 @@ const PROMPT_TEACH = 'Your codename is {codename}, remember it. Now tell me a sh
 const PROMPT_RECALL = "hello from {agent}, what's your codename? Say it first, then tell me a short joke about pytorch.";
 const UI = {
   wake: $('btnWake'), traf: $('btnTraffic'), susp: $('btnSuspend'), recon: $('btnRecon'), memReset: $('btnMemReset'),
-  live: $('live'), ops: $('ops'), note: $('rmsg'), tFail: $('tFail'),
+  lives: [...document.querySelectorAll('.live')], ops: $('ops'), note: $('rmsg'), tFail: $('tFail'),
   hero: $('hero'), counter: $('counter'), hlabel: $('hlabel'), hstats: $('hstats'),
   idleBox: $('idleBox'), idlePct: $('idlePct'), idleSub: $('idleSub'),
   densIdle: $('densIdle'), gridNote: $('gridNote'),
   clabel: $('clabel'), clabelSub: $('clabelSub'), clockv: $('clockv'), badge: $('badge'), badgeText: $('badgeText'),
   tReq: new Num($('tReq'), fBig), tTok: new Num($('tTok'), fBig), tUniq: new Num($('tUniq'), fInt), tRep: new Num($('tRep'), fInt),
-  split: new Num(null, (v) => v, 450), sat: new Num($('satv'), (v) => fInt(v * 100) + '%', 300),
-  kvSumUse: new Num(null, (v) => v, 260), kvSumHit: new Num(null, (v) => v, 260),
+  sat: new Num($('satv'), (v) => fInt(v * 100) + '%', 300),
   rsInf: new Num($('rsInf'), fInt), rsSent: new Num($('rsSent'), fInt), rsRep: new Num($('rsRep'), fInt), rsFail: new Num($('rsFail'), fInt),
   mOk: new Num($('mOk'), fInt), mTot: new Num($('mTot'), fInt),
 };
-const BAN = {hit: new Num($('bHit'), (v) => NF1.format(v), 300), ttft: new Num($('bTtft'), fInt, 300), e2e: new Num($('bE2E'), fInt, 300),
-  tok: new Num($('bTok'), fInt, 300),   // output tokens/s, both pods together
-  paid: new Num([$('bPaid'), $('fhPaid')], fInt, 300), free: new Num([$('bFree'), $('fhFree')], fInt, 300),
-  ratio: new Num([$('bRatio'), $('fhRatio')], (v) => fRatio(v), 300)};
 let wakePending = 0;   // after a successful Wake POST the driver stays 'idle' during its preflight: keep Wake disabled
                        // (and show "starting…") until the phase moves on, for at most 15 s
-const sBtns = [...document.querySelectorAll('.stg')];
-const podName = (i) => { const p = S.latest && S.latest.llmd.pods[i]; return (p && p.name ? String(p.name) : '') || S.pods[i] || 'pod-' + (i + 1); };
+const TAG_LABEL = {premium: '💎 PAID PRO', standard: '🔹 PAID STD', 'best-effort': '🆓 FREE'};
 
-const BAND_META = {
-  premium: {label: '💎 Paid Members (Pro)', sub: 'p100'},
-  standard: {label: '🔹 Paid Standard', sub: 'p0'},
-  'best-effort': {label: '🆓 Free Users (Viral)', sub: 'p−10'},
-};
-const TAG_LABEL = {
-  premium: '💎 PAID PRO',
-  standard: '🔹 PAID STD',
-  'best-effort': '🆓 FREE',
-};
-
-function buildPod(p) {
-  const root = $('pod' + p);
-  root.innerHTML = `
-    <div class="phd"><span class="pnm"><i></i><span class="pn">pod-${p + 1}</span></span><span class="pst">no data</span></div>
-    <div class="pkv">
-      <div class="kvbox">
-        <div class="kvl">⚡ KV CACHE HIT<span class="opt"> (PROMPT)</span></div>
-        <div class="kvv"><span data-k="cache"></span><u>%</u></div>
-        <div class="kvbar"><b data-b="cache"></b></div>
-      </div>
-      <div class="kvbox">
-        <div class="kvl">KV CACHE USAGE<span class="opt"> (MEM)</span></div>
-        <div class="kvv"><span data-k="kv"></span><u>%</u></div>
-        <div class="kvbar"><b data-b="kv"></b></div>
-      </div>
-    </div>
-    <div class="pbig">
-      <div><div class="bv" data-k="req"></div><div class="bl">req/s</div></div>
-      <div><div class="bv" data-k="gen"></div><div class="bl">output tok/s</div></div>
-      <div><div class="bv"><span data-k="e2e"></span><u>ms</u></div><div class="bl">E2E latency</div></div>
-    </div>
-    <div class="psm">
-      <div><div class="ml">input tok/s</div><div class="mv" data-k="inp"></div></div>
-      <div><div class="ml">TTFT</div><div class="mv"><span data-k="ttft"></span><u>ms</u></div></div>
-      <div><div class="ml">running / waiting</div><div class="mv"><span data-k="run"></span> / <span data-k="wait"></span></div></div>
-    </div>`;
-  const q = (k) => root.querySelector(`[data-k="${k}"]`);
-  return {root, name: root.querySelector('.pn'), st: root.querySelector('.pst'),
-    req: new Num(q('req'), fRate), gen: new Num(q('gen'), fTok), e2e: new Num(q('e2e'), fInt),
-    inp: new Num(q('inp'), fTok), ttft: new Num(q('ttft'), fInt), run: new Num(q('run'), fInt), wait: new Num(q('wait'), fInt),
-    cache: new Num(q('cache'), NF1.format.bind(NF1)), kv: new Num(q('kv'), NF1.format.bind(NF1)),
-    cacheB: root.querySelector('[data-b="cache"]'), kvB: root.querySelector('[data-b="kv"]')};
-}
-const podUI = [buildPod(0), buildPod(1)];
-
-const flowUI = {key: '', rows: new Map(), scale: 20, scaleTo: 20};
-function buildFlow(bands) {
-  const key = bands.map((b) => b.name + ':' + b.priority).join('|');
-  if (key === flowUI.key) return;
-  flowUI.key = key;
-  for (const r of flowUI.rows.values()) for (const n of [r.q, r.w, r.r]) nums.splice(nums.indexOf(n), 1);
-  flowUI.rows = new Map();
-  const wrap = $('frows');
-  wrap.textContent = '';
-  for (const b of bands) {
-    const c = BAND_C[b.name] || '#c4c9d0';
-    const meta = BAND_META[b.name] || {label: b.name, sub: 'p' + String(b.priority).replace('-', '−')};
-    const row = document.createElement('div');
-    row.className = b.priority >= 0 ? 'frow paid' : 'frow';
-    row.innerHTML = `<div class="fname"><i style="background:${c}"></i><span></span><small></small></div>
-      <div class="qbar"><b style="background:${c}"></b></div><div class="fv" data-k="q"></div>
-      <div class="fv w"><span data-k="w"></span><u>ms</u></div><div class="fv"><span data-k="r"></span><u>req/s</u></div>`;
-    row.querySelector('.fname span').textContent = meta.label;
-    row.querySelector('.fname small').textContent = meta.sub;
-    wrap.appendChild(row);
-    flowUI.rows.set(b.name, {bar: row.querySelector('.qbar b'), q: new Num(row.querySelector('[data-k="q"]'), fInt),
-      w: new Num(row.querySelector('[data-k="w"]'), fInt), r: new Num(row.querySelector('[data-k="r"]'), fRate)});
+// comparison boxes: every [data-k] value gets a tweened number; a missing value shows as a grey placeholder bar
+function buildBox(root, fmts) {
+  const u = {root, badge: root.querySelector('.cbadge'), btxt: root.querySelector('.cbadge span'), bar: root.querySelector('.kbar b'), v: {}};
+  for (const el of root.querySelectorAll('[data-k]')) {
+    const k = el.dataset.k, f = fmts[k] || fInt, uel = root.querySelector(`[data-u="${k}"]`);
+    u.v[k] = new Num(el, f, 300, uel, uel ? fLatU : null);
   }
+  return u;
 }
-
-// ------------------------------------------------------------------ interactive view split (center divider)
-// Agents get 25% .. 75% of the width, or none: dragging the divider into the left half of the 0..25% zone hides
-// the Agents panel (llm-d full width); dragging back out of it brings Agents back at 25%. Double-click: 50/50.
-const SPLIT_MIN = 25, SPLIT_MAX = 75, SPLIT_HIDE_BELOW = SPLIT_MIN / 2;
-const leftPanel = $('left'), rightPanel = $('right'), dividerEl = $('divider');
-let viewSplitPct = 50;
-function setViewSplit(rawPct) {
-  let pct = clamp(Math.round(num(+rawPct, 50)), 0, SPLIT_MAX);
-  if (pct < SPLIT_MIN) pct = pct < SPLIT_HIDE_BELOW ? 0 : SPLIT_MIN;
-  viewSplitPct = pct;
-  const avail = 1920 - 12;
-  const w1 = Math.round((avail * pct) / 100);
-  const w2 = avail - w1;
-  stage.style.gridTemplateColumns = `${w1}px 12px ${w2}px`;
-  const gone = pct === 0;
-  if (gone && !leftPanel.classList.contains('gone')) { closeInspector(); hideSpotlight(); }   // both live in the Agents panel
-  setCls(leftPanel, 'gone', gone);
-  setCls(leftPanel, 'compact', pct < 42);
-  setCls(rightPanel, 'compact', pct > 58);
-  for (const cv of [gridCv, rampCv, tokCv, latCv]) {
-    if (cv && cv.clientWidth > 0 && cv.clientHeight > 0) csize.set(cv, {w: cv.clientWidth, h: cv.clientHeight});
-  }
+const BOX = {
+  eA: buildBox($('eA'), {tok: fInt, e2e: fLatV, ttft: fLatV, hit: (v) => NF1.format(v)}),
+  eB: buildBox($('eB'), {tok: fInt, e2e: fLatV, ttft: fLatV, hit: (v) => NF1.format(v)}),
+  fA: buildBox($('fA'), {pro: fLatV, reg: fLatV}),
+  fB: buildBox($('fB'), {pro: fLatV, reg: fLatV}),
+};
+const GAIN = {};
+for (const id of ['gTok', 'gE2E', 'gTtft', 'gKv', 'gPro', 'gReg']) { const el = $(id); GAIN[id] = {el, gv: el.querySelector('.gv'), gl: el.querySelector('.gl'), last: ''}; }
+// tier table
+const FT = {grid: $('fgrid'), scale: 500, scaleTo: 500, rows: {}};
+for (const t of TIERS) {
+  const sl = FT.grid.querySelector(`.fsl[data-tier="${t}"]`);
+  FT.rows[t] = {sl, fill: sl.querySelector('b'), knob: sl.querySelector('i'), slv: new Num(null, (v) => v, 300),
+    q: new Num(FT.grid.querySelector(`[data-k="${t}.q"]`), fInt), w: new Num(FT.grid.querySelector(`[data-k="${t}.w"]`), fInt),
+    r: new Num(FT.grid.querySelector(`[data-k="${t}.r"]`), fRate)};
 }
-window.__setViewSplit = setViewSplit;
-if (dividerEl) {
-  let dragging = false;
-  const onMove = (clientX) => {
-    const rect = stage.getBoundingClientRect();
-    if (rect.width > 0) setViewSplit(((clientX - rect.left) / rect.width) * 100);
-  };
-  dividerEl.addEventListener('pointerdown', (e) => {
-    e.preventDefault();
-    dragging = true;
-    dividerEl.classList.add('dragging');
-    try { dividerEl.setPointerCapture(e.pointerId); } catch {}
-    onMove(e.clientX);
-  });
-  dividerEl.addEventListener('pointermove', (e) => { if (dragging) onMove(e.clientX); });
-  const endDrag = (e) => {
-    if (!dragging) return;
-    dragging = false;
-    dividerEl.classList.remove('dragging');
-    try { dividerEl.releasePointerCapture(e.pointerId); } catch {}
-  };
-  dividerEl.addEventListener('pointerup', endDrag);
-  dividerEl.addEventListener('pointercancel', endDrag);
-  dividerEl.addEventListener('dblclick', () => setViewSplit(50));
-}
+FT.sq = new Num($('fsQ'), fInt); FT.sw = new Num($('fsW'), fInt); FT.sr = new Num($('fsR'), fRate);
 
 // ------------------------------------------------------------------ per-poll updates
 function targetRateFor(mode) {   // the driver's rate for this stage; older drivers: 100, or 300 in Stage 3
@@ -1231,14 +1310,12 @@ function updateFromState(st) {
   if (ph !== 'idle') wakePending = 0;
   const starting = performance.now() < wakePending;
   if (!pendingBtn.has(UI.wake)) UI.wake.disabled = ph !== 'idle' || st.busy || starting;
-
   const r = num(st.traffic.rate, 0);
   const canTraffic = (ph === 'running' || ph === 'waking') && !starting;
   if (!pendingBtn.has(UI.traf)) UI.traf.disabled = !canTraffic;
   setCls(UI.traf, 'ready', canTraffic && r <= 0);
   setCls(UI.traf, 'active', canTraffic && r > 0);
   setText(UI.traf, r > 0 && canTraffic ? `Traffic: ${fInt(r)}/s` : 'Simulate Traffic');
-
   // the driver answers 409 "busy" to a suspend while waking / suspending / reconciling; in idle it only makes
   // sense while sandboxes are still up (e.g. after a suspend that left some running)
   if (!pendingBtn.has(UI.susp)) UI.susp.disabled = st.busy || !(ph === 'running' || (ph === 'idle' && !starting && st.burst.running > 0));
@@ -1248,129 +1325,142 @@ function updateFromState(st) {
   UI.tUniq.set(st.totals.unique); UI.tRep.set(st.totals.replies);
   const nFail = num(st.totals.failed, 0);
   setText(UI.tFail, nFail > 0 ? `· ${fInt(nFail)} failed` : '');
-  document.querySelectorAll('.lp1').forEach((e) => setText(e, podName(0)));
-  document.querySelectorAll('.lp2').forEach((e) => setText(e, podName(1)));
-  // driver note (errors / repair summaries): shown in the operator menu, flagged by a dot on the LIVE pill
+  // driver note (errors / repair summaries): shown in the operator menu, flagged by a dot on the LIVE pills
   setText(UI.note, st.note); if (UI.note.title !== st.note) UI.note.title = st.note;
-  setCls(UI.live, 'note', !!st.note);
-  updateCluster(); updateHermes(st); updatePods(st); updateSplit(st); updateFlow(st); updateBanner(st); updateOps(st);
+  for (const l of UI.lives) setCls(l, 'note', !!st.note);
+  updateCluster(); updateHermes(st); updateCompare(st); updateTable(st); updateRails(st); updateOps(st);
+  saveMeas(performance.now());
 }
-const KPI = {hit: null, ttft: null, e2e: null, tok: null, req: 0};
-function updatePods(st) {
-  let useSum = 0, useN = 0, hitW = 0, hitTok = 0, ttW = 0, e2W = 0, rq = 0, tok = 0, tokN = 0;
-  for (let i = 0; i < 2; i++) {
-    const u = podUI[i], has = !!st.llmd.pods[i], p = st.llmd.pods[i] || {};
-    const up = has && p.up !== false;
-    setCls(u.root, 'down', has && !up);
-    setText(u.name, podName(i));
-    setText(u.st, !has ? 'no data' : up ? 'up' : 'down');
-    const v = (x) => (up ? nn(x) : null), active = up && num(p.req_s, 0) > 0;
-    u.req.set(v(p.req_s)); u.gen.set(v(p.gen_tok_s)); u.inp.set(v(p.prompt_tok_s));
-    u.e2e.set(active ? nn(p.e2e_ms) : null); u.ttft.set(active ? nn(p.ttft_ms) : null);
-    u.run.set(v(p.running)); u.wait.set(v(p.waiting));
-    const ch = active ? nn(p.cache_hit_pct) : null, kv = v(p.kv_usage_pct);
-    u.cache.set(ch); u.kv.set(kv);
-    if (kv != null) { useSum += kv; useN++; }
-    if (up && isNum(p.gen_tok_s)) { tok += p.gen_tok_s; tokN++; }
-    if (active) {
-      const r = num(p.req_s, 0), pt = num(p.prompt_tok_s, 0);
-      rq += r;
-      if (ch != null) { const w = pt > 0 ? pt : r; hitW += w * ch; hitTok += w; }
-      if (isNum(p.ttft_ms)) ttW += r * p.ttft_ms;
-      if (isNum(p.e2e_ms)) e2W += r * p.e2e_ms;
-    }
+
+// ---- comparisons
+const BADGE = {run: ['run', 'running now'], settle: ['run', 'running now'], meas: ['meas', 'measured'], sel: ['sel', 'no traffic'], none: ['', 'not run yet']};
+const hasV = (sm) => !!sm.v && sm.state !== 'settle';
+function renderBox(u, sm, vals) {
+  const [c, t] = BADGE[sm.state];
+  if (u.badge.__c !== c) { u.badge.__c = c; u.badge.className = 'cbadge' + (c ? ' ' + c : ''); }
+  setText(u.btxt, t);
+  setCls(u.root, 'now', sm.state === 'run' || sm.state === 'settle');   // not 'live': that is the LIVE pill's class
+  setCls(u.root, 'settle', sm.state === 'settle');
+  setCls(u.root, 'empty', !sm.v);
+  for (const k in u.v) {
+    const v = sm.v ? nn(vals[k]) : null;
+    u.v[k].set(v);
+    setCls(u.v[k].el.parentElement, 'none', v == null);
   }
-  KPI.req = rq;
-  KPI.hit = hitTok > 0 ? hitW / hitTok : null;
-  KPI.ttft = rq > 0 && ttW > 0 ? ttW / rq : null;
-  KPI.e2e = rq > 0 && e2W > 0 ? e2W / rq : null;
-  KPI.tok = tokN ? tok : null;   // output tokens/s of the pods that are up (vLLM generation tokens, last window_s)
-  UI.kvSumUse.set(useN ? useSum / useN : null);
-  UI.kvSumHit.set(KPI.hit);
 }
-let splitQuiet = true;   // no requests in the window: park the bar at 50/50 and show '—' (the driver reports [0, 100] when idle)
-function updateSplit(st) {
-  const L = st.llmd;
-  const reqs = [0, 1].map((i) => num((L.pods[i] || {}).req_s, 0)), tot = reqs[0] + reqs[1];
-  let a = nn(L.split[0]), b = nn(L.split[1]);
-  if (a == null && b != null) a = 100 - b;
-  if (a != null && b != null && a + b > 0) a = (100 * a) / (a + b);
-  if (a == null) a = tot > 0 ? (100 * reqs[0]) / tot : 50;
-  const quiet = tot <= 0.05;
-  splitQuiet = quiet;
-  UI.split.set(quiet ? 50 : clamp(a, 0, 100));
-  setCls($('splitCard'), 'quiet', quiet);
-  const info = STRAT[stratKey(st.traffic.strategy)];
-  setText($('scap'), quiet ? 'no traffic right now' : `share of requests · last ${fInt(L.window)} s`);
-  const tgt = info ? info.target : 50, star = $('star');
-  if (star.__l !== tgt) { star.__l = tgt; star.style.left = tgt + '%'; setCls(star, 'flip', tgt >= 85); }
-  if (star.__v !== !!info) { star.__v = !!info; star.style.display = info ? '' : 'none'; }   // no known target for other modes
-  setText($('starl'), tgt === 50 ? 'target 50 / 50' : `target ${tgt} / ${100 - tgt}`);
-  setText($('spn1'), podName(0)); setText($('spn2'), podName(1));
+// gain: '1.6×' (higher is better: b / a, lower is better: a / b), or 'pend' (a side still settling), or 'none'
+function setGain(g, st, text, label, worse) {
+  const cls = 'gain' + (g.el.classList.contains('big') ? ' big' : '') + (st === 'ok' ? (worse ? ' worse' : '') : ' ' + st);
+  const pop = st === 'ok' && g.last !== 'ok';
+  if (g.el.__c !== cls) { g.el.__c = cls; g.el.className = cls; }
+  if (pop) { void g.el.offsetWidth; g.el.classList.add('pop'); g.el.__c = ''; }
+  g.last = st;
+  setText(g.gv, st === 'ok' ? text : st === 'pend' ? 'measuring…' : '—');
+  setText(g.gl, label);
 }
-const SLA = {on: false, paid: null, free: null, ratio: null};   // Stage 3 headline: Paid Members vs Free Users queue wait
-function updateFlow(st) {
-  const f = st.llmd.flow;
-  let bands = arr(f.bands).map(obj).filter((b) => b.name != null)
-    .map((b) => ({name: String(b.name), priority: num(b.priority, 0), queue: nn(b.queue), wait: nn(b.wait_ms), rs: nn(b.req_s)}));
-  if (!bands.length) bands = [['premium', 100], ['standard', 0], ['best-effort', -10]].map(([name, priority]) => ({name, priority, queue: null, wait: null, rs: null}));
-  bands.sort((x, y) => y.priority - x.priority);
-  bands = bands.slice(0, 3);
-  buildFlow(bands);
-  let qmax = 0;
-  const byName = {};
-  for (const b of bands) {
-    byName[b.name] = b;
-    const r = flowUI.rows.get(b.name);
-    r.q.set(b.queue); r.w.set(b.wait); r.r.set(b.rs);
-    qmax = Math.max(qmax, num(b.queue, 0));
+function ratioGain(g, a, b, sa, sb, lowerBetter, better, worseL) {
+  if (hasV(sa) && hasV(sb) && isNum(a) && isNum(b) && a > 0 && b > 0) {
+    const r = lowerBetter ? a / b : b / a;
+    if (r >= 0.995) setGain(g, 'ok', fRatio(Math.min(r, 99.9)) + '×', better, false);
+    else setGain(g, 'ok', fRatio(1 / r) + '×', worseL, true);
+  } else setGain(g, (sa.state === 'settle' && (sb.v || hasV(sb))) || (sb.state === 'settle' && hasV(sa)) ? 'pend' : 'none', '', better, false);
+}
+function updateCompare(st) {
+  const mode = stratKey(st.traffic.strategy);
+  const rr = summarize('roundrobin'), kv = summarize('kvaware'), fl = summarize('flow');
+  // "with llm-d" is the KV-aware router (Stage 2); Stage 3 (same router + flow control) stands in until Stage 2 ran
+  const wl = kv.state === 'none' && fl.state !== 'none' ? fl : kv;
+  M.cmp = {rr, kv, fl, wl};
+  renderBox(BOX.eA, rr, rr.v || {}); renderBox(BOX.eB, wl, wl.v || {});
+  const a = rr.v || {}, b = wl.v || {};
+  ratioGain(GAIN.gTok, a.tok, b.tok, rr, wl, false, 'throughput', 'lower throughput');
+  ratioGain(GAIN.gE2E, a.e2e, b.e2e, rr, wl, true, 'lower E2E', 'higher E2E');
+  ratioGain(GAIN.gTtft, a.ttft, b.ttft, rr, wl, true, 'lower TTFT', 'higher TTFT');
+  if (hasV(rr) && hasV(wl) && isNum(a.hit) && isNum(b.hit)) {
+    const d = b.hit - a.hit;
+    setGain(GAIN.gKv, 'ok', (d >= 0 ? '+' : '−') + fInt(Math.abs(d)) + ' pts', 'KV-cache hit', d < 0);
+  } else setGain(GAIN.gKv, (rr.state === 'settle' && hasV(wl)) || (wl.state === 'settle' && hasV(rr)) ? 'pend' : 'none', '', 'KV-cache hit', false);
+  // flow control: without = Stage 2 (one shared band: every tier waits the same), with = Stage 3 (per tier)
+  const c = kv.v || {}, d = fl.v || {};
+  renderBox(BOX.fA, kv, {pro: c.shared, reg: c.shared});
+  renderBox(BOX.fB, fl, {pro: d.prem, reg: d.be});
+  if (hasV(kv) && hasV(fl) && isNum(c.shared) && isNum(d.prem) && c.shared > 0) {
+    const r = c.shared / Math.max(1, d.prem);
+    setGain(GAIN.gPro, 'ok', r >= 100 ? '100×+' : fRatio(r) + '×', r >= 0.995 ? 'lower Pro latency' : 'higher Pro latency', r < 0.995);
+  } else setGain(GAIN.gPro, (kv.state === 'settle' && hasV(fl)) || (fl.state === 'settle' && hasV(kv)) ? 'pend' : 'none', '', 'lower Pro latency', false);
+  if (hasV(kv) && hasV(fl) && isNum(c.shared) && isNum(d.be) && c.shared > 0) setGain(GAIN.gReg, 'ok', fRatio(d.be / c.shared) + '×', 'Regular tier absorbs', false);
+  else setGain(GAIN.gReg, (kv.state === 'settle' && hasV(fl)) || (fl.state === 'settle' && hasV(kv)) ? 'pend' : 'none', '', 'Regular tier absorbs', false);
+  // stage toggles: the Efficiency view's "with llm-d" is lit in Stage 3 too (same KV-aware router, plus flow control)
+  document.querySelectorAll('.tgl').forEach((t) => {
+    const m = t.dataset.mode;
+    setCls(t, 'on', t.dataset.view === 'eff' && m === 'kvaware' ? mode === 'kvaware' || mode === 'flow' : m === mode);
+  });
+}
+
+// ---- tier table (live) + saturation + footer line
+function updateTable(st) {
+  const x = M.live, mode = stratKey(st.traffic.strategy), cm = M.cmp;
+  const shared = mode === 'kvaware', perTier = mode === 'flow';
+  setCls(FT.grid, 'shared', shared);
+  let mx = 0;
+  for (const t of TIERS) {
+    const b = x && x.bands[t] ? x.bands[t] : {w: null, q: null, r: 0};
+    const sw = shared ? nn(x && x.qwait) : perTier ? b.w : null;
+    const row = FT.rows[t];
+    row.slv.set(sw); setCls(row.sl, 'none', sw == null);
+    row.q.set(perTier ? b.q : null); row.w.set(perTier ? b.w : null); row.r.set(perTier ? b.r : null);
+    if (sw != null) mx = Math.max(mx, sw);
   }
-  flowUI.scaleTo = niceMax(Math.max(20, qmax * 1.05), 4);
-  const sat = clamp(num(f.saturation, 0), 0, 1);
-  UI.sat.set(sat);
-  // Stage 3 is the flow-control stage: frame it; in stages 1 and 2 the panel stays visible but dimmed
-  const mode = stratKey(st.traffic.strategy), flowOn = mode === 'flow', card = $('flowCard');
-  setCls(card, 'on', flowOn);
-  setCls(card, 'quiet', !flowOn);
-  const prem = byName['premium'] || {}, be = byName['best-effort'] || {};
-  const ok = flowOn && isNum(prem.wait) && isNum(be.wait) && be.wait >= 20 && be.wait > prem.wait;
-  SLA.on = ok; SLA.paid = ok ? prem.wait : null; SLA.free = ok ? be.wait : null;
-  SLA.ratio = ok ? be.wait / Math.max(1, prem.wait) : null;
-  const fh = $('fhint'), fs = $('fhSla'), fm = $('fhMsg');
-  setCls(fh, 'sla', ok);
-  if (fs.hidden !== !ok) fs.hidden = !ok;   // SLA sentence: its numbers are BAN.paid / free / ratio, shared with the banner
-  if (fm.hidden !== ok) fm.hidden = ok;
-  if (!ok) setText(fm, flowOn ? '🟢 llm-d + Flow Control: 💎 Paid Members jump ahead of 🆓 Free Users when the pool is saturated'
-    : mode === 'kvaware' ? 'Stage 2 · requests carry no user tier yet: llm-d queues them all in one band (p0)'
-    : mode === 'roundrobin' ? 'Stage 1 · requests bypass llm-d (round robin): no queues, no priorities'
-    : 'llm-d flow control: 💎 Paid Members jump ahead of 🆓 Free Users');
+  FT.sq.set(shared && x ? x.qtot : null); FT.sw.set(shared && x ? x.qwait : null); FT.sr.set(shared && x ? x.qrate : null);
+  // one scale for both stages, so Stage 2's shared wait and Stage 3's tiers compare by length
+  for (const k of ['kv', 'fl']) { const v = cm && cm[k].v; if (v) mx = Math.max(mx, num(v.shared), num(v.be)); }
+  FT.scaleTo = niceMax(Math.max(200, mx * 1.08), 4);
+  UI.sat.set(x ? x.sat : null);
+  // footer: the numbers of the stage's own comparison box once it settled, the live window before that
+  const msg = $('fmsg'), on = !!(x && x.on);
+  let cls = '', h;
+  const pick = (sm, k, live) => (sm && sm.v && isNum(sm.v[k]) ? sm.v[k] : live);
+  if (!on) h = mode === 'roundrobin' ? 'Stage 1 · round robin bypasses llm-d: no flow-control queue, no tiers' : 'Queues form only when the pool is saturated · start traffic (T)';
+  else if (perTier) {
+    const p = pick(cm && cm.fl, 'prem', bandW(x, 'premium')), b = pick(cm && cm.fl, 'be', bandW(x, 'best-effort'));
+    cls = 'good';
+    h = isNum(p) && isNum(b) && b > p
+      ? `⚡ Flow Control ON (Priority Lanes): 💎 Paid Members (Pro) served <b>${fRatio(b / Math.max(1, p))}×</b> faster (<b>${fInt(p)} ms</b> wait vs <b>${fInt(b)} ms</b> for 🆓 Regular / Free Tier)`
+      : '⚡ Flow Control ON (Priority Lanes): 💎 Paid Members (Pro) are dispatched first when the pool is saturated';
+  } else if (shared) {
+    const w = pick(cm && cm.kv, 'shared', x.qwait);
+    cls = 'bad';
+    h = isNum(w) ? `⚠ Without Flow Control (Shared Queue): 💎 Paid Members (Pro) wait <b>${fInt(w)} ms</b> behind Regular / Free traffic`
+      : '⚠ Without Flow Control (Shared Queue): 💎 Paid Members (Pro) wait behind Regular / Free traffic';
+  } else h = mode === 'roundrobin' ? 'Stage 1 · round robin bypasses llm-d: no flow-control queue, no tiers' : `Routing: ${mode || '—'}`;
+  setCls(msg, 'good', cls === 'good'); setCls(msg, 'bad', cls === 'bad');
+  setHTML(msg, h);
 }
-const fRatio = (v) => (v >= 10 ? fInt(v) : NF1.format(v));
-// page-wide banner: the stage, plus pod-weighted KV hit and TTFT, total output tokens/s, and E2E (stages 1-2) or Paid vs
-// Free wait (stage 3)
-function updateBanner(st) {
-  const mode = stratKey(st.traffic.strategy), info = STRAT[mode], bn = $('banner');
-  const n = String(info ? info.n : 0);
-  if (bn.dataset.stage !== n) bn.dataset.stage = n;
-  const rate = num(st.traffic.rate, 0);
-  let title = info ? `Stage ${info.n}: ${info.title}` : `Routing: ${st.traffic.strategy || '—'}`;
-  // the offered load, in every stage: the same in all three unless the driver adds -overload-rate
-  if (info && rate > 0) title = `Stage ${info.n}: ${info.title.slice(0, -1)} @ ${fInt(rate)} req/s)`;
-  setText($('bStage'), title);
-  const live = KPI.req > 0.5, sla = live && SLA.on;
-  setCls($('bKpi'), 'quiet', !live);
-  BAN.hit.set(live ? KPI.hit : null); BAN.ttft.set(live ? KPI.ttft : null); BAN.e2e.set(live ? KPI.e2e : null);
-  BAN.tok.set(live ? KPI.tok : null);
-  BAN.paid.set(SLA.on ? SLA.paid : null); BAN.free.set(SLA.on ? SLA.free : null); BAN.ratio.set(SLA.on ? SLA.ratio : null);
-  const ew = $('bE2Ew'), sw = $('bSlaw');
-  if (ew.hidden !== sla) ew.hidden = sla;
-  if (sw.hidden !== !sla) sw.hidden = !sla;
+
+// ---- rails (folded sections): live chips
+function updateRails(st) {
+  const ph = st.phase, run = num(st.burst.running, 0), on = !!(M.live && M.live.on), mode = stratKey(st.traffic.strategy);
+  const ca = $('rchipA');
+  let t, c;
+  if (ph === 'waking') { t = 'waking'; c = 'c-wk'; }
+  else if (ph === 'suspending') { t = 'suspending'; c = 'c-fc'; }
+  else if (ph === 'reconciling') { t = 'reconciling'; c = 'c-wk'; }
+  else if (run > 0) { t = `${fInt(run)} active`; c = 'c-ag'; }
+  else { t = 'idle'; c = 'c-dim'; }
+  setText(ca, t); if (ca.__c !== c) { ca.__c = c; ca.className = 'rchip ' + c; }
+  setText($('rsubA'), `live · ${fInt(S.total)} agents`);
+  const ge = GAIN.gTok, gp = GAIN.gPro, ce = $('rchipE'), cf = $('rchipF');
+  const okE = ge.last === 'ok' && !ge.el.classList.contains('worse'), okF = gp.last === 'ok' && !gp.el.classList.contains('worse');
+  setText(ce, okE ? `${ge.gv.textContent} tok/s` : 'routing'); setCls(ce, 'c-gn', okE); setCls(ce, 'c-rt', !okE);
+  setText(cf, okF ? `${gp.gv.textContent} pro` : 'flw ctrl'); setCls(cf, 'c-gn', okF); setCls(cf, 'c-fc', !okF);
+  setCls(SEC_EL.agents.querySelector('.rail'), 'act', ph === 'running' || ph === 'waking');
+  setCls(SEC_EL.eff.querySelector('.rail'), 'act', on && (mode === 'roundrobin' || mode === 'kvaware'));
+  setCls(SEC_EL.flow.querySelector('.rail'), 'act', on && mode === 'flow');
 }
 function updateOps(st) {
-  const tr = st.traffic;
-  for (const b of sBtns) setCls(b, 'active', b.dataset.mode === stratKey(tr.strategy));
-  const r = num(tr.rate, 0);
+  const tr = st.traffic, r = num(tr.rate, 0), m = stratKey(tr.strategy);
   setText($('rsRate'), tr.rate == null ? '—' : r > 0 ? fInt(r) + ' req/s' : 'off');
+  setText($('rsMode'), MODE_NAME[m] || m || '—');
   UI.rsInf.set(tr.inflight); UI.rsSent.set(tr.sent); UI.rsRep.set(tr.replies); UI.rsFail.set(tr.failed);
 }
 
@@ -1382,14 +1472,11 @@ function tagClass(tag) {
   if (tag === S.pods[1]) return 't-p2';
   return {premium: 't-prem', standard: 't-std', 'best-effort': 't-be'}[tag] || 't-other';
 }
-function tagDisplay(tag) {
-  return TAG_LABEL[tag] || tag;
-}
+const tagDisplay = (tag) => TAG_LABEL[tag] || tag;
 function showSpotlight(e, idx = -1) {
   if (!e || !spotEl) return;
   T.spotIdx = idx >= 0 ? idx : T.history.indexOf(e);
-  const ag = str(e.agent, 'agent-0001');
-  setText($('jsAgent'), ag);
+  setText($('jsAgent'), str(e.agent, 'agent-0001'));
   setText($('jsPrompt'), `Prompt: “${promptFor(e)}”`);
   const mi = memInfo(e), jm = $('jsMem'), jb = $('jsBody'), cn = str(e.codename);
   if (mi && mi.hl && cn) {   // .jspot-body is a flex box: keep text + <mark> inline inside one span
@@ -1403,13 +1490,8 @@ function showSpotlight(e, idx = -1) {
   if (mi) { jm.className = 'mchip1 ' + mi.cls; setText(jm, mi.b + (mi.s ? mi.sep + mi.s : '')); }
   setText($('jsLat'), isNum(e.latency_ms) ? `${fInt(e.latency_ms)} ms E2E` : '');
   const tag = str(e.tag), jt = $('jsTag');
-  if (tag) {
-    jt.className = 'tchip ' + tagClass(tag);
-    jt.textContent = tagDisplay(tag);
-    jt.style.display = 'inline-block';
-  } else {
-    jt.style.display = 'none';
-  }
+  if (tag) { jt.className = 'tchip ' + tagClass(tag); jt.textContent = tagDisplay(tag); jt.style.display = 'inline-block'; }
+  else jt.style.display = 'none';
   spotEl.classList.add('on');
   spotEl.setAttribute('aria-hidden', 'false');
 }
@@ -1420,14 +1502,13 @@ function hideSpotlight() {
 }
 window.__showSpotlight = showSpotlight;
 window.__hideSpotlight = hideSpotlight;
-if ($('jsClose')) $('jsClose').addEventListener('click', (ev) => { ev.stopPropagation(); hideSpotlight(); });
-if ($('jsNext')) $('jsNext').addEventListener('click', (ev) => {
+$('jsClose').addEventListener('click', (ev) => { ev.stopPropagation(); hideSpotlight(); });
+$('jsNext').addEventListener('click', (ev) => {
   ev.stopPropagation();
   if (!T.history.length) return;
   const nextIdx = (T.spotIdx + 1) % T.history.length;
   showSpotlight(T.history[nextIdx], nextIdx);
 });
-
 function ingestTicker(st) {
   const list = st.ticker.map(obj).filter((e) => isNum(e.seq)).sort((a, b) => a.seq - b.seq);
   const maxSeq = list.length ? list[list.length - 1].seq : -Infinity;
@@ -1485,7 +1566,7 @@ function addRow(e, animate) {
   row.append(inner);
   row.addEventListener('click', () => showSpotlight(e));
   tickerEl.insertBefore(row, tickerEl.firstChild);
-  if (animate) {
+  if (animate && openName === 'agents') {
     const h = inner.offsetHeight;
     row.style.height = '0px'; row.style.opacity = '0';
     void row.offsetHeight;
@@ -1546,9 +1627,8 @@ function renderHero(rt) {
   setText(UI.counter, fInt(cnt));
   setText(UI.hlabel, duty ? 'agents active' : 'agents running');
   if (h.mode !== heroMode) { heroMode = h.mode; UI.hero.dataset.mode = h.mode; }
-
   const ist = duty ? 'duty' : (h.mode === 'running' ? 'burst' : 'rest');
-  if (ist !== idleState && UI.idleBox) { idleState = ist; UI.idleBox.dataset.state = ist; }
+  if (ist !== idleState) { idleState = ist; UI.idleBox.dataset.state = ist; }
   setText(UI.idlePct, fInt(idlePctRound));
   const ci = clusterInfo();
   const densTxt = ci && ci.perV != null && ci.perV < 10 ? `${fDens(ci.perV)} / vCPU` : '10× dense';
@@ -1566,7 +1646,6 @@ function renderHero(rt) {
   else if (duty) { const act = clamp(Math.round(cnt / ci.nodes), 0, ci.per); note = `~${fInt(act)} active / ${fInt(ci.per - act)} suspended per node (~${idlePctRound}% idle)`; }
   else note = `1 tile = 1 node (${fInt(ci.per)} gVisor sandboxes${ci.vcpus ? ` · ${fInt(ci.vcpus)} vCPU` : ''})`;
   setText(UI.gridNote, note);
-
   setText(UI.clabel, LABELS[h.mode] || h.mode);
   const wf = h.b && h.b.wakeFinal != null ? h.b.wakeFinal : null;
   const ws = h.b && wf == null && h.b.wakeStopped != null && h.b.woke > 0 ? h.b.wakeStopped : null;   // wake ended with failures
@@ -1584,11 +1663,7 @@ function renderHero(rt) {
   const idleish = h.mode === 'ready' || h.mode === 'starting' || h.mode === 'reconciling';
   setText(UI.hstats, idleish ? `of ${fInt(total)}${cnt === 0 ? ' · all suspended' : ''}` : `peak ${fInt(peakDisp)} · wake p50 ${p50 > 0 ? fInt(p50) + ' ms' : '—'}`);
   let cls = '', text = '';
-  const isCompactLeft = leftPanel && leftPanel.classList.contains('compact');
-  if (h.mode === 'running' && duty) {
-    cls = 'duty';
-    text = isCompactLeft ? `~${idlePctRound}% Idle · Duty Cycle` : `~${idlePctRound}% Idle · Wake → Request → Suspend`;
-  }
+  if (h.mode === 'running' && duty) { cls = 'duty'; text = `~${idlePctRound}% Idle · Wake → Request → Suspend`; }
   else if (h.mode === 'running') { cls = 'ok'; text = `All ${fInt(woke(h.b))} running in ${fInt(h.clock)} ms`; }
   else if (h.mode === 'partial') {
     const f = h.b.failed || 0, tgt = h.b.woke + f || total;
@@ -1606,17 +1681,12 @@ function renderHero(rt) {
 }
 
 // ------------------------------------------------------------------ bars driven by tweened values
-function setW(el, pct) { const w = clamp(pct, 0, 100).toFixed(1) + '%'; if (el.__w !== w) { el.__w = w; el.style.width = w; } }
+function setW(el, pct) { const w = clamp(pct, 0, 100).toFixed(2) + '%'; if (el.__w !== w) { el.__w = w; el.style.width = w; } }
+function setL(el, pct) { const l = clamp(pct, 0, 100).toFixed(2) + '%'; if (el.__l !== l) { el.__l = l; el.style.left = l; } }
 function renderBars() {
-  const a = UI.split.val(50), p1 = Math.round(a);
-  setW($('sb1'), a);
-  setText($('spc1'), splitQuiet ? '—' : p1 + '%'); setText($('spc2'), splitQuiet ? '—' : 100 - p1 + '%');
-  for (const u of podUI) { setW(u.cacheB, u.cache.val(0)); setW(u.kvB, u.kv.val(0)); }
-  const kvUse = UI.kvSumUse.cur, kvHit = UI.kvSumHit.cur;
-  setText($('kvSumUse'), kvUse != null ? NF1.format(kvUse) + '%' : '—');
-  setText($('kvSumHit'), kvHit != null ? NF1.format(kvHit) + '%' : '—');
-  flowUI.scale += (flowUI.scaleTo - flowUI.scale) * 0.12;
-  for (const r of flowUI.rows.values()) setW(r.bar, (100 * r.q.val(0)) / flowUI.scale);
+  for (const k of ['eA', 'eB']) { const b = BOX[k]; setW(b.bar, b.v.hit.val(0)); }
+  FT.scale += (FT.scaleTo - FT.scale) * 0.12;
+  for (const t of TIERS) { const r = FT.rows[t], p = (100 * r.slv.val(0)) / FT.scale; setW(r.fill, p); setL(r.knob, p); }
   const sv = UI.sat.val(0), sb = $('satb');
   setW(sb, sv * 100);
   const col = sv >= 0.85 ? 'var(--red)' : sv >= 0.6 ? 'var(--yellow)' : 'var(--green)';
@@ -1624,7 +1694,7 @@ function renderBars() {
 }
 
 // ------------------------------------------------------------------ canvas: agent grid (one tile per GKE node)
-const gridCv = $('grid'), rampCv = $('ramp'), tokCv = $('tokChart'), latCv = $('latChart');
+const gridCv = $('grid'), rampCv = $('ramp'), tputCv = $('tputChart'), kvCv = $('kvChart');
 // Cell geometry shared by drawGrid() and the agent inspector's click hit-test.
 // With config.cluster: one tile per node, agents split contiguously (ceil(total/nodes) per tile, the last one may be
 // short); the tile grid (cols x rows of tiles) and the cell grid inside a tile are chosen to give the biggest cells in
@@ -1701,7 +1771,6 @@ function drawGrid(now) {
   G.geom = g;
   const {nodeGrouped, nCols, bCols, bRows, nTiles, tileGapX, tileGapY, pitch, gap, size, ox, oy, cellPos} = g;
   const rad = Math.min(3, size * 0.22), ts = now / 1000;
-
   if (nodeGrouped) {
     const tw = bCols * pitch - gap + 4, th = bRows * pitch - gap + 4;
     ctx.lineWidth = 1;
@@ -1717,7 +1786,6 @@ function drawGrid(now) {
       ctx.stroke();
     }
   }
-
   const paths = {}, special = [];
   for (let i = 0; i < n; i++) {
     const code = G.disp[i];
@@ -1731,7 +1799,7 @@ function drawGrid(now) {
     const code = G.disp[i], age = now - G.changed[i], wake = G.fk[i] !== 2;
     let [x, y] = cellPos(i), s = size;
     const flash = age >= 0 && age < 450 ? 1 - age / 450 : 0;
-    if (flash && wake) { const g = size * 0.45 * flash; x -= g / 2; y -= g / 2; s += g; }
+    if (flash && wake) { const gg = size * 0.45 * flash; x -= gg / 2; y -= gg / 2; s += gg; }
     ctx.beginPath(); ctx.roundRect(x, y, s, s, rad);
     ctx.fillStyle = CELL[code] || CELL_OTHER; ctx.fill();
     if (code === 51) { ctx.fillStyle = `rgba(255,255,255,${(0.07 + 0.07 * Math.sin(ts * 6 + i * 2.3)).toFixed(3)})`; ctx.fill(); }
@@ -1777,7 +1845,6 @@ function updateHermes(st) {
     ? `${plural(num(m.agents_recalled, 0), 'agent')} · up to ${plural(num(m.max_survived, 0), 'suspend')}${aw}`
     : taught > 0 ? `waiting for the first recall${aw}` : 'no codenames given yet');
 }
-
 // codename highlight: case-insensitive, and "amber falcon" == "amber-falcon" == "Amber_Falcon"
 function cnRegex(cn) {
   const parts = String(cn || '').trim().split(/[\s_\-\u2010\u2011]+/).filter(Boolean)
@@ -2040,92 +2107,124 @@ function drawRamp(rt) {
   }
 }
 
-// ------------------------------------------------------------------ canvas: 60 s time series
-const TS = {tok: {ymax: 0, min: 1000, labels: true}, lat: {ymax: 0, min: 400, labels: false}};
-function drawTS(cv, field, conf) {
+// ------------------------------------------------------------------ canvas: 60 s charts coloured by stage
+// Red while requests skip llm-d (round robin), green behind the llm-d router (Stage 2 and 3); a dashed line marks
+// every switch (labelled on the throughput chart).
+const CH = {tput: {ymax: 0}};
+function drawChart(cv, pts, o) {
   const c = prep(cv);
   if (!c) return;
-  const {ctx, w, h} = c, hist = S.hist;
-  const L = 48, R = 12, T = 8, B = 22, x0 = L, x1 = w - R, y0 = h - B, y1 = T;
+  const {ctx, w, h} = c;
+  const L = 52, R = 16, T = 12, B = 24, x0 = L, x1 = w - R, y0 = h - B, y1 = T;
   let right = estNow() - 250;
-  if (hist.length) { const lt = hist[hist.length - 1].t; if (Math.abs(lt - right) > 15000) right = lt; }
+  if (pts.length) { const lt = pts[pts.length - 1].t; if (Math.abs(lt - right) > 15000) right = lt; }
   const left = right - SPAN_MS, X = (t) => x0 + ((t - left) / SPAN_MS) * (x1 - x0);
-  const ok = (q) => q && q[field] != null && (field !== 'e2e' || num(q.req, 0) > 0);
-  let mx = 0;
-  for (const e of hist) if (e.t >= left - 1000) for (const q of e.p) if (ok(q)) mx = Math.max(mx, q[field]);
-  const tgt = niceMax(Math.max(conf.min, mx * 1.12), 3);
-  conf.ymax = conf.ymax ? conf.ymax + (tgt - conf.ymax) * 0.1 : tgt;
-  const ymax = conf.ymax, Y = (v) => y0 - (v / ymax) * (y0 - y1);
+  let ymax, ticks;
+  if (o.fixed) { ymax = o.fixed; ticks = o.ticks; }
+  else {
+    let mx = 0;
+    for (const p of pts) if (p.t >= left - 1000 && p.v != null) mx = Math.max(mx, p.v);
+    const tgt = niceMax(Math.max(o.min, mx * 1.15), 3);
+    o.auto.ymax = o.auto.ymax ? o.auto.ymax + (tgt - o.auto.ymax) * 0.1 : tgt;
+    ymax = o.auto.ymax;
+    const step = niceStep(tgt, 3);
+    ticks = [];
+    for (let v = 0; v <= ymax + 1e-6; v += step) ticks.push(v);
+  }
+  const Y = (v) => y0 - (clamp(v, 0, ymax) / ymax) * (y0 - y1);
   ctx.font = `500 12.5px ${FONT}`; ctx.lineWidth = 1; ctx.textAlign = 'right'; ctx.textBaseline = 'middle';
-  const step = niceStep(tgt, 3);
-  for (let v = 0; v <= ymax + 1e-6; v += step) {
+  for (const v of ticks) {
     const y = Math.round(Y(v)) + 0.5;
     ctx.strokeStyle = v === 0 ? '#323a45' : '#1c222a'; ctx.beginPath(); ctx.moveTo(x0, y); ctx.lineTo(x1, y); ctx.stroke();
-    ctx.fillStyle = '#7d858f'; ctx.fillText(fAxis(v), x0 - 6, y);
+    ctx.fillStyle = '#7d858f'; ctx.fillText(o.fmt(v), x0 - 8, y);
   }
   ctx.textBaseline = 'top';
   for (let s = 60; s >= 0; s -= 15) {
     ctx.textAlign = s === 60 ? 'left' : s === 0 ? 'right' : 'center';
-    ctx.fillText(s ? `−${s} s` : 'now', X(right - s * 1000), y0 + 6);
+    ctx.fillText(s ? `−${s} s` : 'now', X(right - s * 1000), y0 + 7);
   }
-  ctx.save(); ctx.beginPath(); ctx.rect(x0, y1 - 4, x1 - x0, y0 - y1 + 8); ctx.clip();
-  for (let p = 1; p >= 0; p--) {
-    const segs = []; let cur = null;
-    for (const e of hist) {
-      if (e.t < left - 1500) continue;
-      const q = e.p[p];
-      if (!ok(q)) { cur = null; continue; }
-      if (!cur) segs.push((cur = []));
-      cur.push([X(e.t), Y(q[field])]);
+  ctx.save(); ctx.beginPath(); ctx.rect(x0, y1 - 6, x1 - x0, y0 - y1 + 10); ctx.clip();
+  const segs = [];
+  let cur = null;
+  for (const p of pts) {
+    if (p.t < left - 1500) continue;
+    if (p.v == null) { cur = null; continue; }
+    const col = MODE_C[p.m] || '#8a929c', xy = [X(p.t), Y(p.v)];
+    if (!cur || cur.col !== col) {
+      const prev = cur ? cur.pts[cur.pts.length - 1] : null;
+      cur = {col, fill: col === MODE_C.kvaware, pts: prev ? [prev] : []};
+      segs.push(cur);
     }
-    const col = POD_C[p];
-    for (const sg of segs) {
-      if (sg.length === 1) { ctx.fillStyle = col; ctx.beginPath(); ctx.arc(sg[0][0], sg[0][1], 2.5, 0, 7); ctx.fill(); continue; }
+    cur.pts.push(xy);
+  }
+  for (const sg of segs) {
+    const P = sg.pts;
+    if (P.length < 2) continue;
+    if (sg.fill) {
       const g = ctx.createLinearGradient(0, y1, 0, y0);
-      g.addColorStop(0, p ? 'rgba(52,168,83,.20)' : 'rgba(66,133,244,.24)'); g.addColorStop(1, 'rgba(0,0,0,0)');
-      ctx.beginPath(); sg.forEach(([x, y], i) => (i ? ctx.lineTo(x, y) : ctx.moveTo(x, y)));
-      ctx.lineTo(sg[sg.length - 1][0], y0); ctx.lineTo(sg[0][0], y0); ctx.closePath(); ctx.fillStyle = g; ctx.fill();
-      ctx.beginPath(); sg.forEach(([x, y], i) => (i ? ctx.lineTo(x, y) : ctx.moveTo(x, y)));
-      ctx.strokeStyle = col; ctx.lineWidth = 3; ctx.lineJoin = 'round'; ctx.lineCap = 'round'; ctx.stroke();
+      g.addColorStop(0, 'rgba(52,168,83,.30)'); g.addColorStop(1, 'rgba(52,168,83,0)');
+      ctx.beginPath(); P.forEach(([x, y], i) => (i ? ctx.lineTo(x, y) : ctx.moveTo(x, y)));
+      ctx.lineTo(P[P.length - 1][0], y0); ctx.lineTo(P[0][0], y0); ctx.closePath(); ctx.fillStyle = g; ctx.fill();
     }
-    const last = segs.length ? segs[segs.length - 1] : null;
-    if (last) { const [x, y] = last[last.length - 1]; ctx.beginPath(); ctx.arc(x, y, 4.5, 0, 7); ctx.fillStyle = col; ctx.fill(); ctx.lineWidth = 2; ctx.strokeStyle = '#11151b'; ctx.stroke(); }
+    ctx.beginPath(); P.forEach(([x, y], i) => (i ? ctx.lineTo(x, y) : ctx.moveTo(x, y)));
+    ctx.strokeStyle = sg.col; ctx.lineWidth = 3; ctx.lineJoin = 'round'; ctx.lineCap = 'round'; ctx.stroke();
+  }
+  const ls = segs.length ? segs[segs.length - 1] : null;
+  if (ls && ls.pts.length) {
+    const [x, y] = ls.pts[ls.pts.length - 1];
+    ctx.beginPath(); ctx.arc(x, y, 4.5, 0, 7); ctx.fillStyle = ls.col; ctx.fill(); ctx.lineWidth = 2; ctx.strokeStyle = '#11151b'; ctx.stroke();
   }
   ctx.restore();
-  const shown = S.markers.filter((m) => { const x = X(m.t); return x >= x0 && x <= x1; });
-  for (const m of shown) {
-    const xs = Math.round(X(m.t)) + 0.5, strat = m.kind === 's';
-    ctx.save();
-    ctx.setLineDash(strat ? [7, 5] : [2, 4]); ctx.lineWidth = strat ? 2 : 1.5;
-    ctx.strokeStyle = strat ? 'rgba(236,239,243,.9)' : 'rgba(150,158,168,.65)';
-    ctx.beginPath(); ctx.moveTo(xs, y1); ctx.lineTo(xs, y0); ctx.stroke();
-    ctx.restore();
+  if (!segs.length && o.empty) {
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillStyle = '#5c636d'; ctx.font = `500 14px ${FONT}`;
+    ctx.fillText(o.empty, (x0 + x1) / 2, (y0 + y1) / 2);
   }
-  if (!conf.labels) return;
-  const placed = {s: [], r: []};
-  for (let i = shown.length - 1; i >= 0; i--) {
-    const m = shown[i], xs = Math.round(X(m.t)) + 0.5, strat = m.kind === 's';
-    ctx.font = strat ? `700 13.5px ${FONT}` : `500 12px ${FONT}`;
-    const tw = ctx.measureText(m.label).width, bw = tw + (strat ? 14 : 10), bh = strat ? 23 : 18;
-    const bx = xs + 6 + bw > x1 ? xs - 6 - bw : xs + 6, taken = placed[strat ? 's' : 'r'];
+  // stage switches inside the window
+  const marks = [];
+  for (let i = 1; i < M.tl.length; i++) {
+    const e = M.tl[i];
+    if (e.mode === M.tl[i - 1].mode || !MARK[e.mode] || e.t < left || e.t > right) continue;
+    marks.push(e);
+  }
+  for (const m of marks) {
+    const xs = Math.round(X(m.t)) + 0.5;
+    ctx.save(); ctx.setLineDash([6, 5]); ctx.lineWidth = 2; ctx.strokeStyle = MARK[m.mode][1] + 'cc';
+    ctx.beginPath(); ctx.moveTo(xs, y1 - 4); ctx.lineTo(xs, y0); ctx.stroke(); ctx.restore();
+  }
+  if (!o.chips) return;
+  const placed = [];
+  for (let i = marks.length - 1; i >= 0; i--) {
+    const m = marks[i], xs = Math.round(X(m.t)) + 0.5, [label, col] = MARK[m.mode];
+    ctx.font = `700 13.5px ${FONT}`;
+    const bw = ctx.measureText(label).width + 16, bh = 24;
+    const bx = xs + 6 + bw > x1 ? xs - 6 - bw : xs + 6;
     let lane = -1;
-    for (let ln = 0; ln < 2 && lane < 0; ln++) if (!taken.some((p) => p.ln === ln && bx < p.b + 6 && bx + bw > p.a - 6)) lane = ln;
+    for (let ln = 0; ln < 2 && lane < 0; ln++) if (!placed.some((p) => p.ln === ln && bx < p.b + 6 && bx + bw > p.a - 6)) lane = ln;
     if (lane < 0) continue;
-    taken.push({ln: lane, a: bx, b: bx + bw});
-    const by = strat ? y1 + 2 + lane * (bh + 4) : y0 - bh - 3 - lane * (bh + 3);
-    ctx.fillStyle = strat ? (lane ? 'rgba(200,205,212,.9)' : 'rgba(236,239,243,.95)') : 'rgba(17,21,27,.92)';
-    ctx.beginPath(); ctx.roundRect(bx, by, bw, bh, 6); ctx.fill();
-    ctx.fillStyle = strat ? '#0b0d10' : '#aab1ba'; ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
-    ctx.fillText(m.label, bx + (strat ? 7 : 5), by + bh / 2 + 0.5);
+    placed.push({ln: lane, a: bx, b: bx + bw});
+    const by = y1 + lane * (bh + 5);
+    ctx.fillStyle = col; ctx.beginPath(); ctx.roundRect(bx, by, bw, bh, 7); ctx.fill();
+    ctx.fillStyle = '#fff'; ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+    ctx.fillText(label, bx + 8, by + bh / 2 + 0.5);
   }
 }
+function drawTput() {
+  drawChart(tputCv, S.hist.map((e) => ({t: e.t, v: e.v, m: modeAt(e.t)})),
+    {auto: CH.tput, min: 1000, fmt: fAxis, chips: true, empty: 'no llm-d history yet'});
+}
+function drawKv() {
+  const lo = estNow() - SPAN_MS - 3000, pts = [];
+  for (let i = M.samp.length - 1; i >= 0 && M.samp[i].t >= lo; i--) { const x = M.samp[i]; pts.push({t: x.t, v: x.hit, m: x.mode}); }
+  pts.reverse();
+  drawChart(kvCv, pts, {fixed: 100, ticks: [0, 50, 100], fmt: (v) => fInt(v) + '%', chips: false, empty: 'KV-cache hit appears once requests flow'});
+}
 
-// ------------------------------------------------------------------ connection pill
+// ------------------------------------------------------------------ connection pills
 function renderLive(now) {
   const never = S.lastOkPerf < 0, stale = never || now - S.lastOkPerf > STALE_MS;
   setCls(document.body, 'stale', !never && stale);
-  setCls($('live'), 'bad', stale && (!never || now > 2500));
-  setText($('liveText'), never ? 'CONNECTING…' : stale ? 'RECONNECTING…' : 'LIVE');
+  const txt = never ? 'CONNECTING…' : stale ? 'RECONNECTING…' : 'LIVE';
+  for (const l of UI.lives) { setCls(l, 'bad', stale && (!never || now > 2500)); setText(l.querySelector('.lt'), txt); }
 }
 
 // ------------------------------------------------------------------ controls
@@ -2169,7 +2268,8 @@ const act = {
   },
   suspend: () => { if (!UI.susp.disabled) { UI.susp.disabled = true; post('api/suspend', {}, UI.susp); } },
   strategy: async (mode) => {
-    const btn = sBtns.find((b) => b.dataset.mode === mode);
+    const sec = SEC_EL[openName];
+    const btn = (sec && sec.querySelector(`.tgl[data-mode="${mode}"]`)) || document.querySelector(`.tgl[data-mode="${mode}"]`);
     let ok = await post('api/strategy', {mode}, btn, legacyReject);
     if (!ok && legacyReject(post.lastError)) {
       if (LEGACY_MODE[mode]) ok = await post('api/strategy', {mode: LEGACY_MODE[mode]}, btn);
@@ -2183,7 +2283,7 @@ const act = {
 UI.wake.addEventListener('click', act.wake);
 UI.traf.addEventListener('click', act.traffic);
 UI.susp.addEventListener('click', act.suspend);
-sBtns.forEach((b) => b.addEventListener('click', () => act.strategy(b.dataset.mode)));
+document.querySelectorAll('.tgl').forEach((b) => b.addEventListener('click', () => act.strategy(b.dataset.mode)));
 // admin: POST api/reconcile, armed by a first click so it can't fire by accident on stage
 let reconArm = 0;
 function disarmRecon() { reconArm = 0; setText(UI.recon, 'reconcile agents'); UI.recon.classList.remove('arm'); }
@@ -2204,28 +2304,44 @@ UI.memReset.addEventListener('click', () => {
   setText(UI.memReset, 'click again to reset'); UI.memReset.classList.add('arm');
   setTimeout(() => { if (memArm && performance.now() >= memArm) disarmMem(); }, 3100);
 });
-// operator menu (traffic stats, driver note, keys, admin): opened from the LIVE pill, closed by Esc or a click outside
-function setOps(on) {
-  setCls(UI.ops, 'on', on); setCls(UI.live, 'open', on);
+// operator menu (traffic stats, driver note, keys, admin): opened from a LIVE pill, closed by Esc or a click outside
+let opsAnchor = null;
+function setOps(on, anchor) {
+  if (on && anchor) {
+    opsAnchor = anchor;
+    const sr = stage.getBoundingClientRect(), r = anchor.getBoundingClientRect(), k = stageScale || 1;
+    UI.ops.style.right = Math.round((sr.right - r.right) / k) + 'px';
+    UI.ops.style.top = Math.round((r.bottom - sr.top) / k + 8) + 'px';
+  }
+  setCls(UI.ops, 'on', on);
+  for (const l of UI.lives) setCls(l, 'open', on && l === opsAnchor);
   UI.ops.setAttribute('aria-hidden', on ? 'false' : 'true');
   if (!on) { disarmRecon(); disarmMem(); }
 }
-UI.live.addEventListener('click', () => setOps(!UI.ops.classList.contains('on')));
+for (const l of UI.lives) l.addEventListener('click', () => setOps(!(UI.ops.classList.contains('on') && opsAnchor === l), l));
 document.addEventListener('pointerdown', (e) => {
-  if (UI.ops.classList.contains('on') && !UI.ops.contains(e.target) && !UI.live.contains(e.target)) setOps(false);
+  if (UI.ops.classList.contains('on') && !UI.ops.contains(e.target) && !UI.lives.some((l) => l.contains(e.target))) setOps(false);
 });
-window.__setOps = setOps;
+window.__setOps = (on) => setOps(on, SEC_EL[openName] && SEC_EL[openName].querySelector('.live'));
 document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape' && UI.ops.classList.contains('on')) { e.preventDefault(); setOps(false); return; }
   if (e.key === 'Escape' && INS.open) { e.preventDefault(); closeInspector(); return; }
-  if (e.key === 'Escape' && spotEl && spotEl.classList.contains('on')) { e.preventDefault(); hideSpotlight(); return; }
+  if (e.key === 'Escape' && spotEl.classList.contains('on')) { e.preventDefault(); hideSpotlight(); return; }
   if (e.ctrlKey || e.metaKey || e.altKey || e.repeat) return;
-  const k = e.key.toLowerCase();
+  // a stage that the open llm-d view does not show brings up the view that does (1 -> Efficiency, 3 -> Flow control)
+  const stg = (mode) => () => {
+    if (mode === 'roundrobin' && openName === 'flow') openSec('eff');
+    if (mode === 'flow' && openName === 'eff') openSec('flow');
+    act.strategy(mode);
+  };
+  const k = e.key.length === 1 ? e.key.toLowerCase() : e.key;
   const map = {w: act.wake, t: act.traffic, s: act.suspend,
-    1: () => act.strategy('roundrobin'), 2: () => act.strategy('kvaware'), 3: () => act.strategy('flow'),
-    r: () => act.strategy('roundrobin'), b: () => act.strategy('kvaware'), d: () => act.strategy('kvaware'), p: () => act.strategy('flow')};
+    1: stg('roundrobin'), 2: stg('kvaware'), 3: stg('flow'), r: stg('roundrobin'), b: stg('kvaware'), d: stg('kvaware'), p: stg('flow'),
+    a: () => openSec('agents'), e: () => openSec('eff'), f: () => openSec('flow'),
+    ArrowLeft: () => stepSec(-1), ArrowRight: () => stepSec(1), PageUp: () => stepSec(-1), PageDown: () => stepSec(1)};
   if (map[k]) { e.preventDefault(); map[k](); }
 });
+window.__meas = () => ({cmp: M.cmp, samples: M.samp.length, replies: M.rep.length, timeline: M.tl});
 
 // ------------------------------------------------------------------ main loop
 function frame(now) {
@@ -2236,19 +2352,24 @@ function frame(now) {
     for (const n of nums) n.step(now);
     renderBars();
     pumpTicker(now);
-    drawGrid(now);
-    if (INS.open) { renderInsState(); positionInspector(); }
-    drawRamp(rt);
-    drawTS(tokCv, 'gen', TS.tok);
-    drawTS(latCv, 'e2e', TS.lat);
+    if (openName === 'agents') {
+      drawGrid(now);
+      if (INS.open) { renderInsState(); positionInspector(); }
+      drawRamp(rt);
+    } else if (openName === 'eff') {
+      drawTput();
+      drawKv();
+    }
     renderLive(now);
   } catch (e) {
     console.error('frame error', e);
   }
   requestAnimationFrame(frame);
 }
-[gridCv, rampCv, tokCv, latCv].forEach((c) => ro.observe(c));
-setViewSplit(50);
+[gridCv, rampCv, tputCv, kvCv].forEach((c) => ro.observe(c));
+let sec0 = 'agents';
+try { const s = localStorage.getItem('kd.sec'); if (SEC_EL[s]) sec0 = s; } catch (e) { /* no storage */ }
+openSec(sec0);
 requestAnimationFrame(frame);
 poll();
 })();

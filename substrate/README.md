@@ -3,9 +3,9 @@
 A keynote demo:
 - **Agent Substrate** wakes 1,000 sandboxed agents from zero in about 2 seconds on GKE (C4 nodes; about 3 s on the original C3 nodes).
 - The agents call **Gemma 4 12B**, served by vLLM on **Cloud TPU v6e** behind the **llm-d** router.
-- The stage dashboard shows both sides live and walks the llm-d side through three stages: **No llm-d** (plain round robin at the gateway), the **llm-d Router** (KV-cache-aware routing) and **llm-d + Flow Control** (paid users first when the pool is saturated).
+- The stage dashboard shows both sides live and walks the llm-d side through three stages, each measured side by side against the one before it: **without llm-d** (plain round robin at the gateway), **with llm-d** (KV-cache-aware routing) and **with flow control** (paid tiers first when the pool is saturated).
 
-This folder has the dashboard, the orchestrator ("keynote driver"), the patches, the manifests, and a step-by-step [user guide](./USER_GUIDE.md). Its steps were re-verified against the running clusters on 2026-09-26 and re-checked on 2026-10-04 (see [How this guide was verified](#10-how-this-guide-was-verified)); the three stages were measured live on 2026-10-03, at 90% and then at 80% fleet idle, and finally with the same load in every stage (§2).
+This folder has the dashboard, the orchestrator ("keynote driver"), the patches, the manifests, and a step-by-step [user guide](./USER_GUIDE.md). Its steps were re-verified against the running clusters on 2026-09-26 and re-checked on 2026-10-04, and its recovery recipes were run for real on 2026-10-05, after a GKE auto-upgrade had recreated every node (see [How this guide was verified](#10-how-this-guide-was-verified)). The three stages were measured live on 2026-10-03, and again on 2026-10-05 with the redesigned dashboard (§2).
 
 **To build, redeploy, update or tear down the stack, start with [USER_GUIDE.md](./USER_GUIDE.md).** This README has the results, the architecture, the pre-show health check, the stage runbook and the disclosures.
 
@@ -27,33 +27,106 @@ This folder has the dashboard, the orchestrator ("keynote driver"), the patches,
 
 ## 1. What the demo shows
 
-The dashboard is one 1920×1080 page with a draggable divider. Agents take 25–75% of the width, or none: drag the divider all the way left and llm-d fills the page. Double-click the divider for 50/50. In a window taller than 16:9 (a 16:10 laptop screen, up to 4:3) the page gets taller instead of leaving empty bands above and below; the llm-d charts and the Agents ticker take the extra height. A wider window still gets bands left and right.
+The dashboard is one page laid out for a 1920×1080 stage screen (redesigned on 2026-10-05). It has three sections, opened one at a time like an accordion: **1 · Agents fleet**, **2 · llm-d routing** (Efficiency) and **3 · Flow control**. The two closed sections fold into 72 px rails at the edges, and each rail keeps one live number on it: agents active, the throughput gain, Pro's queue-wait gain. Click a rail to open its section, or use the keys below. In a window taller than 16:9 (a 16:10 laptop screen, up to 4:3) the page gets taller instead of leaving empty bands above and below; the charts, the flow-control rows and the Agents ticker take the extra height. A wider window still gets bands left and right.
 
-**Left panel, "Agents":** 1,000 Agent Substrate actors (`agent-0001` … `agent-1000`).
+**1 · Agents fleet:** 1,000 Agent Substrate actors (`agent-0001` … `agent-1000`).
 - Each agent is a gVisor sandbox. When idle it is paused to a snapshot on its node's local disk.
-- A 50×20 grid shows every agent's state.
-- Also shown: a millisecond wake clock, a ramp chart, and a ticker with the agents' LLM replies.
+- A grid shows every agent's state, with one tile per GKE node.
+- Also shown:
+  - the number of agents active;
+  - the fleet idle rate;
+  - a millisecond wake and suspend clock;
+  - a ramp chart;
+  - a ticker with the agents' LLM replies (click one to magnify it).
+- The section's header has the **Wake Agents**, **Simulate Traffic** and **Suspend all** buttons.
 
-**Right panel, "llm-d":** two vLLM replicas (`pod-1`, `pod-2`) of `google/gemma-4-12B-it` on TPU v6e.
-- A banner across the top of the page names the active stage, with the offered rate while traffic runs, and its headline numbers: prefix-cache (KV) hit, output tokens per second from both pods together (Output Tok/s), E2E latency and TTFT; in Stage 3, Paid vs Free queue wait in place of E2E.
-- The panel header holds the three stage pills (**No llm-d** · Round Robin, **llm-d Router** · KV-Aware, **llm-d + Flow** · Priority SLA) and the **LIVE** pill. Clicking LIVE opens a small operator menu with traffic counters, the driver's last error note, keyboard keys and the admin actions (reconcile agents; reset memory in the Hermes variant). A yellow dot on LIVE means the driver has a note.
-- At the top, the **Paid tier SLA & queue depth** card shows llm-d flow control: three user tiers (💎 Paid Members (Pro) = premium, Paid Standard = standard, 🆓 Free Users = best-effort) with queue depth, queue wait and dispatch rate, plus pool saturation. It is framed in green in Stage 3, where its footer compares Paid Members' and Free Users' queue wait, and dimmed in Stages 1 and 2.
-- Below it: the pod-1 / pod-2 share of requests with a combined KV-cache hit and usage chip; per pod, KV-cache hit and usage tiles, request rate, tokens/s, E2E latency, TTFT and running / waiting; and 60 s charts of output tokens/s and E2E latency, marked at every stage and traffic-rate change.
+**2 · llm-d routing and 3 · Flow control:** two vLLM replicas (`pod-1`, `pod-2`) of `google/gemma-4-12B-it` on TPU v6e.
+- The llm-d header switches between the two views (**1 Efficiency** | **2 Flow control**) and holds the **LIVE** pill.
+- Each view asks one question. Two buttons under it select the stage without and with the feature. Below them, a comparison card measured live in this run shows:
+  - the stage without the feature on the left;
+  - the stage with it on the right;
+  - the gain in the middle.
+- **Efficiency:** "Same accelerators. Same model. How does llm-d's routing improve cache hit rate, throughput and latency?"
+  - Buttons: **Without llm-d** (Stage 1, round robin) and **With llm-d** (Stage 2, KV-cache-aware router).
+  - Each side shows throughput, E2E latency, TTFT and the KV-cache hit rate.
+  - The middle shows the throughput gain, how much lower E2E and TTFT are (in yellow, as "higher", when a number got worse), and the hit-rate gain in points.
+  - Below: 60 s charts of throughput and KV-cache hit, red without llm-d and green with it, marked at every stage switch.
+- **Flow control:** "Traffic spikes across Paid, Premium & Regular tiers. How does Flow Control protect 💎 Paid Members (Pro)?"
+  - Buttons: **Without flow control** (Stage 2, one shared queue) and **With flow control** (Stage 3, priority payment tiers).
+  - Each side shows the queue latency of Paid Members (Pro) and of the Regular tier. The middle shows how much lower Pro's is and how many times longer the Regular tier waits.
+  - Below, one row per tier: 💎 Paid Members (Pro) = premium, Paid Standard = standard, 🆓 Regular / Free Tier = best-effort. The dashboard called the last tier "Free Users" until 2026-10-05.
+  - Each row has a bar for its live queue latency, then queued requests, mean wait and dispatch rate. The footer shows the pool saturation and compares Pro with the Regular / Free tier.
+  - Without flow control the requests carry no tier, so the three rows share one "shared queue" cell.
+- **How the comparison is measured:** each side is the mean of its last 10 s with traffic on, counted from 5 s after the switch. During those first 5 s its numbers are dimmed.
+  - A badge on each side says RUNNING NOW, MEASURED (earlier in this run), NO TRAFFIC (selected, traffic off) or NOT RUN YET.
+  - A new Wake starts the comparisons over; reloading the page keeps them.
+  - **Throughput:** output tokens/s of both pods together.
+  - **E2E latency:** from the driver's first call to the agent until the reply, retries included, so every queue counts. A reply counts for the stage that was active when it was sent.
+  - **TTFT:** at the gateway. It is llm-d's flow-control queue wait plus vLLM's own time to first token, which includes vLLM's queue. Without llm-d there is no llm-d queue.
+  - **KV-cache hit:** the share of prompt tokens served from the prefix cache.
+  - **Queue latency:** the mean wait in llm-d's flow-control queue, per tier.
+- **Operator menu (click LIVE):**
+  - traffic counters;
+  - the driver's last error note;
+  - the keyboard keys;
+  - the admin actions: reconcile agents, and reset memory in the Hermes variant.
+
+  A yellow dot on LIVE means the driver has a note.
 
 | Button | What happens |
 |---|---|
 | **Wake Agents** | All 1,000 paused agents are resumed at once (`ResumeActor`). The clock stops when all 1,000 are RUNNING. No LLM calls are made yet. |
 | **Simulate Traffic** | Starts the duty cycle at 200 requests/s. Random agents wake, run a script inside their sandbox that asks the LLM for a short PyTorch joke, and pause again. About 80% of the fleet is paused at any moment ("fleet idle rate"), so about 200 agents are active. The driver flag `-fleet-idle-pct` sets it (default 80; it was 90%, about 100 agents and 100 req/s, until 2026-10-03). |
-| **Stage pills** | Change only the headers on the agents' next requests (driver modes `roundrobin`, `kvaware`, `flow`). Neither the gateway nor the llm-d config is touched when switching.<br>• **No llm-d (Round Robin)**, `roundrobin`: `x-route-mode: round-robin`. The gateway skips the llm-d endpoint picker and spreads requests round robin over the two pods. 200 req/s.<br>• **llm-d Router (KV-Aware)**, `kvaware`: no routing header. The endpoint picker sends each request to the pod that already has its prefix in KV cache, weighed against load. 200 req/s.<br>• **llm-d + Flow (Priority SLA)**, `flow`: 200 req/s, the same load as Stages 1 and 2, with each request tagged with its user tier in `x-llm-d-inference-objective`: 30% Paid Members (premium), 40% Paid Standard (standard), 30% Free Users (best-effort). When the pool is saturated, flow control dispatches the paid tiers first. (Until the evening of 2026-10-03 Stage 3 added 200 req/s of overload traffic; the driver flag `-overload-rate` still adds overload traffic, to every stage alike, default 0.)<br>The old mode names still work (`balanced` = `kvaware`, `priority` = `flow`). The driver API also accepts `steer8020` (`x-target-pod` header steering, measured in §2.2), which has no button. |
+| **Stage buttons** | **Without llm-d** and **With llm-d** in the Efficiency view, **Without flow control** and **With flow control** in the Flow control view. With llm-d and Without flow control are the same Stage 2. They change only the headers on the agents' next requests (driver modes `roundrobin`, `kvaware`, `flow`). Neither the gateway nor the llm-d config is touched when switching.<br>• **Stage 1, without llm-d** (round robin), `roundrobin`: `x-route-mode: round-robin`. The gateway skips the llm-d endpoint picker and spreads requests round robin over the two pods. 200 req/s.<br>• **Stage 2, with llm-d** (KV-cache-aware router), `kvaware`: no routing header. The endpoint picker sends each request to the pod that already has its prefix in KV cache, weighed against load. 200 req/s.<br>• **Stage 3, with flow control** (priority payment tiers), `flow`: 200 req/s, the same load as Stages 1 and 2, with each request tagged with its user tier in `x-llm-d-inference-objective`: 30% Paid Members (Pro) (premium), 40% Paid Standard (standard), 30% Regular / Free Tier (best-effort). When the pool is saturated, flow control dispatches the paid tiers first. (Until the evening of 2026-10-03 Stage 3 added 200 req/s of overload traffic; the driver flag `-overload-rate` still adds overload traffic, to every stage alike, default 0.)<br>The old mode names still work (`balanced` = `kvaware`, `priority` = `flow`). The driver API also accepts `steer8020` (`x-target-pod` header steering, measured in §2.2), which has no button. |
 | **Suspend all** | Pauses every running agent back to zero compute. |
 
-Keyboard: `W` wake, `T` traffic, `S` suspend, `1` / `2` / `3` the three stages (also `R`, `D` or `B`, and `P`), `Esc` closes the operator menu or a magnified joke. The keys also work while the Agents panel, which holds the Wake, Traffic and Suspend buttons, is hidden.
+Keyboard:
+- `W` wake, `T` traffic, `S` suspend.
+- `1` / `2` / `3` select the three stages (also `R`, `D` or `B`, and `P`). From the Flow control view, `1` also switches to Efficiency; from Efficiency, `3` switches to Flow control.
+- `A` / `E` / `F` open the Agents, Efficiency and Flow control sections; `←` / `→` step through them.
+- `Esc` closes the operator menu or a magnified joke.
+
+The keys work whichever section is open.
 
 Each reply shown in the ticker came from inside an agent's sandbox. The agent's script POSTs to the llm-d gateway with `wget`, saves the reply to `/tmp/agent_memory.json` in the sandbox, and returns it.
 
 In steady traffic each request also carries its team's notes ahead of the question, the way an agent carries its memory. The 1,000 agents work in 240 teams (`-contexts 240`), and every agent of a team sends the same 60 lines of notes (`-agent-context-lines 60`); on the live pods that came to about 1.9k prompt tokens per request. The team count was chosen so that the notes of all 240 teams don't stay in one pod's prefix cache, while those of half the teams do. Round robin then often lands a request on a pod that no longer has its team's notes, while KV-aware routing keeps each team on one pod. At 80% fleet idle on 2026-10-03, 43–75% of prompt tokens came from the prefix cache with round robin, against 78–98% with KV-aware routing (§2).
 
 ## 2. Results
+
+> [!IMPORTANT]
+> **New dashboard, measured live (2026-10-05).** The dashboard now puts each stage side by side with the one before it (§1). The driver, its flags, the gateway, the EPP values and the vLLM pods are the same as on 2026-10-03 evening, and the same 200 req/s is offered in every stage.
+>
+> **Before the run:**
+> - GKE had auto-upgraded both clusters the day before and recreated every node, so all 1,000 agents had been re-created (§9, [user guide §4.8](./USER_GUIDE.md#48-gke-upgraded-the-cluster-every-node-recreated)).
+> - Both vLLM pods were warmed up with 70 s of Stage 1 traffic.
+> - An earlier run that afternoon, before the warm-up, is not used. pod-2 was still cold after the upgrade, because the Hermes agents' teach traffic had gone to pod-1. In Stage 1 pod-2 queued 149 requests at a 7.4 s TTFT, and one agent's request timed out.
+>
+> **The run:** clicking the dashboard's own buttons in headless Chrome, about 27 s per stage: Wake → Simulate Traffic → Stage 1 → 2 → 3 → Suspend all. The table shows the dashboard's own comparison numbers (each side the mean of its last 10 s, §1). 8,673 LLM requests, all answered.
+>
+> | | Without llm-d (Stage 1, round robin) | With llm-d (Stage 2, KV-cache-aware) | On the page |
+> |---|---|---|---|
+> | Throughput, output tok/s of both pods | 1,619 | 3,174 | 2.0× |
+> | E2E latency, agent request → reply | 2,557 ms | 1,057 ms | 2.4× lower |
+> | TTFT at the gateway: llm-d queue + vLLM | 475 ms | 547 ms | 1.2× higher, in yellow |
+> | KV-cache hit | 57.1% | 97.1% | +40 pts |
+>
+> | | Without flow control (Stage 2) | With flow control (Stage 3) | On the page |
+> |---|---|---|---|
+> | 💎 Paid Members (Pro): queue latency in llm-d | 481 ms | 44 ms | 11× lower |
+> | 🆓 Regular / Free Tier: queue latency in llm-d | 481 ms | 1,340 ms | 2.8× longer ("absorbs") |
+>
+> - **TTFT does not improve with llm-d at this load, and the page shows that in yellow.** The pool is saturated (saturation 1.02–1.06 in Stage 2). Behind llm-d the concurrency detector admits 32 requests per pod, and the rest wait in llm-d's queue.
+>   - **Stage 2:** a request waited 473–480 ms in that queue, then 65–66 ms on vLLM.
+>   - **Stage 1:** there is no llm-d queue, and the 475 ms is vLLM's own queue plus prefill.
+>   - The wait before the first token moves from vLLM into llm-d; it doesn't shrink. What gets faster is everything after the first token: decode is quicker with cache hits and with 32 requests per pod instead of ~70, so E2E is 2.4× lower.
+> - **Stage 1 was even this time.** pod-1 / pod-2: E2E 2.61 / 2.53 s, TTFT 673 / 329 ms, prefix-cache hit 55% / 60%, 68 / 70 requests running and 5 / 2 waiting inside vLLM. In a run where one pod falls behind (§9), Stage 1's TTFT is higher.
+> - **Stage 2:** both pods E2E 0.49–0.55 s and prefix-cache hit about 98%. 58–70 requests waited in llm-d's single band.
+> - **Stage 3:** throughput stayed at about 3,250 tok/s and E2E at about 1.0 s, with saturation 1.06–1.11.
+>   - Live queue wait per tier: Paid Members (Pro) 46–49 ms, Paid Standard 66 ms, Regular / Free Tier 1.24 s, with 53–56 requests queued.
+>   - The 1.24 s is about a sixth of the agents' 8 s `wget` timeout.
+> - **Wake 1,000:** 1,887 ms. **Suspend all** straight from Stage 3, with about 190 agents up: 1,129 ms.
+> - On the mock (§2.3) TTFT comes out about 1.3× *lower* with llm-d. The mock's pool model was fitted to the 2026-10-03 runs, where one pod fell behind in Stage 1, so its numbers are simulated and not this result.
 
 > [!IMPORTANT]
 > **The same load in every stage (2026-10-03, evening).** All three stages now offer the same 200 req/s from the same ~200 active agents (80% fleet idle). Stage 3 no longer adds 200 req/s of overload traffic, so the stages differ only in how llm-d routes and queues the requests. The driver's new `-overload-rate` flag adds open-loop overload traffic to every stage alike (default 0; `-overload-rate=200` would offer 400 req/s everywhere, not measured). The banner now shows the offered rate in every stage's title, not only in Stage 3's. Nothing else changed: same gateway, EPP values and vLLM pods.
@@ -69,7 +142,7 @@ In steady traffic each request also carries its team's notes ahead of the questi
 > - **Same agents, same load: with llm-d they get about 60–70% more done, and each request waits about half as long.** Served rises from ~65 to ~103–113 req/s (Output Tok/s from ~1.6–1.7k to ~2.5–2.8k) and agent wait falls from 2.4–2.6 s to 1.25–1.4 s. The prefix-cache hit rises from 45–72% to 80–98%.
 > - **Why served stays below 200:** the duty cycle is a closed loop. 196 workers each wake an agent, wait for its reply and pause it again, so a worker sends its next request only after the last reply. Faster replies let the same agents send more, which is why Stages 2 and 3 serve more. Behind llm-d, the concurrency detector admits 32 requests per pod; the rest wait in llm-d's queue.
 > - **Stage 3 changes who waits, not how much gets done.** Served and agent wait stay about as in Stage 2. But the paid tiers now wait 40–134 ms in llm-d's queue, against 0.53–0.85 s for every request in Stage 2, while Free Users wait 1.6–2.3 s, about a quarter of the agents' 8 s `wget` timeout.
-> - **The dashboard's per-pod E2E and TTFT are vLLM's own.** In Stage 1 the queue is inside vLLM, so they include it; in Stages 2 and 3 it is in llm-d, so they don't (the flow card shows it). Agent wait is the like-for-like number: about 2× lower with llm-d, where the banner's E2E suggests about 4×.
+> - **The dashboard's per-pod E2E and TTFT were vLLM's own** (until the 2026-10-05 redesign). In Stage 1 the queue is inside vLLM, so they included it; in Stages 2 and 3 it is in llm-d, so they didn't (the flow card showed it). Agent wait is the like-for-like number: about 2× lower with llm-d, where the banner's E2E suggested about 4×.
 > - **Stage 1 differs from run to run.** In the API run pod-1 fell behind (E2E 2.4–4.9 s, up to 85 requests waiting inside vLLM) while pod-2 stayed at 0.53–2.3 s; in both dashboard runs the two pods were about even at 2.1–2.8 s.
 > - Wake 1,000: 1,983, 1,918 and 1,869 ms (per-agent p50 1,124–1,126 ms). Suspend all straight from Stage 3, with about 190 agents up: 1,458, 1,482 and 1,208 ms.
 
@@ -224,31 +297,36 @@ Every run was checked against **ground truth**, not only the dashboard's own cou
 
 ### 2.3 Dashboard screenshots
 
-**Live cluster (2026-10-03 late evening, 80% fleet idle, the same 200 req/s in every stage):** captured after the banner gained Output Tok/s, in a later dashboard run with the same settings (not one of the three in the table at the top of §2), by clicking the dashboard's own buttons in headless Chrome: 7,066 LLM requests, 0 failed. With the same 10 s skip, Output Tok/s was 1,659–1,752 in Stage 1, 2,437–2,730 in Stage 2 and 2,530–2,829 in Stage 3 (served 65–71, 96–112 and 100–115 req/s).
+**Live cluster (2026-10-05):** captured during the run in the box at the top of §2, by clicking the dashboard's own buttons in headless Chrome.
 
-| Stage 1: No llm-d (round robin, 200 req/s) | Stage 2: llm-d Router (KV-aware, 200 req/s) |
+| Agents fleet, Stage 1 traffic | Efficiency: Stage 1 running, Stage 2 not run yet |
 |---|---|
-| ![Live Stage 1](./docs/images/11_live_stage1_round_robin.png) | ![Live Stage 2](./docs/images/12_live_stage2_kv_aware.png) |
+| ![Live: agents fleet with traffic](./docs/images/live_01_agents_traffic.png) | ![Live: Efficiency, Stage 1](./docs/images/live_02_eff_stage1.png) |
 
-| Stage 3: llm-d + Flow (user tiers, 200 req/s) | |
+| Efficiency: both stages measured | Flow control: Stage 2, one shared queue |
 |---|---|
-| ![Live Stage 3](./docs/images/13_live_stage3_flow.png) | |
+| ![Live: Efficiency, both stages measured](./docs/images/live_03_eff_both_measured.png) | ![Live: Flow control, shared queue](./docs/images/live_04_flow_stage2_shared_queue.png) |
 
-**Mock backend:** the rest were rendered against `dashboard/mock_server.py`, not the live cluster, so their numbers are simulated. The mock runs the same three stages.
-
-| Idle | All 1,000 awake |
+| Flow control: Stage 3, priority tiers | Agents fleet after Suspend all |
 |---|---|
-| ![Idle](./docs/images/01_idle.png) | ![All awake](./docs/images/02b_all_awake_ready_for_traffic.png) |
+| ![Live: Flow control on](./docs/images/live_05_flow_stage3.png) | ![Live: all suspended](./docs/images/live_06_agents_suspended.png) |
 
-| Stage 3 (mock numbers) | Operator menu (click LIVE) |
+**Mock backend:** the rest were rendered by `dashboard/shoot.mjs` against `dashboard/mock_server.py`, not the live cluster, so their numbers are simulated. The mock runs the same three stages. Unlike the live run, it shows TTFT lower with llm-d (top of §2).
+
+| Idle | Operator menu (click LIVE) |
 |---|---|
-| ![Stage 3, mock](./docs/images/05_stage3_flow.png) | ![Operator menu](./docs/images/04_operator_menu.png) |
+| ![Idle](./docs/images/01_idle.png) | ![Operator menu](./docs/images/04b_operator_menu.png) |
 
-| Suspended | One vLLM pod down |
+| A window taller than 16:9 (1920×1200) | Stage 3 settling: the new side's numbers dimmed |
 |---|---|
-| ![Suspended](./docs/images/06b_suspended.png) | ![Pod down](./docs/images/09b_pod_down.png) |
+| ![Flow control at 1920x1200](./docs/images/08d_flow_1920x1200.png) | ![Stage 3 measuring](./docs/images/06b_flow_stage3_measuring.png) |
 
-More states, including the 30/70 view split, llm-d at full width (Agents hidden), errors, reconnect and 1440×900, are in [`docs/images/`](./docs/images/).
+More states are in [`docs/images/`](./docs/images/):
+- mid-wake and a magnified joke;
+- 1440×900 and the folded rails;
+- suspend and reconcile;
+- a vLLM pod down and other errors;
+- reconnect.
 
 ---
 
@@ -300,7 +378,7 @@ In Stages 2 and 3, Envoy asks the EPP (`ext_proc`) which pod to use:
 
 | | Substrate cluster (`ikwak-substrate-ane1`) | TPU cluster (`ikwak-tpu-v6e-ane1`) |
 |---|---|---|
-| Location, version | `asia-northeast1-b`, GKE 1.35.8-gke.1036000, REGULAR channel | `asia-northeast1-b`, GKE 1.35.8-gke.1036000 (created at 1.35.7 and auto-upgraded), REGULAR |
+| Location, version | `asia-northeast1-b`, GKE 1.35.8-gke.1380001 (auto-upgraded on 2026-10-04), REGULAR channel | `asia-northeast1-b`, GKE 1.35.8-gke.1380001 (created at 1.35.7; auto-upgraded, last on 2026-10-04), REGULAR |
 | Node pools | `substrate-c4-pool`: 25 × c4-standard-4 (hyperdisk-balanced 100 GB), which runs atelet and 1,600 worker pods (64 per node).<br>`keynote-driver-pool`: 4 × n2-standard-8, label `pool=keynote-driver`, taint `dedicated=keynote-driver:NoSchedule`, which runs Postgres, 1 ate-api, 4 atenet-router, 4 atenet-egress and the keynote driver. It stays on N2: C4 can't attach Postgres's pd-balanced volume.<br>The [Hermes variant](./hermes/README.md) adds `hermes-c4d-pool` (18 × c4d-standard-16). | 1 × c4-standard-4 CPU node (hyperdisk-balanced), which runs the EPP and Envoy. In the demo cluster this pool is `cpu-c4-pool`; [user guide Step 6](./USER_GUIDE.md#step-6-tpu-cluster) creates it as `default-pool`. Both manifests select it by `cloud.google.com/machine-family: c4`.<br>`tpu-v6e-spot` and `tpu-v6e-spot-decode`: 1 × ct6e-standard-4t each (TPU v6e, 2x2 topology, Spot, hyperdisk-balanced 100 GB, taint `google.com/tpu=present:NoSchedule`). |
 | Networking | VPC-native. Pods `10.56.0.0/14` and services `34.118.224.0/20`, both auto-assigned. Dataplane V2. | Pods `172.28.0.0/14` and services `172.24.16.0/20`, from the subnet's secondary ranges `pods` and `services`. Gateway API standard channel. |
 | Other | Workload Identity; beta APIs `podcertificaterequests` + `clustertrustbundles`; managed OpenTelemetry (all set by `setup-gcp`) | – |
@@ -339,7 +417,7 @@ substrate/
 │   ├── index.html                     the stage dashboard (one file, served by the driver)
 │   ├── mock_server.py                 offline mock of the driver API for rehearsal (simulated numbers)
 │   └── shoot.mjs                      headless-Chrome screenshot script (drives the mock)
-├── docs/images/                       dashboard screenshots, rendered with the mock (11_–13_live_*.png and hermes-live.png are from the live cluster)
+├── docs/images/                       dashboard screenshots, rendered with the mock (live_*.png and hermes-live.png are from the live cluster)
 ├── hermes/                            Hermes Agent variant (see hermes/README.md)
 │   ├── README.md                      guide, measured results, pre-show steps, known issues
 │   ├── actor/                         actor image: Dockerfile, entrypoint, warm-up, Hermes config, persona
@@ -365,6 +443,7 @@ substrate/
 ├── ops/                               repair and rehearsal tools (§7)
 │   ├── ck_scan.py                     per-agent checkpoint sizes from every node
 │   ├── rebalance.py                   evens out agents per node after re-creations
+│   ├── recreate_lost.py               re-creates agents whose snapshot node is gone, then reconciles (user guide §4.5)
 │   └── demo_soak.py                   replays the stage flow and samples the driver's state
 ├── patches/
 │   ├── ateapi-atelet-fast-wake.patch  against agent-substrate/substrate@fa6d949 (v0.1.0)
@@ -440,15 +519,18 @@ kubectl ate --context="${CTX_SUB}" get actors -a ate-demo-sandbox -o json \
 
 ## 8. Stage runbook
 
-1. **Before walking on:** the health check passed; the dashboard shows 0 / 1,000 and **No llm-d** (Stage 1) is highlighted in the llm-d header. The driver keeps the last stage, so select Stage 1 before every show (press `1`).
-2. **Wake Agents:** the counter races to 1,000 in about 2 s. It sends no LLM calls.
-3. **Simulate Traffic (Stage 1, round robin):** agents cycle at about 80% idle (about 200 active) and jokes scroll; click a joke to magnify it. Every stage offers the same 200 req/s, and the banner says so. On 2026-10-03 evening: split about 50/50, 45–72% of prompt tokens from the prefix cache, about 65 requests/s served, and each request took 2.4–2.6 s from agent to reply. The pods queue requests inside vLLM (E2E 2.1–2.8 s on both in the dashboard runs; in the API run pod-1 fell behind at up to 4.9 s).
-4. **Stage 2, llm-d Router:** within 10–20 s the hit rate climbs to 80–98%, and the same agents get more done (about 103–109 instead of 65 requests/s) while each request takes 1.3–1.4 s instead of 2.4–2.6 s. The pool is full, so llm-d queues requests in one band (0.53–0.85 s wait); the flow card shows it in its Paid Standard row. The banner's E2E (about 0.6 s) is vLLM's and leaves that wait out (§9).
-5. **Stage 3, llm-d + Flow:** keeps the same 200 req/s and tags every request with a user tier. Throughput stays at about 110 requests/s, but the queue now forms by tier: Paid Members wait about 40–85 ms, Free Users 1.6–2.3 s (19–42× longer in the dashboard runs). The banner and the flow card's footer show the same Paid vs Free numbers.
-   - The ~2 s is queue wait inside llm-d; talk about it as "Free Users wait in line", not as end-to-end latency (§9).
-   - Going back to Stage 2 while traffic runs no longer fails requests: Free-User requests still in the queue wait out one 8 s `wget` timeout, then are retried at Stage 2's standard priority (§9).
-6. **Suspend all:** 1,208–1,482 ms straight from Stage 3 on 2026-10-03 evening, with about 190 agents up (1,450 ms with about 95 up at 90% idle).
-7. After any reconcile (operator menu: click **LIVE**, then **reconcile agents** twice) or agent re-creation, do one warm-up wake + suspend (the health check) before the next show.
+1. **Before walking on:** the health check passed, and the Agents section shows 0 agents running, "of 1,000 · all suspended". The driver keeps the last stage, so press `1` before every show; **Without llm-d** (Stage 1) is then selected in the Efficiency view. The next Wake clears the comparisons left over from a rehearsal.
+2. **Wake Agents** (`W`): the counter races to 1,000 in about 2 s (1,887 ms on 2026-10-05). It sends no LLM calls.
+3. **Simulate Traffic** (`T`, Stage 1, round robin): about 200 agents are active at 80% fleet idle, and jokes scroll; click a joke to magnify it. Every stage offers the same 200 req/s.
+4. **Efficiency** (`E`): the **Without llm-d** side says RUNNING NOW. Its numbers are dimmed for the first 5 s, then show the mean of the last 10 s. On 2026-10-05: 1,619 tok/s, E2E 2,557 ms, TTFT 475 ms, KV-cache hit 57%. Give each stage 20–30 s; the live run used about 27 s.
+5. **With llm-d** (`2`, Stage 2): the With llm-d side fills in, and the middle shows the gains. On 2026-10-05: throughput 2.0×, E2E 2.4× lower, KV-cache hit +40 pts.
+   - TTFT shows **1.2× higher**, in yellow. Talk about throughput and E2E, and don't claim a TTFT gain: the wait before the first token moves from vLLM into llm-d's queue (top of §2).
+6. **Flow control** (`F`): **Without flow control** is the Stage 2 that is running, so its side is already measured: every tier waits in one shared queue, 481 ms on 2026-10-05. Press `3` (**With flow control**, Stage 3) and the requests carry a payment tier. Paid Members (Pro) then wait about 44 ms (11× lower), and the Regular / Free tier about 1.3 s (2.8× longer). Throughput stays at about 3,250 tok/s.
+   - From Efficiency, `3` also opens Flow control, and from Flow control `1` opens Efficiency.
+   - These are queue waits inside llm-d, not end-to-end latency; talk about them as "the free tier waits in line" (§9).
+   - Going back to Stage 2 while traffic runs costs queued Regular / Free-tier requests one 8 s `wget` timeout; then they are retried at Stage 2's standard priority (§9). Going forward (1 → 2 → 3) avoids it.
+7. **Suspend all** (`S`): 1,129 ms straight from Stage 3 on 2026-10-05, with about 190 agents up (1,208–1,482 ms on 2026-10-03 evening).
+8. After any reconcile (operator menu: click **LIVE**, then **reconcile agents** twice) or agent re-creation, do one warm-up wake + suspend (the health check) before the next show.
 
 ## 9. Known issues and disclosures
 
@@ -466,19 +548,19 @@ kubectl ate --context="${CTX_SUB}" get actors -a ate-demo-sandbox -o json \
 **Honesty notes for the stage:**
 - **Wake Agents** makes no LLM calls; jokes start with Simulate Traffic.
 - Each duty-cycle agent is held "running" for 70–140 ms before its request so the grid is visible.
-- Numbers on the `:8765` mock and in `docs/images/` are simulated, except the `11_`–`13_live_*` images and `hermes-live.png`.
+- Numbers on the `:8765` mock and in `docs/images/` are simulated, except `live_*.png` and `hermes-live.png`.
 - The page-cache warmer keeps checkpoints in RAM.
 - **Stage 1 is a baseline we built:** round robin on the same Envoy and pods, with llm-d taken out of the path. It is not a separate product or a stock load balancer.
 - **The workload is shaped so routing matters:** all agents of a team send the same ~1.5k tokens of team notes, and the number of teams (240) was chosen so that one pod's prefix cache keeps about half of them (§1). With short, mostly shared prompts, round robin would hit about as often as KV-aware routing (§2.2).
 - **Stage 3's Paid vs Free gap is real, and it is queue wait.** It is the EPP's flow-control queue wait per tier, and it shows up only because the concurrency detector counts a pod as full at 32 in flight, so the pool saturates. vLLM gets no tier information, so once dispatched every tier is served alike.
-- **Free Users wait about 2 s,** about a quarter of the agents' 8 s `wget` timeout. The three evening runs, 31,905 requests in all, had 0 failures and 0 retries. With 400 req/s in Stage 3 (the afternoon runs) they waited 3.7–4.5 s, half the timeout; `-max-inflight` (auto 220) limits how deep that queue gets only when `-overload-rate` adds traffic. A slower pool would push the wait toward the timeout.
-- **Served is below offered:** with the same 200 req/s offered in every stage, about 65 req/s were served in Stage 1, 103–109 in Stage 2 and 110–113 in Stage 3 (top of §2). The duty cycle is a closed loop, so slower replies mean fewer requests. The per-pod req/s on the dashboard shows what was served. With 400 req/s in Stage 3 it served 114–115; at 90% idle about 65 of 100 and 104 of 300.
-- **Stage 2 queues too at 80% idle,** in one band, for 0.5–0.85 s. The per-pod E2E and TTFT on the dashboard, and the banner's E2E, are vLLM's own and don't include that wait; the flow card shows it. In Stage 1 the queue is inside vLLM and is included. Compare the stages by agent wait (top of §2): about 2.5 s → 1.3 s, where the banner's E2E suggests about 4× better.
-- **In Stage 1 the pods queue inside vLLM at 80% idle:** round robin sends each pod half the requests whatever its queue. In three of the five 80% runs pod-1 fell behind (E2E up to 5 s, up to 85 requests waiting inside vLLM) while pod-2 stayed at 0.5–2.5 s; in the other two both pods ran at 2.1–2.8 s.
-- **KV usage % reads low (10–25%):** vLLM counts only the cache blocks that running requests use. Cached prefixes that no running request holds are not counted, even though they still produce hits.
-- **pod-2 is slower with llm-d routing:** its E2E latency was 1.4–3.0× pod-1's in Stages 2 and 3 on 2026-10-03, usually with a lower prefix-cache hit. Under round robin (Stage 1) the two pods were about equal at 90% idle; at 80% pod-1 was the slower one in three runs and about even with pod-2 in two. Both run the same image and flags; pod-2 runs on node pool `tpu-v6e-spot-decode` with its own model PVC. Not investigated.
+- **The Regular / Free tier waits 1.2–2.3 s in Stage 3,** a sixth to a quarter of the agents' 8 s `wget` timeout: about 1.3 s on 2026-10-05, and 1.6–2.3 s in the three runs on 2026-10-03 evening (31,905 requests in all, with 0 failures and 0 retries). With 400 req/s in Stage 3 (the 2026-10-03 afternoon runs) it waited 3.7–4.5 s, half the timeout; `-max-inflight` (auto 220) limits how deep that queue gets only when `-overload-rate` adds traffic. A slower pool would push the wait toward the timeout.
+- **Served is below offered:** with the same 200 req/s offered in every stage, about 65 req/s were served in Stage 1, 103–109 in Stage 2 and 110–113 in Stage 3 on 2026-10-03 evening (§2). The duty cycle is a closed loop, so slower replies mean fewer requests. The dashboard's throughput (output tokens/s) counts only what was served. With 400 req/s in Stage 3 it served 114–115; at 90% idle about 65 of 100 and 104 of 300.
+- **Stage 2 queues too, inside llm-d:** in one band, for 0.47–0.85 s (2026-10-03 and 2026-10-05). The dashboard's E2E includes that wait, because the driver times each request from its first call to the agent until the reply. Its TTFT adds llm-d's queue wait to vLLM's own TTFT. Until 2026-10-05 the banner and the per-pod cards showed vLLM's own E2E and TTFT, which left that wait out and made Stage 2 look about 4× better; timed by the agents, it is 2–2.4× (§2). **TTFT gets no better with llm-d at this load:** the wait before the first token moves from vLLM's queue into llm-d's (top of §2).
+- **In Stage 1 the pods queue inside vLLM at 80% idle:** round robin sends each pod half the requests whatever its queue. In three of the five 80% runs on 2026-10-03 pod-1 fell behind (E2E up to 5 s, up to 85 requests waiting inside vLLM) while pod-2 stayed at 0.5–2.5 s; in the other two, and on 2026-10-05, both pods ran at 2.1–2.8 s. A pod that has just restarted is slow at first, so warm both up before measuring ([user guide §4.8](./USER_GUIDE.md#48-gke-upgraded-the-cluster-every-node-recreated)).
+- **KV usage reads low (10–25%)** in `api/state` (`kv_usage_pct`; the dashboard showed it per pod until 2026-10-05): vLLM counts only the cache blocks that running requests use. Cached prefixes that no running request holds are not counted, even though they still produce hits.
+- **pod-2 was slower with llm-d routing on 2026-10-03:** its E2E latency was 1.4–3.0× pod-1's in Stages 2 and 3, usually with a lower prefix-cache hit. Under round robin (Stage 1) the two pods were about equal at 90% idle; at 80% pod-1 was the slower one in three runs and about even with pod-2 in two. Both run the same image and flags; pod-2 runs on node pool `tpu-v6e-spot-decode` with its own model PVC. Not investigated. On 2026-10-05, after the GKE upgrade had restarted both pods on new nodes, they were even in Stage 2: E2E 0.49–0.55 s and about 98% prefix-cache hit on both.
 - **The driver keeps the last stage** across Suspend all and reconcile. Select Stage 1 before each show.
-- **Going back from Stage 3 to Stage 2 costs queued Free-User requests one 8 s timeout.** Stage 2 sends everything at standard priority, and while the pool is saturated that band rarely empties, so Free-User requests already queued in the lowest band usually sit until the agents' 8 s `wget` timeout. Until late on 2026-10-03 an agent's retries kept the tier of its first try, so those requests timed out three times and failed: 41 of 8,284 in a rehearsal run that started in Stage 3 (the driver had kept the last stage), and 42 of 8,156 in a test that switched from Stage 3 to Stage 2 on purpose (25 s in Stage 3, 40 s in Stage 2). The driver now sends each retry with the stage active at that moment. The same test then had 0 failed of 8,142 (41 requests needed one retry), and a run clicking back to Stage 2 on the dashboard had 0 failed of 9,141 (43 retried once); the Free-User queue was empty 8–11 s after the switch. Going forward (1 → 2 → 3) avoids the wait; to start over, Suspend all and press `1`.
+- **Going back from Stage 3 to Stage 2 costs queued Regular / Free-tier requests one 8 s timeout.** Stage 2 sends everything at standard priority, and while the pool is saturated that band rarely empties, so Regular / Free-tier requests already queued in the lowest band usually sit until the agents' 8 s `wget` timeout. Until late on 2026-10-03 an agent's retries kept the tier of its first try, so those requests timed out three times and failed: 41 of 8,284 in a rehearsal run that started in Stage 3 (the driver had kept the last stage), and 42 of 8,156 in a test that switched from Stage 3 to Stage 2 on purpose (25 s in Stage 3, 40 s in Stage 2). The driver now sends each retry with the stage active at that moment. The same test then had 0 failed of 8,142 (41 requests needed one retry), and a run clicking back to Stage 2 on the dashboard had 0 failed of 9,141 (43 retried once); the lowest band was empty 8–11 s after the switch. Going forward (1 → 2 → 3) avoids the wait; to start over, Suspend all and press `1`.
 
 **Operational risks:**
 - **Unrestorable snapshot.** Once in about 13,000 pause/restore cycles, an agent's app died just before a pause. gVisor checkpointed it with no error, and every later restore failed (`inconsistent private memory files on restore`). "Wake 1,000" then stops at 999. Two more appeared on 2026-10-02, taken while their workers were being OOM-killed. The driver now marks such an agent, and `reconcile` re-creates it (§7).
@@ -499,8 +581,9 @@ kubectl ate --context="${CTX_SUB}" get actors -a ate-demo-sandbox -o json \
   - Every request since 2026-09-28 had under 5,000 prompt tokens, so a smaller `--max-model-len` (for example 8192) would serve both variants. Hermes reads its 64k window from the driver's proxy (`-context-length`), not from vLLM. A request longer than vLLM's limit would be rejected.
 - **Stale checkpoints.** Deleting an actor leaves its local checkpoint on the node. After the 2026-10-02 re-creations there were 1,299 such directories (6.7 GiB across the 25 nodes). The node tuner's page-cache warmer still reads them every 20 s.
 - **Node recreation destroys node-local snapshots.** This includes auto-upgrade, auto-repair and maintenance. Agents paused on the affected node can no longer be restored and must be re-created. Upstream also warns that actors awake when their worker dies go `CRASHED`.
-  - **Auto-upgrade is on for every pool in both demo clusters, and there is no maintenance exclusion.** The TPU cluster already moved from 1.35.7 to 1.35.8.
-  - Consider `--no-enable-autoupgrade` on the Substrate pools, and a maintenance exclusion, through the show.
+  - **It happened on 2026-10-04:** GKE auto-upgraded both clusters to 1.35.8-gke.1380001 and recreated every node. The driver pod was gone, `postgres-0` could not be scheduled, the atelets crash-looped on Postgres's old IP, and no agent could wake. It was recovered with [user guide §4.8](./USER_GUIDE.md#48-gke-upgraded-the-cluster-every-node-recreated), which re-creates all 1,000 agents of both fleets.
+  - **Auto-upgrade is still on for every pool in both demo clusters, and there is no maintenance exclusion.**
+  - Consider `--no-enable-autoupgrade` on the node pools, and a maintenance exclusion, through the show.
 - **Spot TPU nodes can be preempted.** The vLLM pod then restarts on a new node, which takes minutes. The pod IPs change, so re-run `deploy-driver.sh` ([user guide §4.1](./USER_GUIDE.md#41-vllm-or-epp-pods-restarted)).
 - **`postgres-0` restarts** stop `http_srv`. Re-run `deploy-patched-binaries.sh` before anything restarts ate-api or atelet ([user guide §4.4](./USER_GUIDE.md#44-postgres-0-restarted)).
 - **Wake-time margin is thin.** The node with the most agents sets the wake time (§2.1). Every re-created agent lands on a random node, so rebalance after re-creating many (§7).
@@ -519,6 +602,21 @@ Done on 2026-09-26 against the live clusters. The rule was: run every build, dep
 **2026-10-03 late evening (retries follow the stage; the Agents panel can be hidden):** the driver built from this folder and the dashboard were copied into the running driver pod with the copy block that was then §6.10 (checksums compared); `/work/args` is unchanged. The §9 test (25 s in Stage 3, then 40 s in Stage 2, through the driver API) ran on the old driver and again on the new one. Then one run used the dashboard in headless Chrome with real mouse and keyboard input: `W`, `T`, `2`, `3`, the divider dragged all the way left, a click on Stage 2, `S` with the Agents panel hidden, and a double-click on the divider. It had 9,141 LLM requests with 0 failed (43 retried once); Wake 1,000 took 1,982 ms and Suspend all 1,323 ms. `shoot.mjs` on the mock gave all its screenshots with no console errors; only the new `04d_llmd_full_width.png` was added to `docs/images/`. Nothing on the TPU side changed. The Hermes variant's driver was not touched; it serves the same dashboard file. Then only the dashboard was copied again, so that windows taller than 16:9 fill their height: at 1920×1080 its layout matched the previous file box for box, on the mock and on the live page, and `shoot.mjs` again gave all its screenshots with no console errors (`07_1440x900.png` updated).
 
 **2026-10-04 (user guide):** the build and deploy steps moved to the [user guide](./USER_GUIDE.md), with a check after every step. Step 3 was rebuilt from a fresh upstream clone (byte-identical), the Step 4 and Step 5 scripts' dry runs reported everything unchanged, `kubectl diff` and the Helm comparison found no spec differences, and the new `deploy-driver.sh` changed nothing on the live driver pod; its change paths were tested on a throwaway pod. Details, and what was not run: [user guide §7](./USER_GUIDE.md#7-how-this-guide-was-verified).
+
+**2026-10-05 (recovery after the GKE upgrade; new dashboard):** GKE had auto-upgraded both clusters on 2026-10-04 and recreated every node (§9). The stack was recovered with [user guide §4.8](./USER_GUIDE.md#48-gke-upgraded-the-cluster-every-node-recreated):
+- the control plane re-pinned, then `deploy-patched-binaries.sh`;
+- `deploy-driver.sh` with `BIN_DIR`, with the same driver build;
+- all 1,000 agents of both fleets re-created, and the light fleet rebalanced;
+- the Hermes driver restarted with the same build and flags, and its agents taught again;
+- both vLLM pods warmed up.
+
+Details are in [user guide §7](./USER_GUIDE.md#7-how-this-guide-was-verified). After that only the dashboard changed:
+- The redesigned `index.html` was copied with `deploy-driver.sh` ([user guide §5.1](./USER_GUIDE.md#51-dashboard)).
+- One run clicked its own buttons in headless Chrome (top of §2; the live screenshots in §2.3).
+- `shoot.mjs` on the mock gave all its screenshots in the main, edge and offline scenarios. The only console errors were the expected ones: the edge scenario's deliberate busy click and the offline scenario's refused connections.
+- The Hermes dashboard serves the same file and was checked while idle.
+
+Nothing on the TPU side was changed by hand.
 
 The table below is from 2026-09-26. Its step numbers are the user guide's (then README §6.N).
 

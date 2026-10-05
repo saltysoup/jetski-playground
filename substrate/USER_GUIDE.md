@@ -488,8 +488,8 @@ Expect `Counter({'ACTOR_STATE_PAUSED': 1000})`.
 - **Offline rehearsal:** run `python3 dashboard/mock_server.py 8765` and open `http://localhost:8765/`. The mock simulates every number, including the three stages:
   - It runs the light fleet at 80% idle, like the driver (`--fleet-idle-pct=N` changes it; `--harness hermes` defaults to 90).
   - It offers the same 200 req/s in every stage. `--overload-rate=N` adds N req/s to every stage, like the driver flag; the Hermes harness keeps its extra 200 req/s in Stage 3.
-  - Its pool model was fitted to the 80% live runs, so served req/s, queues and per-pod latency come out roughly as on the cluster.
-- **Screenshots of the mock:** with the mock running, `node dashboard/shoot.mjs --out=./shots` clicks through the demo in headless Chrome, Stages 1 to 3 included, and saves 17 PNGs in about a minute.
+  - Its pool model was fitted to the 80% live runs on 2026-10-03, so served req/s, queues and per-pod latency come out roughly as on the cluster. Its TTFT comes out about 1.3× lower with llm-d; on the live pods on 2026-10-05 it was 1.2× higher ([README §2](./README.md#2-results)).
+- **Screenshots of the mock:** with the mock running, `node dashboard/shoot.mjs --out=./shots` clicks through the demo in headless Chrome, Stages 1 to 3 included, and saves 25 PNGs in about a minute and a half.
   - `--scenario=edge` adds 5 error states.
   - `--scenario=offline` adds 2 reconnect states and asks you to stop and restart the mock.
   - It needs Node 22 and Google Chrome.
@@ -557,7 +557,7 @@ The script shows the changed `-vllm` or `-epp` flag under `/work/args: changing`
 
 **What is lost:**
 - Gone with the pod: everything in `/work` (driver binary, flags, dashboard page, run records) and the Hermes driver's files.
-- Not affected: the agents and their snapshots. They live in ate-api, Postgres and on the worker nodes.
+- Not affected: the agents and their snapshots. They live in ate-api, Postgres and on the worker nodes. If the worker nodes were recreated too (a cluster upgrade), the snapshots are gone: see [§4.8](#48-gke-upgraded-the-cluster-every-node-recreated).
 
 ```bash
 cd "${REPO_DIR}" && BIN_DIR="${BIN_DIR}" ./manifests/substrate/deploy-driver.sh   # re-creates the pod and copies everything
@@ -613,7 +613,9 @@ Do this with all agents at rest, then run the [pre-show health check](./README.m
 
 ### 4.5 A Substrate node was recreated
 
-**When:** an upgrade, repair or maintenance event replaced a worker node, or the health check finds agents that cannot wake (`runsc restore` errors in the driver's note).
+**When:** an upgrade, repair or maintenance event replaced a worker node, or the health check's wake fails for some agents. The driver's note shows one of two errors:
+- `ResourceExhausted desc = no free workers available`: the agent's snapshot was on a node that no longer exists. A recreated node comes back under a new name, and a paused agent's wake is pinned to the node that holds its snapshot, so this agent can never wake again. It is still `PAUSED` in ate-api, so `post reconcile` alone doesn't touch it.
+- `runsc restore` errors: the snapshot is on the node but can't be restored.
 
 **What happens:**
 - Agents paused on that node lost their snapshots and must be re-created.
@@ -621,17 +623,19 @@ Do this with all agents at rest, then run the [pre-show health check](./README.m
 - The new node gets the worker label from its node pool, atelet and the node tuner from their DaemonSets, and fresh workers from the WorkerPool.
 
 **Fix:** with the port-forward running and README §7's `post` helper defined:
-1. Run the [health check](./README.md#7-pre-show-health-check)'s wake. Failed agents show in the driver's note.
-2. Run `post reconcile` and wait for `idle`. This re-creates every agent whose restore failed and every agent that is not at rest:
+1. Run the [health check](./README.md#7-pre-show-health-check)'s wake. Failed agents show in the driver's note. If the driver is left in `running`, run `post suspend`: it reconciles only when idle.
+2. Re-create the broken agents with [`ops/recreate_lost.py`](./ops/recreate_lost.py). It deletes the agents whose snapshot is on a node that no longer exists, then runs the driver's reconcile. The reconcile re-creates every missing agent from the template, every agent whose restore failed, and every agent that is not at rest:
 
    ```bash
-   post reconcile
-   until curl -s localhost:8090/api/state | python3 -c 'import json,sys; sys.exit(json.load(sys.stdin)["phase"]!="idle")'; do sleep 5; done
-   curl -s localhost:8090/api/state | python3 -c 'import json,sys; print(json.load(sys.stdin).get("note"))'
+   DRY_RUN=1 CTX_SUB="${CTX_SUB}" python3 ops/recreate_lost.py   # lists them
+   CTX_SUB="${CTX_SUB}" python3 ops/recreate_lost.py
    ```
 
-3. Run the health check again. Re-created agents restore from the golden snapshot, so it is slower.
-4. Even out the placement: `CTX_SUB="${CTX_SUB}" python3 ops/rebalance.py 40 10`. It wakes and suspends the fleet every round; on 2026-10-02 it took 10 rounds, about 80 s. Then run the health check once more.
+   It ends with the reconcile's note, for example `re-created 1000 (0 failed); at T0: 1000 suspended, 0 paused, 0 not at rest`. The 2026-10-05 recovery ran the same delete and reconcile by hand; the script was written afterwards and has only been dry-run ([§7](#7-how-this-guide-was-verified)).
+3. Run the health check again. Re-created agents restore from the golden snapshot, so their first wake is slower: 7.0 s for all 1,000 on 2026-10-05.
+4. Even out the placement: `CTX_SUB="${CTX_SUB}" python3 ops/rebalance.py 40 10`. It wakes and suspends the fleet every round. On 2026-10-02 it took 10 rounds, about 80 s. On 2026-10-05, after all 1,000 agents were re-created, it took 10 rounds, about 130 s, and left 36–41 agents per node. Then run the health check once more; Wake 1,000 took 1.77 s.
+
+**Hermes variant:** the same script, pointed at the Hermes fleet and driver: `ATESPACE=keynote-hermes DRIVER_URL=http://localhost:8092/ CTX_SUB="${CTX_SUB}" python3 ops/recreate_lost.py`. Re-created Hermes agents have no memory: teach them again ([hermes §5](./hermes/README.md#5-before-the-show)).
 
 **Prevention:** turn off auto-upgrade on the worker pools, and add a maintenance exclusion through the show (Step 2, [README §9](./README.md#9-known-issues-and-disclosures)).
 
@@ -656,6 +660,26 @@ Use [README §7](./README.md#7-pre-show-health-check) when:
 - Suspend all hangs.
 
 It covers unrestorable snapshots, OOM-restarted workers, bloated snapshots and uneven placement, with the commands for each.
+
+### 4.8 GKE upgraded the cluster (every node recreated)
+
+**When:** GKE auto-upgraded the clusters. Every node in `kubectl get nodes` is young, and you see some of: the driver pod `NotFound`, `postgres-0` `Pending`, atelet pods crash-looping in their init container, the dashboard stuck on RECONNECTING. On 2026-10-04 an auto-upgrade to 1.35.8-gke.1380001 recreated every node of both clusters and caused all of these. Nothing came back on its own.
+
+**Why §4.2 is not enough:**
+- `postgres-0` and `ate-api-server` are pinned to one keynote-driver-pool node by hostname ([Step 4](#step-4-size-and-tune-the-substrate-cluster)). The upgrade renamed every node, so they can't be scheduled.
+- Postgres comes back with a new IP, so ate-api's and atelet's init containers download their binaries from an address that is gone ([§4.4](#44-postgres-0-restarted)).
+- Every agent's snapshot was on a node that is gone ([§4.5](#45-a-substrate-node-was-recreated)).
+- The vLLM, EPP and gateway pods have new IPs ([§4.1](#41-vllm-or-epp-pods-restarted)).
+
+**Fix, in this order:**
+1. **Control plane.** Re-run Step 4's `scale-control-plane.sh`, dry run first. It pins `postgres-0` and `ate-api-server` to a current keynote-driver-pool node. A StatefulSet doesn't replace a pod that is stuck `Pending`: if `postgres-0` stays `Pending`, delete it with `kubectl --context="${CTX_SUB}" -n ate-system delete pod postgres-0`. Its volume re-attaches with the data, including the patched binaries.
+2. **Patched binaries.** [§4.4](#44-postgres-0-restarted): `deploy-patched-binaries.sh` starts `http_srv` again and points the init containers at Postgres's new IP, which rolls ate-api and every atelet. On 2026-10-05 the atelet rollout took about 3 minutes.
+3. **Driver pod.** [§4.2](#42-driver-pod-deleted): `deploy-driver.sh` with `BIN_DIR`. It also picks up the TPU cluster's new pod IPs. Then send Step 10's one request through the gateway.
+4. **Agents of both fleets.** [§4.5](#45-a-substrate-node-was-recreated): `recreate_lost.py`, the health check, `rebalance.py`, the health check again.
+5. **Hermes driver.** §4.2's Hermes variant, then teach the agents ([hermes §5](./hermes/README.md#5-before-the-show)).
+6. **Warm up both vLLM pods** before you measure or rehearse: run Stage 1 traffic for a minute. A pod that has served little traffic since it restarted is slow at first. On 2026-10-05, after the Hermes teach had gone to pod-1 only, pod-2 queued 149 requests at a 7.4 s TTFT during the first ~30 s of Stage 1, and one agent's request timed out.
+
+Then check the whole stack with [§3](#3-check-the-whole-stack).
 
 ---
 
@@ -839,7 +863,17 @@ The table is in [README §10](./README.md#10-how-this-guide-was-verified).
 - building the vLLM image;
 - Step 11's creation of new agents (all 1,000 already existed);
 - the template change (§5.8);
-- the Hermes driver's copy and start ([hermes §4.5](./hermes/README.md#45-driver-in-hermes-mode)), so that the running Hermes driver keeps its build. Its copy prints the checksum from the same exec, as `deploy-driver.sh` does;
+- the Hermes driver's copy and start ([hermes §4.5](./hermes/README.md#45-driver-in-hermes-mode)), so that the running Hermes driver keeps its build. Its copy prints the checksum from the same exec, as `deploy-driver.sh` does. They ran for real on 2026-10-05 (below);
 - the teardown (§6).
 
-Apart from the Hermes driver's copy and start, the §4 recipes use only commands verified above. The situations themselves were not re-created for this guide: a real vLLM or EPP restart, a lost driver pod, a `postgres-0` restart, a recreated node.
+**2026-10-05, after the GKE upgrade:** the §4 situations happened for real. On 2026-10-04 an auto-upgrade recreated every node of both clusters, which restarted the vLLM, EPP and gateway pods, deleted the driver pod, left `postgres-0` `Pending` and lost every agent's snapshot. The stack was recovered in the order of [§4.8](#48-gke-upgraded-the-cluster-every-node-recreated):
+- **Control plane:** Step 4's `scale-control-plane.sh` re-pinned `postgres-0` and `ate-api-server`, and the `Pending` `postgres-0` was deleted. It came back with its data and the patched binaries.
+- **[§4.4](#44-postgres-0-restarted):** `deploy-patched-binaries.sh` started `http_srv` and pointed the init containers at Postgres's new IP. ate-api and the 43 atelets (25 light-fleet nodes and 18 Hermes nodes) rolled in about 3 minutes.
+- **[§4.2](#42-driver-pod-deleted):** `deploy-driver.sh` with `BIN_DIR` re-created the driver pod with the same build and the TPU pods' new IPs. §4.2's key command copied the Hermes key (it printed 48). The Hermes driver got its build (`a709458a`) back and was started with the same flags.
+- **[§4.5](#45-a-substrate-node-was-recreated):** all 1,000 agents of each fleet were deleted by hand (`kubectl ate … delete actor --any-state`) and re-created by the driver's reconcile, which printed `re-created 1000 (0 failed)` for both. The light fleet's first wake took 7.0 s. After `rebalance.py` (10 rounds) the health check woke all 1,000 in 1.77 s and suspended them in about 1.5 s, with 0 failed.
+  - [`ops/recreate_lost.py`](./ops/recreate_lost.py), which does the delete and the reconcile in one step, was written afterwards and has not run for real.
+  - Its dry run found 0 lost agents in both recovered fleets. Its selection, run offline on the actor lists saved before the recovery, picked all 1,000 in each.
+- **Hermes:** memory reset, and the agents taught again ([hermes §5](./hermes/README.md#5-before-the-show)): 1,000 of 1,000, with at most 100 taught at a time.
+- **Warm-up:** 70 s of Stage 1 traffic on both vLLM pods (§4.8 step 6), then one run of the three stages ([README §2](./README.md#2-results)).
+
+Not needed, so not exercised: §4.3 (saturation stuck above 0).

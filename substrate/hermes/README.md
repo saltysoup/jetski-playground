@@ -181,12 +181,14 @@ The first suspend and the first wake after a teach are slow: 13–29 s and 6.3�
 ```bash
 post() { curl -s -X POST localhost:8092/api/$1 -d "${2:-{\}}"; echo; }
 post memory/reset                                  # new codenames and fresh Hermes sessions
-post burst '{"hold":true}'                         # every agent's first turn: learns its codename
+post burst '{"hold":true,"concurrency":100}'       # every agent's first turn: learns its codename
 # wait until the dashboard (or api/state .memory.taught) shows 1,000 taught
 post suspend                                       # slow the first time; wait until all are paused
 post burst '{"hold":true,"wake_only":true}'        # warm-up wake
 post suspend                                       # warm-up suspend
 ```
+
+`"concurrency":100` keeps at most 100 agents waking or in a turn at once. On 2026-10-05, with 1,000 freshly re-created agents and no cap, 948 of the 1,000 first turns took longer than atenet's 10 s limit and failed with HTTP 504 (§6). All their LLM calls went to one pod (pod-2 served none), most likely because they share the same long Hermes prompt and the endpoint picker favors the pod that has it cached. A second burst with the cap taught the other 948 with 0 failures in under 30 s. Agents that are already taught get a recall turn instead, so the burst can be repeated.
 
 Then leave the agents alone until the show. On stage:
 
