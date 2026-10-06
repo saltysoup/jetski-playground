@@ -75,7 +75,7 @@ const CHECK = `(() => {
   const T = (el) => (el ? el.textContent.replace(/\\\\s+/g, ' ').trim() : '');
   if (de.scrollWidth > innerWidth || de.scrollHeight > innerHeight) out.push('DOC SCROLL ' + de.scrollWidth + 'x' + de.scrollHeight);
   const open = document.querySelector('.sec.open'), orc = open.getBoundingClientRect();
-  const BOXES = '.cmid,.cbox,.cstats,.qcard,.cmp,.chcard,.ftab,.fgrid,.ffoot,.hero,.gridCard,.mid,.tiles,.tickCard,.phead,.rail,.gpair';
+  const BOXES = '.cmid,.cbox,.cstats,.qcard,.cmp,.chcard,.ftab,.fgrid,.ffoot,.hero,.gridCard,.mid,.tiles,.tickCard,.phead,.rail';
   for (const el of document.querySelectorAll('#stage *')) {
     if (el.closest('#ticker') || el.closest('#toast') || el.closest('#jokeSpotlight')) continue;
     const cs = getComputedStyle(el);
@@ -107,7 +107,7 @@ const CHECK = `(() => {
     toast: document.getElementById('toast').classList.contains('show') ? T(document.getElementById('toast')) : '',
     note: T(document.getElementById('rmsg'))};
   if (sec === 'agents') Object.assign(info, {hero: document.getElementById('hero').innerText.replace(/\\\\s+/g, ' '), tickerRows: rows.length, tickerVisible: visible});
-  if (sec === 'eff') Object.assign(info, {A: box('eA'), B: box('eB'), gains: ['gTok', 'gE2E', 'gTtft', 'gKv'].map(gain).join(' · ')});
+  if (sec === 'eff') Object.assign(info, {A: box('eA'), B: box('eB'), gains: ['gTok', 'gE2E', 'gKv'].map(gain).join(' · ')});
   if (sec === 'flow') Object.assign(info, {A: box('fA'), B: box('fB'), gains: ['gPro', 'gReg'].map(gain).join(' · '),
     table: document.getElementById('fgrid').classList.contains('shared') ? 'shared: ' + T(document.getElementById('fshared'))
       : ['premium', 'standard', 'best-effort'].map((t) => t + ' ' + ['q', 'w', 'r'].map((k) => T(document.querySelector('[data-k="' + t + '.' + k + '"]'))).join('/')).join(' · '),
@@ -144,7 +144,7 @@ async function shot(name, w = 1920, h = 1080) {
 }
 async function meas(label) {   // the page's own stage comparison (what the boxes are computed from)
   const m = await evaluate(`(() => { const c = window.__meas().cmp; if (!c) return null; const r = (x) => x == null ? '—' : Math.round(x);
-    const f = (s) => s.state + (s.v ? ' tok=' + r(s.v.tok) + ' hit=' + r(s.v.hit) + ' e2e=' + r(s.v.e2e) + ' ttft=' + r(s.v.ttft) + ' shared=' + r(s.v.shared) + ' prem=' + r(s.v.prem) + ' be=' + r(s.v.be) : '');
+    const f = (s) => s.state + (s.v ? ' tok=' + r(s.v.tok) + ' hit=' + r(s.v.hit) + ' e2e=' + r(s.v.e2e) + ' shared=' + r(s.v.shared) + ' prem=' + r(s.v.prem) + ' be=' + r(s.v.be) : '');
     return 'rr ' + f(c.rr) + '\\n    kv ' + f(c.kv) + '\\n    fl ' + f(c.fl); })()`);
   console.log(`  [meas ${label}]\n    ${m}`);
 }

@@ -488,7 +488,7 @@ Expect `Counter({'ACTOR_STATE_PAUSED': 1000})`.
 - **Offline rehearsal:** run `python3 dashboard/mock_server.py 8765` and open `http://localhost:8765/`. The mock simulates every number, including the three stages:
   - It runs the light fleet at 80% idle, like the driver (`--fleet-idle-pct=N` changes it; `--harness hermes` defaults to 90).
   - It offers the same 200 req/s in every stage. `--overload-rate=N` adds N req/s to every stage, like the driver flag; the Hermes harness keeps its extra 200 req/s in Stage 3.
-  - Its pool model was fitted to the 80% live runs on 2026-10-03, so served req/s, queues and per-pod latency come out roughly as on the cluster. Its TTFT comes out about 1.3× lower with llm-d; on the live pods on 2026-10-05 it was 1.2× higher ([README §2](./README.md#2-results)).
+  - Its pool model was fitted to the 80% live runs on 2026-10-03, so served req/s, queues and per-pod latency come out roughly as on the cluster. The page doesn't show TTFT (since 2026-10-06). In `api/state` the mock's TTFT comes out about 1.3× lower with llm-d; on the live pods on 2026-10-05 it was 1.2× higher ([README §2](./README.md#2-results)).
 - **Screenshots of the mock:** with the mock running, `node dashboard/shoot.mjs --out=./shots` clicks through the demo in headless Chrome, Stages 1 to 3 included, and saves 25 PNGs in about a minute and a half.
   - `--scenario=edge` adds 5 error states.
   - `--scenario=offline` adds 2 reconnect states and asks you to stop and restart the mock.
