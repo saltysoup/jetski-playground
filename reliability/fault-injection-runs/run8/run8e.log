@@ -1,0 +1,28 @@
+[2026-09-01T03:17:31Z] guard ready=True gpus=8
+[2026-09-01T03:17:31Z] guard maint={"k8s_annotation": null, "res_health": "HEALTHY", "res_ongoing": null, "res_pending": null, "upcomingMaintenance": null, "vm": "RUNNING"}
+[2026-09-01T03:17:31Z] ################ RUN 8E: 5 x (Xid 63 + GPU 7 reset), 60s apart ################
+[2026-09-01T03:17:31Z] row base 0x1026b89c40
+[2026-09-01T03:17:31Z] ---- round 1 / 5 : inject ----
+    HW_BEFORE_I1 7, 00000000:CC:00.0, 0, 0
+    INJECT_T=2026-09-01T03:17:52.767Z
+    ROW=0x0000001026b8ac40
+    KMSG_WROTE_OK
+    === iteration 1 injected at 2026-09-01T03:17:52.767Z row=0x0000001026b8ac40 ===
+[2026-09-01T03:17:52Z] ---- round 1 / 5 : reset GPU 7 ----
+    RESET_T=2026-09-01T03:17:59.256Z
+    --- processes holding GPU 7 ---
+    (none)
+    --- persistence mode ---
+    Enabled
+    --- attempting reset of GPU 7 ---
+    The following GPUs could not be reset:
+      GPU 00000000:CC:00.0: In use by another client
+    
+    1 device is currently being used by one or more other processes (e.g., Fabric Manager, CUDA application, graphics application such as an X server, or a monitoring application such as another instance of nvidia-smi). Please first kill all processes using this device and all compute applications running in the system.
+    RESET_RC=255
+    --- post-reset state ---
+    7, 00000000:CC:00.0, 0, 0, No
+    === reset of GPU 7 returned rc=255 (tag=8e-i1) ===
+[2026-09-01T03:18:06Z] round 1 RESET FAILED
+[2026-09-01T03:18:06Z] ABORT: first reset failed. Continuing would just repeat run 8d and book another
+[2026-09-01T03:18:06Z]        host repair for no new information. See reset-8e-i1.txt for the error.

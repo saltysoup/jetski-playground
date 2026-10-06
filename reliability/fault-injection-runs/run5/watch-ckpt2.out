@@ -1,0 +1,11 @@
+23:59:03 | START watching gs://ikwak-reliability-ckpt/dapo-gemma3-27b-it-2n8g/
+00:18:11 | FIRST OBJECT | 7 objs | 0.1 MiB | steps=[] | earliest timeCreated=2026-08-20T00:17:56.400Z
+00:18:11 | size 0.00 GiB across 7 objs | steps=[]
+00:18:58 | WRITE QUIESCED | 7 objs | 0.00 GiB | steps=[] | 47s after first object
+00:19:29 | growing again (new checkpoint starting)
+00:19:29 | size 102.20 GiB across 23 objs | steps=[]
+00:20:16 | WRITE QUIESCED | 23 objs | 102.20 GiB | steps=[] | 126s after first object
+00:22:07 | growing again (new checkpoint starting)
+00:22:07 | size 165.10 GiB across 28 objs | steps=[]
+00:22:22 | size 303.52 GiB across 46 objs | steps=[]
+00:23:10 | WRITE QUIESCED | 46 objs | 303.52 GiB | steps=[] | 299s after first object

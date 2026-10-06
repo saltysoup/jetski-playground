@@ -1,0 +1,252 @@
+[2026-09-03T20:59:47Z] guard ready=True gpus=8
+[2026-09-03T20:59:47Z] guard maint={"k8s_annotation": null, "res_health": "HEALTHY", "res_ongoing": null, "res_pending": null, "upcomingMaintenance": null, "vm": "RUNNING"}
+[2026-09-03T20:59:47Z] ################ RUN 8F: 5 x (Xid 63 + forced GPU 7 reset), 60s period ################
+[2026-09-03T20:59:47Z] row base 0x1026b99c40
+[2026-09-03T20:59:47Z] ---- round 1 / 5 : inject (management stack up) ----
+    HW_BEFORE_I1 7, 00000000:CC:00.0, 0, 0
+    INJECT_T=2026-09-03T21:00:08.395Z
+    ROW=0x0000001026b9ac40
+    KMSG_WROTE_OK
+    === iteration 1 injected at 2026-09-03T21:00:08.395Z row=0x0000001026b9ac40 ===
+[2026-09-03T21:00:08Z] ---- round 1 / 5 : forced reset of GPU 7 ----
+    RESET_T=2026-09-03T21:00:15.031Z
+    --- holders of /dev/nvidia7 BEFORE ---
+    3478532:nvidia-gpu-devi
+    3478588:nvidia-persiste
+    --- stopping nvidia-persistenced (service + path trigger) ---
+    Persistence mode is already Disabled for GPU 00000000:CC:00.0.
+    All done.
+    --- inducing kubelet restart backoff on container holders ---
+      kill sweep 1 done
+      kill sweep 2 done
+      kill sweep 3 done
+    --- final kill + immediate reset (no scan in between) ---
+    --- attempting reset of GPU 7 ---
+    GPU 00000000:CC:00.0 was successfully reset.
+    All done.
+    RESET_RC=0
+    --- nvidia-smi verification: all GPUs ---
+    index, pci.bus_id, name, persistence_mode, ecc.errors.uncorrected.volatile.total, remapped_rows.uncorrectable, remapped_rows.pending, remapped_rows.failure
+    0, 00000000:8F:00.0, NVIDIA B200, Disabled, 0, 0, No, No
+    1, 00000000:90:00.0, NVIDIA B200, Disabled, 0, 0, No, No
+    2, 00000000:96:00.0, NVIDIA B200, Disabled, 0, 0, No, No
+    3, 00000000:97:00.0, NVIDIA B200, Disabled, 0, 0, No, No
+    4, 00000000:C4:00.0, NVIDIA B200, Disabled, 0, 0, No, No
+    5, 00000000:C5:00.0, NVIDIA B200, Disabled, 0, 0, No, No
+    6, 00000000:CB:00.0, NVIDIA B200, Disabled, 0, 0, No, No
+    7, 00000000:CC:00.0, NVIDIA B200, Disabled, 0, 0, No, No
+    GPU_COUNT=8
+    --- restoring persistenced + persistence mode ---
+    Persistence mode is already Enabled for GPU 00000000:CC:00.0.
+    All done.
+    --- holders AFTER restore ---
+    3491695:dcgm-exporter
+    3491734:nvidia-persiste
+    === reset tag=8f-i1 : gpu7_rc=0 all_rc=n/a gpus_visible=8 ===
+[2026-09-03T21:00:54Z] round 1 reset OK
+[2026-09-03T21:00:54Z] ---- round 1 / 5 : waiting for stack recovery ----
+[2026-09-03T21:01:08Z]   stack back after 0s (allocatable=8 ready=True)
+[2026-09-03T21:01:08Z] round 1 took 81s, over the 60s period -- starting next round immediately
+[2026-09-03T21:01:08Z] ---- round 2 / 5 : inject (management stack up) ----
+    HW_BEFORE_I2 7, 00000000:CC:00.0, 0, 0
+    INJECT_T=2026-09-03T21:01:30.367Z
+    ROW=0x0000001026b9bc40
+    KMSG_WROTE_OK
+    === iteration 2 injected at 2026-09-03T21:01:30.367Z row=0x0000001026b9bc40 ===
+[2026-09-03T21:01:30Z] ---- round 2 / 5 : forced reset of GPU 7 ----
+    RESET_T=2026-09-03T21:01:37.326Z
+    --- holders of /dev/nvidia7 BEFORE ---
+    3491695:dcgm-exporter
+    3491734:nvidia-persiste
+    3497296:nvidia-gpu-devi
+    --- stopping nvidia-persistenced (service + path trigger) ---
+    Persistence mode is already Disabled for GPU 00000000:CC:00.0.
+    All done.
+    --- inducing kubelet restart backoff on container holders ---
+      kill sweep 1 done
+      kill sweep 2 done
+      kill sweep 3 done
+    --- final kill + immediate reset (no scan in between) ---
+    --- attempting reset of GPU 7 ---
+    GPU 00000000:CC:00.0 was successfully reset.
+    All done.
+    RESET_RC=0
+    --- nvidia-smi verification: all GPUs ---
+    index, pci.bus_id, name, persistence_mode, ecc.errors.uncorrected.volatile.total, remapped_rows.uncorrectable, remapped_rows.pending, remapped_rows.failure
+    0, 00000000:8F:00.0, NVIDIA B200, Disabled, 0, 0, No, No
+    1, 00000000:90:00.0, NVIDIA B200, Disabled, 0, 0, No, No
+    2, 00000000:96:00.0, NVIDIA B200, Disabled, 0, 0, No, No
+    3, 00000000:97:00.0, NVIDIA B200, Disabled, 0, 0, No, No
+    4, 00000000:C4:00.0, NVIDIA B200, Disabled, 0, 0, No, No
+    5, 00000000:C5:00.0, NVIDIA B200, Disabled, 0, 0, No, No
+    6, 00000000:CB:00.0, NVIDIA B200, Disabled, 0, 0, No, No
+    7, 00000000:CC:00.0, NVIDIA B200, Disabled, 0, 0, No, No
+    GPU_COUNT=8
+    --- restoring persistenced + persistence mode ---
+    Persistence mode is already Enabled for GPU 00000000:CC:00.0.
+    All done.
+    --- holders AFTER restore ---
+    3503986:nvidia-persiste
+    === reset tag=8f-i2 : gpu7_rc=0 all_rc=n/a gpus_visible=8 ===
+[2026-09-03T21:02:23Z] round 2 reset OK
+[2026-09-03T21:02:23Z] ---- round 2 / 5 : waiting for stack recovery ----
+[2026-09-03T21:03:15Z]   stack back after 10s (allocatable=8 ready=True)
+[2026-09-03T21:03:15Z] round 2 took 127s, over the 60s period -- starting next round immediately
+[2026-09-03T21:03:15Z] ---- round 3 / 5 : inject (management stack up) ----
+    HW_BEFORE_I3 7, 00000000:CC:00.0, 0, 0
+    INJECT_T=2026-09-03T21:03:37.828Z
+    ROW=0x0000001026b9cc40
+    KMSG_WROTE_OK
+    === iteration 3 injected at 2026-09-03T21:03:37.828Z row=0x0000001026b9cc40 ===
+[2026-09-03T21:03:37Z] ---- round 3 / 5 : forced reset of GPU 7 ----
+    RESET_T=2026-09-03T21:03:44.858Z
+    --- holders of /dev/nvidia7 BEFORE ---
+    3503986:nvidia-persiste
+    3509810:dcgm-exporter
+    3509960:nvidia-gpu-devi
+    --- stopping nvidia-persistenced (service + path trigger) ---
+    Persistence mode is already Disabled for GPU 00000000:CC:00.0.
+    All done.
+    --- inducing kubelet restart backoff on container holders ---
+      kill sweep 1 done
+      kill sweep 2 done
+      kill sweep 3 done
+    --- final kill + immediate reset (no scan in between) ---
+    --- attempting reset of GPU 7 ---
+    GPU 00000000:CC:00.0 was successfully reset.
+    All done.
+    RESET_RC=0
+    --- nvidia-smi verification: all GPUs ---
+    index, pci.bus_id, name, persistence_mode, ecc.errors.uncorrected.volatile.total, remapped_rows.uncorrectable, remapped_rows.pending, remapped_rows.failure
+    0, 00000000:8F:00.0, NVIDIA B200, Disabled, 0, 0, No, No
+    1, 00000000:90:00.0, NVIDIA B200, Disabled, 0, 0, No, No
+    2, 00000000:96:00.0, NVIDIA B200, Disabled, 0, 0, No, No
+    3, 00000000:97:00.0, NVIDIA B200, Disabled, 0, 0, No, No
+    4, 00000000:C4:00.0, NVIDIA B200, Disabled, 0, 0, No, No
+    5, 00000000:C5:00.0, NVIDIA B200, Disabled, 0, 0, No, No
+    6, 00000000:CB:00.0, NVIDIA B200, Disabled, 0, 0, No, No
+    7, 00000000:CC:00.0, NVIDIA B200, Disabled, 0, 0, No, No
+    GPU_COUNT=8
+    --- restoring persistenced + persistence mode ---
+    Persistence mode is already Enabled for GPU 00000000:CC:00.0.
+    All done.
+    --- holders AFTER restore ---
+    3517070:nvidia-persiste
+    === reset tag=8f-i3 : gpu7_rc=0 all_rc=n/a gpus_visible=8 ===
+[2026-09-03T21:04:36Z] round 3 reset OK
+[2026-09-03T21:04:36Z] ---- round 3 / 5 : waiting for stack recovery ----
+[2026-09-03T21:05:45Z]   stack back after 15s (allocatable=8 ready=True)
+[2026-09-03T21:05:45Z] round 3 took 150s, over the 60s period -- starting next round immediately
+[2026-09-03T21:05:45Z] ---- round 4 / 5 : inject (management stack up) ----
+    HW_BEFORE_I4 7, 00000000:CC:00.0, 0, 0
+    INJECT_T=2026-09-03T21:06:05.354Z
+    ROW=0x0000001026b9dc40
+    KMSG_WROTE_OK
+    === iteration 4 injected at 2026-09-03T21:06:05.354Z row=0x0000001026b9dc40 ===
+[2026-09-03T21:06:05Z] ---- round 4 / 5 : forced reset of GPU 7 ----
+    RESET_T=2026-09-03T21:06:11.727Z
+    --- holders of /dev/nvidia7 BEFORE ---
+    3517070:nvidia-persiste
+    3523202:dcgm-exporter
+    3523351:nvidia-gpu-devi
+    --- stopping nvidia-persistenced (service + path trigger) ---
+    Persistence mode is already Disabled for GPU 00000000:CC:00.0.
+    All done.
+    --- inducing kubelet restart backoff on container holders ---
+      kill sweep 1 done
+      kill sweep 2 done
+      kill sweep 3 done
+    --- final kill + immediate reset (no scan in between) ---
+    --- attempting reset of GPU 7 ---
+    GPU 00000000:CC:00.0 was successfully reset.
+    All done.
+    RESET_RC=0
+    --- nvidia-smi verification: all GPUs ---
+    index, pci.bus_id, name, persistence_mode, ecc.errors.uncorrected.volatile.total, remapped_rows.uncorrectable, remapped_rows.pending, remapped_rows.failure
+    0, 00000000:8F:00.0, NVIDIA B200, Disabled, 0, 0, No, No
+    1, 00000000:90:00.0, NVIDIA B200, Disabled, 0, 0, No, No
+    2, 00000000:96:00.0, NVIDIA B200, Disabled, 0, 0, No, No
+    3, 00000000:97:00.0, NVIDIA B200, Disabled, 0, 0, No, No
+    4, 00000000:C4:00.0, NVIDIA B200, Disabled, 0, 0, No, No
+    5, 00000000:C5:00.0, NVIDIA B200, Disabled, 0, 0, No, No
+    6, 00000000:CB:00.0, NVIDIA B200, Disabled, 0, 0, No, No
+    7, 00000000:CC:00.0, NVIDIA B200, Disabled, 0, 0, No, No
+    GPU_COUNT=8
+    --- restoring persistenced + persistence mode ---
+    Persistence mode is already Enabled for GPU 00000000:CC:00.0.
+    All done.
+    --- holders AFTER restore ---
+    3530193:nvidia-persiste
+    === reset tag=8f-i4 : gpu7_rc=0 all_rc=n/a gpus_visible=8 ===
+[2026-09-03T21:06:55Z] round 4 reset OK
+[2026-09-03T21:06:55Z] ---- round 4 / 5 : waiting for stack recovery ----
+[2026-09-03T21:09:39Z]   stack back after 40s (allocatable=8 ready=True)
+[2026-09-03T21:09:39Z] round 4 took 234s, over the 60s period -- starting next round immediately
+[2026-09-03T21:09:39Z] ---- round 5 / 5 : inject (management stack up) ----
+    HW_BEFORE_I5 7, 00000000:CC:00.0, 0, 0
+    INJECT_T=2026-09-03T21:10:04.157Z
+    ROW=0x0000001026b9ec40
+    KMSG_WROTE_OK
+    === iteration 5 injected at 2026-09-03T21:10:04.157Z row=0x0000001026b9ec40 ===
+[2026-09-03T21:10:04Z] ---- round 5 / 5 : forced reset of GPU 7 ----
+    RESET_T=2026-09-03T21:10:11.389Z
+    --- holders of /dev/nvidia7 BEFORE ---
+    3530193:nvidia-persiste
+    3537718:dcgm-exporter
+    3537837:nvidia-gpu-devi
+    --- stopping nvidia-persistenced (service + path trigger) ---
+    Persistence mode is already Disabled for GPU 00000000:CC:00.0.
+    All done.
+    --- inducing kubelet restart backoff on container holders ---
+      kill sweep 1 done
+      kill sweep 2 done
+      kill sweep 3 done
+    --- final kill + immediate reset (no scan in between) ---
+    --- attempting reset of GPU 7 ---
+    GPU 00000000:CC:00.0 was successfully reset.
+    All done.
+    RESET_RC=0
+    --- nvidia-smi verification: all GPUs ---
+    index, pci.bus_id, name, persistence_mode, ecc.errors.uncorrected.volatile.total, remapped_rows.uncorrectable, remapped_rows.pending, remapped_rows.failure
+    0, 00000000:8F:00.0, NVIDIA B200, Disabled, 0, 0, No, No
+    1, 00000000:90:00.0, NVIDIA B200, Disabled, 0, 0, No, No
+    2, 00000000:96:00.0, NVIDIA B200, Disabled, 0, 0, No, No
+    3, 00000000:97:00.0, NVIDIA B200, Disabled, 0, 0, No, No
+    4, 00000000:C4:00.0, NVIDIA B200, Disabled, 0, 0, No, No
+    5, 00000000:C5:00.0, NVIDIA B200, Disabled, 0, 0, No, No
+    6, 00000000:CB:00.0, NVIDIA B200, Disabled, 0, 0, No, No
+    7, 00000000:CC:00.0, NVIDIA B200, Disabled, 0, 0, No, No
+    GPU_COUNT=8
+    --- restoring persistenced + persistence mode ---
+    Persistence mode is already Enabled for GPU 00000000:CC:00.0.
+    All done.
+    --- holders AFTER restore ---
+    3544798:nvidia-persiste
+    === reset tag=8f-i5 : gpu7_rc=0 all_rc=n/a gpus_visible=8 ===
+[2026-09-03T21:10:56Z] round 5 reset OK
+[2026-09-03T21:10:56Z] ---- round 5 / 5 : waiting for stack recovery ----
+[2026-09-03T21:15:46Z]   stack back after 70s (allocatable=8 ready=True)
+[2026-09-03T21:15:46Z] all 5 rounds complete: 5 resets OK, 0 failed
+[2026-09-03T21:17:16Z] checking Cloud Logging for 8f's injected lines
+    XID63_LOG_HITS 11 instance_id=174490015860863227
+      i1 row=0x0000001026b9ac40 FOUND
+      i2 row=0x0000001026b9bc40 FOUND
+      i3 row=0x0000001026b9cc40 FOUND
+      i4 row=0x0000001026b9dc40 FOUND
+      i5 row=0x0000001026b9ec40 FOUND
+      ts=2026-09-03T21:10:04.218419205Z | [237507.607991] NVRM: Xid (PCI:0000:cc:00): 63, Row Remapper: New row (0x0000001026b9ec40) marked for remapping, reset gpu to activate.\r\n
+      ts=2026-09-03T21:06:05.415250095Z | [237268.804755] NVRM: Xid (PCI:0000:cc:00): 63, Row Remapper: New row (0x0000001026b9dc40) marked for remapping, reset gpu to activate.\r\n
+      ts=2026-09-03T21:03:37.888980808Z | [237121.278405] NVRM: Xid (PCI:0000:cc:00): 63, Row Remapper: New row (0x0000001026b9cc40) marked for remapping, reset gpu to activate.\r\n
+      ts=2026-09-03T21:01:30.428104200Z | [236993.817488] NVRM: Xid (PCI:0000:cc:00): 63, Row Remapper: New row (0x0000001026b9bc40) marked for remapping, reset gpu to activate.\r\n
+      ts=2026-09-03T21:00:08.455998637Z | [236911.845378] NVRM: Xid (PCI:0000:cc:00): 63, Row Remapper: New row (0x0000001026b9ac40) marked for remapping, reset gpu to activate.\r\n
+      ts=2026-09-01T03:17:52.828100663Z | [  376.134501] NVRM: Xid (PCI:0000:cc:00): 63, Row Remapper: New row (0x0000001026b8ac40) marked for remapping, reset gpu to activate.\r\n
+      ts=2026-08-31T21:57:42.352844035Z | [354697.543634] NVRM: Xid (PCI:0000:cc:00): 63, Row Remapper: New row (0x0000001026b7ec40) marked for remapping, reset gpu to activate.\r\n
+      ts=2026-08-31T21:56:23.497345558Z | [354618.688163] NVRM: Xid (PCI:0000:cc:00): 63, Row Remapper: New row (0x0000001026b7dc40) marked for remapping, reset gpu to activate.\r\n
+      ts=2026-08-31T21:55:02.816304225Z | [354538.007098] NVRM: Xid (PCI:0000:cc:00): 63, Row Remapper: New row (0x0000001026b7cc40) marked for remapping, reset gpu to activate.\r\n
+      ts=2026-08-31T21:53:36.809377351Z | [354452.000137] NVRM: Xid (PCI:0000:cc:00): 63, Row Remapper: New row (0x0000001026b7bc40) marked for remapping, reset gpu to activate.\r\n
+      ts=2026-08-31T21:52:11.445457239Z | [354366.636091] NVRM: Xid (PCI:0000:cc:00): 63, Row Remapper: New row (0x0000001026b7ac40) marked for remapping, reset gpu to activate.\r\n
+[2026-09-03T21:17:29Z] observing for 1800s (watch8f continues past this)
+[2026-09-03T21:17:42Z]   probe {"k8s_annotation": {"can_reschedule": "true", "latest_window_start_time": "2026-09-11T00:00:01+00:00", "maintenance_reason": ["FAILURE_GPU_XID", "FAILURE_GPU"], "maintenance_status": "PENDING", "start_time_window": {"earliest": "2026-09-11T00:00:00+00:00", "latest": "2026-09-11T04:00:00+00:00"}, "type": "UNSCHEDULED", "window_end_time": "2026-09-11T04:00:00+00:00", "window_start_time": "2026-09-11T00:00:00+00:00"}, "res_health": "DEGRADED", "res_ongoing": 0, "res_pending": 1, "upcomingMaintenance": {"canReschedule": true, "latestWindowStartTime": "2026-09-11T00:00:01Z", "maintenanceReasons": ["FAILURE_GPU_XID", "FAILURE_GPU"], "maintenanceStatus": "PENDING", "type": "UNSCHEDULED", "windowEndTime": "2026-09-11T04:00:00Z", "windowStartTime": "2026-09-11T00:00:00Z"}, "vm": "RUNNING"}
+[2026-09-03T21:17:42Z]   *** MAINTENANCE EVENT PRESENT at 2026-09-03T21:17:42.968Z ***
+[2026-09-03T21:17:42Z]   {"k8s_annotation": {"can_reschedule": "true", "latest_window_start_time": "2026-09-11T00:00:01+00:00", "maintenance_reason": ["FAILURE_GPU_XID", "FAILURE_GPU"], "maintenance_status": "PENDING", "start_time_window": {"earliest": "2026-09-11T00:00:00+00:00", "latest": "2026-09-11T04:00:00+00:00"}, "type": "UNSCHEDULED", "window_end_time": "2026-09-11T04:00:00+00:00", "window_start_time": "2026-09-11T00:00:00+00:00"}, "res_health": "DEGRADED", "res_ongoing": 0, "res_pending": 1, "upcomingMaintenance": {"canReschedule": true, "latestWindowStartTime": "2026-09-11T00:00:01Z", "maintenanceReasons": ["FAILURE_GPU_XID", "FAILURE_GPU"], "maintenanceStatus": "PENDING", "type": "UNSCHEDULED", "windowEndTime": "2026-09-11T04:00:00Z", "windowStartTime": "2026-09-11T00:00:00Z"}, "vm": "RUNNING"}
+[2026-09-03T21:17:42Z] ################ RUN 8F COMPLETE; found=2026-09-03T21:17:42.968Z ################

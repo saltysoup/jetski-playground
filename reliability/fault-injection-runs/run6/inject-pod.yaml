@@ -1,0 +1,39 @@
+# Privileged host-access pod pinned to the target node, used for the run 6 stimulus.
+#
+# Two jobs, both needing host scope:
+#   1. write a synthetic "NVRM: Xid ... 79" line to the host kernel ring buffer, which is
+#      what the serial console exports and therefore what Cloud Logging, the log-based
+#      alert and GKE's health signals all read
+#   2. kill the training processes bound to GPU 7, so the job actually dies the way it
+#      would if the GPU really had fallen off the bus
+#
+# hostPID is what makes (2) possible: without it the container cannot see, let alone
+# signal, the DTensorPolicyWorkerV2 processes in the Ray worker pod.
+#
+# It only sleeps. Nothing happens until `inject.sh` execs into it.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: xid-inject-run6
+  labels:
+    app: xid-inject
+spec:
+  nodeName: gke-ikwak-reliabilit-a4-highgpu-8g-a4-0256e2f1-34t3
+  hostPID: true
+  restartPolicy: Never
+  tolerations:
+    - operator: Exists          # the node carries the nvidia GPU taint, and will pick up
+                                # maintenance taints later in the run
+  containers:
+    - name: inject
+      image: busybox
+      command: ["sleep", "36000"]
+      securityContext:
+        privileged: true
+      volumeMounts:
+        - name: dev
+          mountPath: /hostdev
+  volumes:
+    - name: dev
+      hostPath:
+        path: /dev

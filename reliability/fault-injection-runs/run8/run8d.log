@@ -1,0 +1,67 @@
+[2026-08-31T21:51:43Z] guard ready=True
+[2026-08-31T21:51:43Z] guard maint={"k8s_annotation": null, "res_health": "HEALTHY", "res_ongoing": null, "res_pending": null, "upcomingMaintenance": null, "vm": "RUNNING"}
+[2026-08-31T21:51:43Z] ################ RUN 8D: 5 x Xid 63, 60s apart, no reboot ################
+[2026-08-31T21:51:43Z] ---- injection 1 / 5 ----
+    HW_BEFORE_I1 7, 00000000:CC:00.0, 0, 0
+    INJECT_T=2026-08-31T21:52:11.384Z
+    ROW=0x0000001026b7ac40
+    KMSG_WROTE_OK
+    === iteration 1 injected at 2026-08-31T21:52:11.384Z row=0x0000001026b7ac40 ===
+[2026-08-31T21:53:11Z] ---- injection 2 / 5 ----
+    HW_BEFORE_I2 7, 00000000:CC:00.0, 0, 0
+    INJECT_T=2026-08-31T21:53:36.748Z
+    ROW=0x0000001026b7bc40
+    KMSG_WROTE_OK
+    === iteration 2 injected at 2026-08-31T21:53:36.748Z row=0x0000001026b7bc40 ===
+[2026-08-31T21:54:36Z] ---- injection 3 / 5 ----
+    HW_BEFORE_I3 7, 00000000:CC:00.0, 0, 0
+    INJECT_T=2026-08-31T21:55:02.755Z
+    ROW=0x0000001026b7cc40
+    KMSG_WROTE_OK
+    === iteration 3 injected at 2026-08-31T21:55:02.755Z row=0x0000001026b7cc40 ===
+[2026-08-31T21:56:02Z] ---- injection 4 / 5 ----
+    HW_BEFORE_I4 7, 00000000:CC:00.0, 0, 0
+    INJECT_T=2026-08-31T21:56:23.436Z
+    ROW=0x0000001026b7dc40
+    KMSG_WROTE_OK
+    === iteration 4 injected at 2026-08-31T21:56:23.436Z row=0x0000001026b7dc40 ===
+[2026-08-31T21:57:23Z] ---- injection 5 / 5 ----
+    HW_BEFORE_I5 7, 00000000:CC:00.0, 0, 0
+    INJECT_T=2026-08-31T21:57:42.292Z
+    ROW=0x0000001026b7ec40
+    KMSG_WROTE_OK
+    === iteration 5 injected at 2026-08-31T21:57:42.292Z row=0x0000001026b7ec40 ===
+[2026-08-31T21:57:42Z] all 5 injections written
+[2026-08-31T21:59:12Z] checking Cloud Logging for the injected lines
+    XID63_LOG_HITS 5 instance_id=174490015860863227
+      i1 row=0x0000001026b7ac40 FOUND
+      i2 row=0x0000001026b7bc40 FOUND
+      i3 row=0x0000001026b7cc40 FOUND
+      i4 row=0x0000001026b7dc40 FOUND
+      i5 row=0x0000001026b7ec40 FOUND
+      ts=2026-08-31T21:57:42.352844035Z | [354697.543634] NVRM: Xid (PCI:0000:cc:00): 63, Row Remapper: New row (0x0000001026b7ec40) marked for remapping, reset gpu to activate.\r\n
+      ts=2026-08-31T21:56:23.497345558Z | [354618.688163] NVRM: Xid (PCI:0000:cc:00): 63, Row Remapper: New row (0x0000001026b7dc40) marked for remapping, reset gpu to activate.\r\n
+      ts=2026-08-31T21:55:02.816304225Z | [354538.007098] NVRM: Xid (PCI:0000:cc:00): 63, Row Remapper: New row (0x0000001026b7cc40) marked for remapping, reset gpu to activate.\r\n
+      ts=2026-08-31T21:53:36.809377351Z | [354452.000137] NVRM: Xid (PCI:0000:cc:00): 63, Row Remapper: New row (0x0000001026b7bc40) marked for remapping, reset gpu to activate.\r\n
+      ts=2026-08-31T21:52:11.445457239Z | [354366.636091] NVRM: Xid (PCI:0000:cc:00): 63, Row Remapper: New row (0x0000001026b7ac40) marked for remapping, reset gpu to activate.\r\n
+[2026-08-31T21:59:23Z] observing for 1800s (watch8d.py continues past this)
+[2026-08-31T21:59:34Z]   probe {"k8s_annotation": null, "res_health": "DEGRADED", "res_ongoing": null, "res_pending": null, "upcomingMaintenance": null, "vm": "RUNNING"}
+[2026-08-31T21:59:34Z]   *** RESERVATION NO LONGER HEALTHY ***
+[2026-08-31T21:59:34Z]   {"k8s_annotation": null, "res_health": "DEGRADED", "res_ongoing": null, "res_pending": null, "upcomingMaintenance": null, "vm": "RUNNING"}
+[2026-08-31T22:00:48Z]   probe {"k8s_annotation": null, "res_health": "DEGRADED", "res_ongoing": null, "res_pending": null, "upcomingMaintenance": null, "vm": "RUNNING"}
+[2026-08-31T22:00:48Z]   *** RESERVATION NO LONGER HEALTHY ***
+[2026-08-31T22:00:48Z]   {"k8s_annotation": null, "res_health": "DEGRADED", "res_ongoing": null, "res_pending": null, "upcomingMaintenance": null, "vm": "RUNNING"}
+[2026-08-31T22:02:01Z]   probe {"k8s_annotation": null, "res_health": "DEGRADED", "res_ongoing": null, "res_pending": null, "upcomingMaintenance": null, "vm": "RUNNING"}
+[2026-08-31T22:02:01Z]   *** RESERVATION NO LONGER HEALTHY ***
+[2026-08-31T22:02:01Z]   {"k8s_annotation": null, "res_health": "DEGRADED", "res_ongoing": null, "res_pending": null, "upcomingMaintenance": null, "vm": "RUNNING"}
+[2026-08-31T22:03:12Z]   probe {"k8s_annotation": null, "res_health": "DEGRADED", "res_ongoing": null, "res_pending": null, "upcomingMaintenance": null, "vm": "RUNNING"}
+[2026-08-31T22:03:12Z]   *** RESERVATION NO LONGER HEALTHY ***
+[2026-08-31T22:03:12Z]   {"k8s_annotation": null, "res_health": "DEGRADED", "res_ongoing": null, "res_pending": null, "upcomingMaintenance": null, "vm": "RUNNING"}
+[2026-08-31T22:04:24Z]   probe {"k8s_annotation": null, "res_health": "DEGRADED", "res_ongoing": null, "res_pending": null, "upcomingMaintenance": null, "vm": "RUNNING"}
+[2026-08-31T22:04:24Z]   *** RESERVATION NO LONGER HEALTHY ***
+[2026-08-31T22:04:24Z]   {"k8s_annotation": null, "res_health": "DEGRADED", "res_ongoing": null, "res_pending": null, "upcomingMaintenance": null, "vm": "RUNNING"}
+[2026-08-31T22:05:36Z]   probe {"k8s_annotation": {"can_reschedule": "true", "latest_window_start_time": "2026-09-08T00:00:01+00:00", "maintenance_reason": ["FAILURE_GPU_XID", "FAILURE_GPU"], "maintenance_status": "PENDING", "start_time_window": {"earliest": "2026-09-08T00:00:00+00:00", "latest": "2026-09-08T04:00:00+00:00"}, "type": "UNSCHEDULED", "window_end_time": "2026-09-08T04:00:00+00:00", "window_start_time": "2026-09-08T00:00:00+00:00"}, "res_health": "DEGRADED", "res_ongoing": 0, "res_pending": 1, "upcomingMaintenance": {"canReschedule": true, "latestWindowStartTime": "2026-09-08T00:00:01Z", "maintenanceReasons": ["FAILURE_GPU_XID", "FAILURE_GPU"], "maintenanceStatus": "PENDING", "type": "UNSCHEDULED", "windowEndTime": "2026-09-08T04:00:00Z", "windowStartTime": "2026-09-08T00:00:00Z"}, "vm": "RUNNING"}
+[2026-08-31T22:05:36Z]   *** MAINTENANCE EVENT PRESENT at 2026-08-31T22:05:36.109Z ***
+[2026-08-31T22:05:36Z]   {"k8s_annotation": {"can_reschedule": "true", "latest_window_start_time": "2026-09-08T00:00:01+00:00", "maintenance_reason": ["FAILURE_GPU_XID", "FAILURE_GPU"], "maintenance_status": "PENDING", "start_time_window": {"earliest": "2026-09-08T00:00:00+00:00", "latest": "2026-09-08T04:00:00+00:00"}, "type": "UNSCHEDULED", "window_end_time": "2026-09-08T04:00:00+00:00", "window_start_time": "2026-09-08T00:00:00+00:00"}, "res_health": "DEGRADED", "res_ongoing": 0, "res_pending": 1, "upcomingMaintenance": {"canReschedule": true, "latestWindowStartTime": "2026-09-08T00:00:01Z", "maintenanceReasons": ["FAILURE_GPU_XID", "FAILURE_GPU"], "maintenanceStatus": "PENDING", "type": "UNSCHEDULED", "windowEndTime": "2026-09-08T04:00:00Z", "windowStartTime": "2026-09-08T00:00:00Z"}, "vm": "RUNNING"}
+[2026-08-31T22:05:36Z] ################ RUN 8D INJECTION PHASE COMPLETE; found=2026-08-31T22:05:36.109Z ################
+[2026-08-31T22:05:36Z] watch8d.py is still polling -- check timeline-8d.log for anything arriving later

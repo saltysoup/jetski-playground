@@ -1,0 +1,93 @@
+17:27:20.800 | T     +0.2s | start  | START         | T0=2026-08-27T17:27:20.643000+00:00 poll=20.0s max=8.0h
+17:27:34.130 | T    +13.5s | start  | BASELINE      | {"34t3_maint": "CLEAR", "34t3_vm": "RUNNING", "6df3_maint": "CLEAR", "6df3_vm": "RUNNING", "block_degraded": null, "block_health": "HEALTHY", "cluster_gpu": 16, "gce_upcoming": null, "k8s_upcoming": null, "node_bootid": "3916caa8-b739-4c6d-962b-f38f94fa25d2", "node_gpu": "8", "node_labels": "{}", "node_ready": "True", "node_taints": "[\"nvidia.com/gpu\"]", "res_degraded_blocks": 0, "res_health": "HEALTHY", "res_ongoing": null, "res_pending": null}
+17:30:45.101 | T   +204.5s | i1-rebooting | CHANGE        | {"node_labels": ["{}", "{\"cloud.google.com/perform-reboot\": \"true\"}"], "node_taints": ["[\"nvidia.com/gpu\"]", "[\"cloud.google.com/impending-node-termination\", \"nvidia.com/gpu\"]"]}
+17:32:20.636 | T   +300.0s | i1-rebooting | CHANGE        | {"node_ready": ["True", "False"], "node_gpu": ["8", "0"], "node_taints": ["[\"cloud.google.com/impending-node-termination\", \"nvidia.com/gpu\"]", "[\"cloud.google.com/impending-node-termination\", \"node.kubernetes.io/not-ready\", \"node.kubernetes.io/not-ready\", \"nvidia.com/gpu\"]"], "cluster_gpu": [16, 8]}
+17:33:24.474 | T   +363.8s | i1-rebooting | CHANGE        | {"node_ready": ["False", "Unknown"], "node_taints": ["[\"cloud.google.com/impending-node-termination\", \"node.kubernetes.io/not-ready\", \"node.kubernetes.io/not-ready\", \"nvidia.com/gpu\"]", "[\"cloud.google.com/impending-node-termination\", \"node.kubernetes.io/unreachable\", \"node.kubernetes.io/unreachable\", \"nvidia.com/gpu\"]"]}
+17:35:00.107 | T   +459.5s | i1-recovering | CHANGE        | {"node_ready": ["Unknown", "True"], "node_bootid": ["3916caa8-b739-4c6d-962b-f38f94fa25d2", "9ce820b2-ab05-42b0-9237-e998fde8129e"], "node_taints": ["[\"cloud.google.com/impending-node-termination\", \"node.kubernetes.io/unreachable\", \"node.kubernetes.io/unreachable\", \"nvidia.com/gpu\"]", "[\"cloud.google.com/impending-node-termination\", \"nvidia.com/gpu\"]"]}
+17:35:31.853 | T   +491.2s | i1-recovering | CHANGE        | {"node_labels": ["{\"cloud.google.com/perform-reboot\": \"true\"}", "{}"], "node_taints": ["[\"cloud.google.com/impending-node-termination\", \"nvidia.com/gpu\"]", "[\"nvidia.com/gpu\"]"], "cluster_gpu": [8, 16]}
+17:36:03.261 | T   +522.6s | i1-observe | CHANGE        | {"node_gpu": ["0", "8"]}
+17:42:49.052 | T   +928.4s | i1-observe | heartbeat     | tick=30 34t3 vm=RUNNING ready=True maint=CLEAR gpu=16
+17:50:31.396 | T  +1390.8s | i1-observe | heartbeat     | tick=45 34t3 vm=RUNNING ready=True maint=CLEAR gpu=16
+17:53:36.658 | T  +1576.0s | i2-rebooting | CHANGE        | {"node_labels": ["{}", "{\"cloud.google.com/perform-reboot\": \"true\"}"], "node_taints": ["[\"nvidia.com/gpu\"]", "[\"cloud.google.com/impending-node-termination\", \"nvidia.com/gpu\"]"]}
+17:54:38.489 | T  +1637.8s | i2-rebooting | CHANGE        | {"node_ready": ["True", "False"], "node_gpu": ["8", "0"], "node_taints": ["[\"cloud.google.com/impending-node-termination\", \"nvidia.com/gpu\"]", "[\"cloud.google.com/impending-node-termination\", \"node.kubernetes.io/not-ready\", \"node.kubernetes.io/not-ready\", \"nvidia.com/gpu\"]"], "cluster_gpu": [16, 8]}
+17:55:40.577 | T  +1699.9s | i2-rebooting | CHANGE        | {"node_ready": ["False", "Unknown"], "node_taints": ["[\"cloud.google.com/impending-node-termination\", \"node.kubernetes.io/not-ready\", \"node.kubernetes.io/not-ready\", \"nvidia.com/gpu\"]", "[\"cloud.google.com/impending-node-termination\", \"node.kubernetes.io/unreachable\", \"node.kubernetes.io/unreachable\", \"nvidia.com/gpu\"]"]}
+17:56:43.053 | T  +1762.4s | i2-rebooting | CHANGE        | {"node_ready": ["Unknown", "False"], "node_bootid": ["9ce820b2-ab05-42b0-9237-e998fde8129e", "8731eb37-5b36-4315-8f92-c4e9ad1b5604"]}
+17:57:14.268 | T  +1793.6s | i2-recovering | CHANGE        | {"node_ready": ["False", "True"], "node_labels": ["{\"cloud.google.com/perform-reboot\": \"true\"}", "{}"], "node_taints": ["[\"cloud.google.com/impending-node-termination\", \"node.kubernetes.io/unreachable\", \"node.kubernetes.io/unreachable\", \"nvidia.com/gpu\"]", "[\"nvidia.com/gpu\"]"]}
+17:57:47.738 | T  +1827.1s | i2-observe | CHANGE        | {"node_gpu": ["0", "8"], "cluster_gpu": [8, 16]}
+17:58:19.100 | T  +1858.5s | i2-observe | heartbeat     | tick=60 34t3 vm=RUNNING ready=True maint=CLEAR gpu=16
+18:06:06.762 | T  +2326.1s | i2-observe | heartbeat     | tick=75 34t3 vm=RUNNING ready=True maint=CLEAR gpu=16
+18:13:59.149 | T  +2798.5s | i3-confirm | heartbeat     | tick=90 34t3 vm=RUNNING ready=True maint=CLEAR gpu=16
+18:15:32.131 | T  +2891.5s | i3-rebooting | CHANGE        | {"node_labels": ["{}", "{\"cloud.google.com/perform-reboot\": \"true\"}"], "node_taints": ["[\"nvidia.com/gpu\"]", "[\"cloud.google.com/impending-node-termination\", \"nvidia.com/gpu\"]"]}
+18:17:06.961 | T  +2986.3s | i3-rebooting | CHANGE        | {"node_ready": ["True", "False"], "node_gpu": ["8", "0"], "node_taints": ["[\"cloud.google.com/impending-node-termination\", \"nvidia.com/gpu\"]", "[\"cloud.google.com/impending-node-termination\", \"node.kubernetes.io/not-ready\", \"node.kubernetes.io/not-ready\", \"nvidia.com/gpu\"]"], "cluster_gpu": [16, 8]}
+18:18:09.607 | T  +3049.0s | i3-rebooting | CHANGE        | {"node_ready": ["False", "Unknown"], "node_taints": ["[\"cloud.google.com/impending-node-termination\", \"node.kubernetes.io/not-ready\", \"node.kubernetes.io/not-ready\", \"nvidia.com/gpu\"]", "[\"cloud.google.com/impending-node-termination\", \"node.kubernetes.io/unreachable\", \"node.kubernetes.io/unreachable\", \"nvidia.com/gpu\"]"]}
+18:19:44.455 | T  +3143.8s | i3-recovering | CHANGE        | {"node_ready": ["Unknown", "True"], "node_bootid": ["8731eb37-5b36-4315-8f92-c4e9ad1b5604", "6e030763-82ea-48bd-b034-076a17ae4d03"], "node_labels": ["{\"cloud.google.com/perform-reboot\": \"true\"}", "{}"], "node_taints": ["[\"cloud.google.com/impending-node-termination\", \"node.kubernetes.io/unreachable\", \"node.kubernetes.io/unreachable\", \"nvidia.com/gpu\"]", "[\"nvidia.com/gpu\"]"]}
+18:20:16.093 | T  +3175.5s | i3-observe | CHANGE        | {"node_gpu": ["0", "8"], "cluster_gpu": [8, 16]}
+18:21:51.280 | T  +3270.6s | i3-observe | heartbeat     | tick=105 34t3 vm=RUNNING ready=True maint=CLEAR gpu=16
+18:29:59.683 | T  +3759.0s | i3-observe | heartbeat     | tick=120 34t3 vm=RUNNING ready=True maint=CLEAR gpu=16
+18:38:07.747 | T  +4247.1s | i4-rebooting | CHANGE        | {"node_labels": ["{}", "{\"cloud.google.com/perform-reboot\": \"true\"}"], "node_taints": ["[\"nvidia.com/gpu\"]", "[\"cloud.google.com/impending-node-termination\", \"nvidia.com/gpu\"]"]}
+18:39:43.012 | T  +4342.4s | i4-rebooting | CHANGE        | {"node_ready": ["True", "False"], "node_gpu": ["8", "0"], "node_taints": ["[\"cloud.google.com/impending-node-termination\", \"nvidia.com/gpu\"]", "[\"cloud.google.com/impending-node-termination\", \"node.kubernetes.io/not-ready\", \"node.kubernetes.io/not-ready\", \"nvidia.com/gpu\"]"], "cluster_gpu": [16, 8]}
+18:40:45.679 | T  +4405.0s | i4-rebooting | CHANGE        | {"node_ready": ["False", "Unknown"], "node_taints": ["[\"cloud.google.com/impending-node-termination\", \"node.kubernetes.io/not-ready\", \"node.kubernetes.io/not-ready\", \"nvidia.com/gpu\"]", "[\"cloud.google.com/impending-node-termination\", \"node.kubernetes.io/unreachable\", \"node.kubernetes.io/unreachable\", \"nvidia.com/gpu\"]"]}
+18:42:20.628 | T  +4500.0s | i4-recovering | CHANGE        | {"node_ready": ["Unknown", "False"], "node_bootid": ["6e030763-82ea-48bd-b034-076a17ae4d03", "31c198f7-e10d-49d1-8535-2c0eb951af42"], "node_taints": ["[\"cloud.google.com/impending-node-termination\", \"node.kubernetes.io/unreachable\", \"node.kubernetes.io/unreachable\", \"nvidia.com/gpu\"]", "[\"cloud.google.com/impending-node-termination\", \"node.kubernetes.io/not-ready\", \"node.kubernetes.io/not-ready\", \"nvidia.com/gpu\"]"]}
+18:46:06.798 | T  +4726.2s | i4-recovering | heartbeat     | tick=150 34t3 vm=RUNNING ready=False maint=CLEAR gpu=8
+18:48:20.064 | T  +4859.4s | i4-recovering | CHANGE        | {"node_ready": ["False", "True"], "node_taints": ["[\"cloud.google.com/impending-node-termination\", \"node.kubernetes.io/not-ready\", \"node.kubernetes.io/not-ready\", \"nvidia.com/gpu\"]", "[\"cloud.google.com/impending-node-termination\", \"nvidia.com/gpu\"]"]}
+18:48:52.647 | T  +4892.0s | i4-recovering | CHANGE        | {"node_gpu": ["0", "8"], "cluster_gpu": [8, 16]}
+18:50:01.418 | T  +4960.8s | i4-observe | CHANGE        | {"node_labels": ["{\"cloud.google.com/perform-reboot\": \"true\"}", "{}"], "node_taints": ["[\"cloud.google.com/impending-node-termination\", \"nvidia.com/gpu\"]", "[\"nvidia.com/gpu\"]"]}
+18:54:24.351 | T  +5223.7s | i4-observe | heartbeat     | tick=165 34t3 vm=RUNNING ready=True maint=CLEAR gpu=16
+19:02:23.535 | T  +5702.9s | i4-observe | heartbeat     | tick=180 34t3 vm=RUNNING ready=True maint=CLEAR gpu=16
+19:07:10.930 | T  +5990.3s | i5-rebooting | CHANGE        | {"node_labels": ["{}", "{\"cloud.google.com/perform-reboot\": \"true\"}"], "node_taints": ["[\"nvidia.com/gpu\"]", "[\"cloud.google.com/impending-node-termination\", \"nvidia.com/gpu\"]"]}
+19:08:46.552 | T  +6085.9s | i5-rebooting | CHANGE        | {"node_ready": ["True", "False"], "node_gpu": ["8", "0"], "node_taints": ["[\"cloud.google.com/impending-node-termination\", \"nvidia.com/gpu\"]", "[\"cloud.google.com/impending-node-termination\", \"node.kubernetes.io/not-ready\", \"node.kubernetes.io/not-ready\", \"nvidia.com/gpu\"]"], "cluster_gpu": [16, 8]}
+19:09:49.953 | T  +6149.3s | i5-rebooting | CHANGE        | {"node_ready": ["False", "Unknown"], "node_taints": ["[\"cloud.google.com/impending-node-termination\", \"node.kubernetes.io/not-ready\", \"node.kubernetes.io/not-ready\", \"nvidia.com/gpu\"]", "[\"cloud.google.com/impending-node-termination\", \"node.kubernetes.io/unreachable\", \"node.kubernetes.io/unreachable\", \"nvidia.com/gpu\"]"]}
+19:10:21.132 | T  +6180.5s | i5-rebooting | heartbeat     | tick=195 34t3 vm=RUNNING ready=Unknown maint=CLEAR gpu=8
+19:11:24.137 | T  +6243.5s | i5-recovering | CHANGE        | {"node_ready": ["Unknown", "False"], "node_bootid": ["31c198f7-e10d-49d1-8535-2c0eb951af42", "a18f1902-5d17-423e-bd57-8acfeb626aaa"], "node_taints": ["[\"cloud.google.com/impending-node-termination\", \"node.kubernetes.io/unreachable\", \"node.kubernetes.io/unreachable\", \"nvidia.com/gpu\"]", "[\"cloud.google.com/impending-node-termination\", \"node.kubernetes.io/not-ready\", \"node.kubernetes.io/not-ready\", \"nvidia.com/gpu\"]"]}
+19:18:11.011 | T  +6650.4s | i5-recovering | heartbeat     | tick=210 34t3 vm=RUNNING ready=False maint=CLEAR gpu=8
+19:19:46.794 | T  +6746.2s | i5-recovering | CHANGE        | {"34t3_vm": ["RUNNING", "STOPPING"]}
+19:20:49.161 | T  +6808.5s | i5-recovering | CHANGE        | {"node_ready": ["False", "Unknown"], "node_taints": ["[\"cloud.google.com/impending-node-termination\", \"node.kubernetes.io/not-ready\", \"node.kubernetes.io/not-ready\", \"nvidia.com/gpu\"]", "[\"cloud.google.com/impending-node-termination\", \"node.kubernetes.io/unreachable\", \"node.kubernetes.io/unreachable\", \"nvidia.com/gpu\"]"]}
+19:21:22.092 | T  +6841.4s | i5-recovering | CHANGE        | {"34t3_vm": ["STOPPING", "PROVISIONING"]}
+19:21:55.301 | T  +6874.7s | i5-recovering | CHANGE        | {"34t3_vm": ["PROVISIONING", "STAGING"]}
+19:26:22.185 | T  +7141.5s | i5-recovering | CHANGE        | {"34t3_vm": ["STAGING", "RUNNING"]}
+19:28:02.737 | T  +7242.1s | i5-recovering | CHANGE        | {"node_ready": [null, "True"], "node_bootid": [null, "292ba28e-9b5e-4ca9-aec6-9cc3ac15146a"], "node_labels": [null, "{}"], "node_taints": [null, "[\"nvidia.com/gpu\"]"]}
+19:28:35.633 | T  +7275.0s | i5-recovering | CHANGE        | {"cluster_gpu": [8, 16]}
+19:29:12.091 | T  +7311.4s | 8b-setup | CHANGE        | {"node_gpu": [null, "8"]}
+19:34:44.830 | T  +7644.2s | 8b-i1-observe | heartbeat     | tick=240 34t3 vm=RUNNING ready=True maint=CLEAR gpu=16
+19:42:44.896 | T  +8124.3s | 8b-i1-inject | heartbeat     | tick=255 34t3 vm=RUNNING ready=True maint=CLEAR gpu=16
+19:50:33.644 | T  +8593.0s | 8b-i1-observe | heartbeat     | tick=270 34t3 vm=RUNNING ready=True maint=CLEAR gpu=16
+19:58:17.394 | T  +9056.8s | 8b-i1-observe | heartbeat     | tick=285 34t3 vm=RUNNING ready=True maint=CLEAR gpu=16
+20:06:07.876 | T  +9527.2s | 8b-i2-observe | heartbeat     | tick=300 34t3 vm=RUNNING ready=True maint=CLEAR gpu=16
+20:13:54.078 | T  +9993.4s | 8b-i2-observe | heartbeat     | tick=315 34t3 vm=RUNNING ready=True maint=CLEAR gpu=16
+20:21:48.747 | T +10468.1s | 8b-i3-observe | heartbeat     | tick=330 34t3 vm=RUNNING ready=True maint=CLEAR gpu=16
+20:30:43.458 | T +11002.8s | 8b-i3-observe | heartbeat     | tick=345 34t3 vm=RUNNING ready=True maint=CLEAR gpu=16
+20:39:38.474 | T +11537.8s | 8b-i4-observe | heartbeat     | tick=360 34t3 vm=RUNNING ready=True maint=CLEAR gpu=16
+20:47:58.251 | T +12037.6s | 8b-i4-observe | heartbeat     | tick=375 34t3 vm=RUNNING ready=True maint=CLEAR gpu=16
+20:56:36.879 | T +12556.2s | 8b-i5-observe | heartbeat     | tick=390 34t3 vm=RUNNING ready=True maint=CLEAR gpu=16
+21:04:46.358 | T +13045.7s | 8b-i5-observe | heartbeat     | tick=405 34t3 vm=RUNNING ready=True maint=CLEAR gpu=16
+21:13:12.132 | T +13551.5s | 8b-complete | heartbeat     | tick=420 34t3 vm=RUNNING ready=True maint=CLEAR gpu=16
+21:21:19.280 | T +14038.6s | 8b-complete | heartbeat     | tick=435 34t3 vm=RUNNING ready=True maint=CLEAR gpu=16
+21:29:37.632 | T +14537.0s | 8b-complete | heartbeat     | tick=450 34t3 vm=RUNNING ready=True maint=CLEAR gpu=16
+21:38:14.354 | T +15053.7s | 8b-complete | heartbeat     | tick=465 34t3 vm=RUNNING ready=True maint=CLEAR gpu=16
+21:46:55.595 | T +15575.0s | 8b-complete | heartbeat     | tick=480 34t3 vm=RUNNING ready=True maint=CLEAR gpu=16
+21:55:44.343 | T +16103.7s | 8b-complete | heartbeat     | tick=495 34t3 vm=RUNNING ready=True maint=CLEAR gpu=16
+22:04:31.555 | T +16630.9s | 8b-complete | heartbeat     | tick=510 34t3 vm=RUNNING ready=True maint=CLEAR gpu=16
+22:12:43.392 | T +17122.7s | 8b-complete | heartbeat     | tick=525 34t3 vm=RUNNING ready=True maint=CLEAR gpu=16
+22:20:46.881 | T +17606.2s | 8b-complete | heartbeat     | tick=540 34t3 vm=RUNNING ready=True maint=CLEAR gpu=16
+22:28:48.122 | T +18087.5s | 8b-complete | heartbeat     | tick=555 34t3 vm=RUNNING ready=True maint=CLEAR gpu=16
+22:36:55.495 | T +18574.9s | 8b-complete | heartbeat     | tick=570 34t3 vm=RUNNING ready=True maint=CLEAR gpu=16
+22:45:00.423 | T +19059.8s | 8b-complete | heartbeat     | tick=585 34t3 vm=RUNNING ready=True maint=CLEAR gpu=16
+22:53:04.777 | T +19544.1s | 8b-complete | heartbeat     | tick=600 34t3 vm=RUNNING ready=True maint=CLEAR gpu=16
+23:01:05.927 | T +20025.3s | 8b-complete | heartbeat     | tick=615 34t3 vm=RUNNING ready=True maint=CLEAR gpu=16
+23:09:18.610 | T +20518.0s | 8b-complete | heartbeat     | tick=630 34t3 vm=RUNNING ready=True maint=CLEAR gpu=16
+23:17:36.244 | T +21015.6s | 8b-complete | heartbeat     | tick=645 34t3 vm=RUNNING ready=True maint=CLEAR gpu=16
+23:26:38.324 | T +21557.7s | 8b-complete | heartbeat     | tick=660 34t3 vm=RUNNING ready=True maint=CLEAR gpu=16
+23:35:00.369 | T +22059.7s | 8b-complete | heartbeat     | tick=675 34t3 vm=RUNNING ready=True maint=CLEAR gpu=16
+23:43:08.647 | T +22548.0s | 8b-complete | heartbeat     | tick=690 34t3 vm=RUNNING ready=True maint=CLEAR gpu=16
+23:51:16.438 | T +23035.8s | 8b-complete | heartbeat     | tick=705 34t3 vm=RUNNING ready=True maint=CLEAR gpu=16
+23:59:23.346 | T +23522.7s | 8b-complete | heartbeat     | tick=720 34t3 vm=RUNNING ready=True maint=CLEAR gpu=16
+00:07:38.914 | T +24018.3s | 8b-complete | heartbeat     | tick=735 34t3 vm=RUNNING ready=True maint=CLEAR gpu=16
+00:16:47.578 | T +24566.9s | 8b-complete | heartbeat     | tick=750 34t3 vm=RUNNING ready=True maint=CLEAR gpu=16
+00:25:54.718 | T +25114.1s | 8b-complete | heartbeat     | tick=765 34t3 vm=RUNNING ready=True maint=CLEAR gpu=16
+00:34:41.413 | T +25640.8s | 8b-complete | heartbeat     | tick=780 34t3 vm=RUNNING ready=True maint=CLEAR gpu=16
+00:43:54.086 | T +26193.4s | 8b-complete | heartbeat     | tick=795 34t3 vm=RUNNING ready=True maint=CLEAR gpu=16
+00:52:49.861 | T +26729.2s | 8b-complete | heartbeat     | tick=810 34t3 vm=RUNNING ready=True maint=CLEAR gpu=16
+01:02:03.810 | T +27283.2s | 8b-complete | heartbeat     | tick=825 34t3 vm=RUNNING ready=True maint=CLEAR gpu=16
+01:10:46.916 | T +27806.3s | 8b-complete | heartbeat     | tick=840 34t3 vm=RUNNING ready=True maint=CLEAR gpu=16
+01:19:15.416 | T +28314.8s | 8b-complete | heartbeat     | tick=855 34t3 vm=RUNNING ready=True maint=CLEAR gpu=16
+01:27:46.854 | T +28826.2s | 8b-complete | END           | budget exhausted after 8.0h

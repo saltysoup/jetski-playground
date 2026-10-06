@@ -1,0 +1,164 @@
+[2026-08-27T17:28:09Z] ################ ITERATION 1 / 5 ################
+[2026-08-27T17:28:29Z] guard ready=True bootID=3916caa8-b739-4c6d-962b-f38f94fa25d2
+[2026-08-27T17:28:29Z] guard maint={"k8s_annotation": null, "res_health": "HEALTHY", "res_ongoing": null, "res_pending": null, "upcomingMaintenance": null, "vm": "RUNNING"}
+    ECC_BEFORE_I1 0, 00000000:8F:00.0, 0
+    ECC_BEFORE_I1 1, 00000000:90:00.0, 0
+    ECC_BEFORE_I1 2, 00000000:96:00.0, 0
+    ECC_BEFORE_I1 3, 00000000:97:00.0, 0
+    ECC_BEFORE_I1 4, 00000000:C4:00.0, 0
+    ECC_BEFORE_I1 5, 00000000:C5:00.0, 0
+    ECC_BEFORE_I1 6, 00000000:CB:00.0, 0
+    ECC_BEFORE_I1 7, 00000000:CC:00.0, 0
+    INJECT_T=2026-08-27T17:28:46.231Z
+    KMSG_WROTE_OK
+    === iteration 1 injected at 2026-08-27T17:28:46.231Z ===
+[2026-08-27T17:28:46Z] injected at 2026-08-27T17:28:46.231Z
+    XIDLOG_COUNT 1
+      ts=2026-08-27T17:28:46.291838620Z recv=2026-08-27T17:28:48.301017558Z | [224931.140222] [  0.000000] NVRM: Xid (PCI:0000:cc:00): 48, pid=0, name=CLAUDE-SIM-RUN8-I1, An uncorrectable double bit error (DBE) has been detected on GPU in
+node/gke-ikwak-reliabilit-a4-highgpu-8g-a4-0256e2f1-34t3 labeled
+[2026-08-27T17:30:30Z] perform-reboot label applied at 2026-08-27T17:30:25.588Z
+[2026-08-27T17:34:58Z] bootID changed 3916caa8-b739-4c6d-962b-f38f94fa25d2 -> 9ce820b2-ab05-42b0-9237-e998fde8129e at 2026-08-27T17:34:58.601Z
+[2026-08-27T17:35:34Z] node Ready with 8 GPUs at 2026-08-27T17:35:34.226Z
+[2026-08-27T17:35:34Z] observing upcomingMaintenance for 900s
+[2026-08-27T17:35:43Z]   probe {"k8s_annotation": null, "res_health": "HEALTHY", "res_ongoing": null, "res_pending": null, "upcomingMaintenance": null, "vm": "RUNNING"}
+[2026-08-27T17:36:53Z]   probe {"k8s_annotation": null, "res_health": "HEALTHY", "res_ongoing": null, "res_pending": null, "upcomingMaintenance": null, "vm": "RUNNING"}
+[2026-08-27T17:38:02Z]   probe {"k8s_annotation": null, "res_health": "HEALTHY", "res_ongoing": null, "res_pending": null, "upcomingMaintenance": null, "vm": "RUNNING"}
+[2026-08-27T17:39:12Z]   probe {"k8s_annotation": null, "res_health": "HEALTHY", "res_ongoing": null, "res_pending": null, "upcomingMaintenance": null, "vm": "RUNNING"}
+[2026-08-27T17:40:21Z]   probe {"k8s_annotation": null, "res_health": "HEALTHY", "res_ongoing": null, "res_pending": null, "upcomingMaintenance": null, "vm": "RUNNING"}
+[2026-08-27T17:41:30Z]   probe {"k8s_annotation": null, "res_health": "HEALTHY", "res_ongoing": null, "res_pending": null, "upcomingMaintenance": null, "vm": "RUNNING"}
+[2026-08-27T17:42:39Z]   probe {"k8s_annotation": null, "res_health": "HEALTHY", "res_ongoing": null, "res_pending": null, "upcomingMaintenance": null, "vm": "RUNNING"}
+[2026-08-27T17:43:49Z]   probe {"k8s_annotation": null, "res_health": "HEALTHY", "res_ongoing": null, "res_pending": null, "upcomingMaintenance": null, "vm": "RUNNING"}
+[2026-08-27T17:44:58Z]   probe {"k8s_annotation": null, "res_health": "HEALTHY", "res_ongoing": null, "res_pending": null, "upcomingMaintenance": null, "vm": "RUNNING"}
+[2026-08-27T17:46:07Z]   probe {"k8s_annotation": null, "res_health": "HEALTHY", "res_ongoing": null, "res_pending": null, "upcomingMaintenance": null, "vm": "RUNNING"}
+[2026-08-27T17:47:16Z]   probe {"k8s_annotation": null, "res_health": "HEALTHY", "res_ongoing": null, "res_pending": null, "upcomingMaintenance": null, "vm": "RUNNING"}
+[2026-08-27T17:48:25Z]   probe {"k8s_annotation": null, "res_health": "HEALTHY", "res_ongoing": null, "res_pending": null, "upcomingMaintenance": null, "vm": "RUNNING"}
+[2026-08-27T17:49:34Z]   probe {"k8s_annotation": null, "res_health": "HEALTHY", "res_ongoing": null, "res_pending": null, "upcomingMaintenance": null, "vm": "RUNNING"}
+[2026-08-27T17:50:43Z] iteration 1 done; found=none
+[2026-08-27T17:50:43Z] ################ ITERATION 2 / 5 ################
+[2026-08-27T17:51:02Z] guard ready=True bootID=9ce820b2-ab05-42b0-9237-e998fde8129e
+[2026-08-27T17:51:02Z] guard maint={"k8s_annotation": null, "res_health": "HEALTHY", "res_ongoing": null, "res_pending": null, "upcomingMaintenance": null, "vm": "RUNNING"}
+    ECC_BEFORE_I2 0, 00000000:8F:00.0, 0
+    ECC_BEFORE_I2 1, 00000000:90:00.0, 0
+    ECC_BEFORE_I2 2, 00000000:96:00.0, 0
+    ECC_BEFORE_I2 3, 00000000:97:00.0, 0
+    ECC_BEFORE_I2 4, 00000000:C4:00.0, 0
+    ECC_BEFORE_I2 5, 00000000:C5:00.0, 0
+    ECC_BEFORE_I2 6, 00000000:CB:00.0, 0
+    ECC_BEFORE_I2 7, 00000000:CC:00.0, 0
+    INJECT_T=2026-08-27T17:51:16.712Z
+    KMSG_WROTE_OK
+    === iteration 2 injected at 2026-08-27T17:51:16.712Z ===
+[2026-08-27T17:51:16Z] injected at 2026-08-27T17:51:16.712Z
+    XIDLOG_COUNT 1
+      ts=2026-08-27T17:51:16.773093412Z recv=2026-08-27T17:51:18.780229213Z | [ 1031.270312] [  0.000000] NVRM: Xid (PCI:0000:cc:00): 48, pid=0, name=CLAUDE-SIM-RUN8-I2, An uncorrectable double bit error (DBE) has been detected on GPU in 
+node/gke-ikwak-reliabilit-a4-highgpu-8g-a4-0256e2f1-34t3 labeled
+[2026-08-27T17:53:01Z] perform-reboot label applied at 2026-08-27T17:52:55.926Z
+[2026-08-27T17:56:43Z] bootID changed 9ce820b2-ab05-42b0-9237-e998fde8129e -> 8731eb37-5b36-4315-8f92-c4e9ad1b5604 at 2026-08-27T17:56:43.307Z
+[2026-08-27T17:57:42Z] node Ready with 8 GPUs at 2026-08-27T17:57:42.636Z
+[2026-08-27T17:57:42Z] observing upcomingMaintenance for 900s
+[2026-08-27T17:57:52Z]   probe {"k8s_annotation": null, "res_health": "HEALTHY", "res_ongoing": null, "res_pending": null, "upcomingMaintenance": null, "vm": "RUNNING"}
+[2026-08-27T17:59:00Z]   probe {"k8s_annotation": null, "res_health": "HEALTHY", "res_ongoing": null, "res_pending": null, "upcomingMaintenance": null, "vm": "RUNNING"}
+[2026-08-27T18:00:10Z]   probe {"k8s_annotation": null, "res_health": "HEALTHY", "res_ongoing": null, "res_pending": null, "upcomingMaintenance": null, "vm": "RUNNING"}
+[2026-08-27T18:01:19Z]   probe {"k8s_annotation": null, "res_health": "HEALTHY", "res_ongoing": null, "res_pending": null, "upcomingMaintenance": null, "vm": "RUNNING"}
+[2026-08-27T18:02:29Z]   probe {"k8s_annotation": null, "res_health": "HEALTHY", "res_ongoing": null, "res_pending": null, "upcomingMaintenance": null, "vm": "RUNNING"}
+[2026-08-27T18:03:39Z]   probe {"k8s_annotation": null, "res_health": "HEALTHY", "res_ongoing": null, "res_pending": null, "upcomingMaintenance": null, "vm": "RUNNING"}
+[2026-08-27T18:04:48Z]   probe {"k8s_annotation": null, "res_health": "HEALTHY", "res_ongoing": null, "res_pending": null, "upcomingMaintenance": null, "vm": "RUNNING"}
+[2026-08-27T18:05:58Z]   probe {"k8s_annotation": null, "res_health": "HEALTHY", "res_ongoing": null, "res_pending": null, "upcomingMaintenance": null, "vm": "RUNNING"}
+[2026-08-27T18:07:08Z]   probe {"k8s_annotation": null, "res_health": "HEALTHY", "res_ongoing": null, "res_pending": null, "upcomingMaintenance": null, "vm": "RUNNING"}
+[2026-08-27T18:08:18Z]   probe {"k8s_annotation": null, "res_health": "HEALTHY", "res_ongoing": null, "res_pending": null, "upcomingMaintenance": null, "vm": "RUNNING"}
+[2026-08-27T18:09:27Z]   probe {"k8s_annotation": null, "res_health": "HEALTHY", "res_ongoing": null, "res_pending": null, "upcomingMaintenance": null, "vm": "RUNNING"}
+[2026-08-27T18:10:37Z]   probe {"k8s_annotation": null, "res_health": "HEALTHY", "res_ongoing": null, "res_pending": null, "upcomingMaintenance": null, "vm": "RUNNING"}
+[2026-08-27T18:11:47Z]   probe {"k8s_annotation": null, "res_health": "HEALTHY", "res_ongoing": null, "res_pending": null, "upcomingMaintenance": null, "vm": "RUNNING"}
+[2026-08-27T18:12:57Z] iteration 2 done; found=none
+[2026-08-27T18:12:57Z] ################ ITERATION 3 / 5 ################
+[2026-08-27T18:13:16Z] guard ready=True bootID=8731eb37-5b36-4315-8f92-c4e9ad1b5604
+[2026-08-27T18:13:16Z] guard maint={"k8s_annotation": null, "res_health": "HEALTHY", "res_ongoing": null, "res_pending": null, "upcomingMaintenance": null, "vm": "RUNNING"}
+    ECC_BEFORE_I3 0, 00000000:8F:00.0, 0
+    ECC_BEFORE_I3 1, 00000000:90:00.0, 0
+    ECC_BEFORE_I3 2, 00000000:96:00.0, 0
+    ECC_BEFORE_I3 3, 00000000:97:00.0, 0
+    ECC_BEFORE_I3 4, 00000000:C4:00.0, 0
+    ECC_BEFORE_I3 5, 00000000:C5:00.0, 0
+    ECC_BEFORE_I3 6, 00000000:CB:00.0, 0
+    ECC_BEFORE_I3 7, 00000000:CC:00.0, 0
+    INJECT_T=2026-08-27T18:13:33.067Z
+    KMSG_WROTE_OK
+    === iteration 3 injected at 2026-08-27T18:13:33.067Z ===
+[2026-08-27T18:13:33Z] injected at 2026-08-27T18:13:33.067Z
+    XIDLOG_COUNT 1
+      ts=2026-08-27T18:13:33.128075133Z recv=2026-08-27T18:13:35.134114402Z | [ 1053.117110] [  0.000000] NVRM: Xid (PCI:0000:cc:00): 48, pid=0, name=CLAUDE-SIM-RUN8-I3, An uncorrectable double bit error (DBE) has been detected on GPU in 
+node/gke-ikwak-reliabilit-a4-highgpu-8g-a4-0256e2f1-34t3 labeled
+[2026-08-27T18:15:17Z] perform-reboot label applied at 2026-08-27T18:15:12.362Z
+[2026-08-27T18:19:22Z] bootID changed 8731eb37-5b36-4315-8f92-c4e9ad1b5604 -> 6e030763-82ea-48bd-b034-076a17ae4d03 at 2026-08-27T18:19:22.371Z
+[2026-08-27T18:19:57Z] node Ready with 8 GPUs at 2026-08-27T18:19:57.848Z
+[2026-08-27T18:19:57Z] observing upcomingMaintenance for 900s
+[2026-08-27T18:20:08Z]   probe {"k8s_annotation": null, "res_health": "HEALTHY", "res_ongoing": null, "res_pending": null, "upcomingMaintenance": null, "vm": "RUNNING"}
+[2026-08-27T18:21:18Z]   probe {"k8s_annotation": null, "res_health": "HEALTHY", "res_ongoing": null, "res_pending": null, "upcomingMaintenance": null, "vm": "RUNNING"}
+[2026-08-27T18:22:28Z]   probe {"k8s_annotation": null, "res_health": "HEALTHY", "res_ongoing": null, "res_pending": null, "upcomingMaintenance": null, "vm": "RUNNING"}
+[2026-08-27T18:23:38Z]   probe {"k8s_annotation": null, "res_health": "HEALTHY", "res_ongoing": null, "res_pending": null, "upcomingMaintenance": null, "vm": "RUNNING"}
+[2026-08-27T18:24:47Z]   probe {"k8s_annotation": null, "res_health": "HEALTHY", "res_ongoing": null, "res_pending": null, "upcomingMaintenance": null, "vm": "RUNNING"}
+[2026-08-27T18:25:59Z]   probe {"k8s_annotation": null, "res_health": "HEALTHY", "res_ongoing": null, "res_pending": null, "upcomingMaintenance": null, "vm": "RUNNING"}
+[2026-08-27T18:27:10Z]   probe {"k8s_annotation": null, "res_health": "HEALTHY", "res_ongoing": null, "res_pending": null, "upcomingMaintenance": null, "vm": "RUNNING"}
+[2026-08-27T18:28:22Z]   probe {"k8s_annotation": null, "res_health": "HEALTHY", "res_ongoing": null, "res_pending": null, "upcomingMaintenance": null, "vm": "RUNNING"}
+[2026-08-27T18:29:32Z]   probe {"k8s_annotation": null, "res_health": "HEALTHY", "res_ongoing": null, "res_pending": null, "upcomingMaintenance": null, "vm": "RUNNING"}
+[2026-08-27T18:30:43Z]   probe {"k8s_annotation": null, "res_health": "HEALTHY", "res_ongoing": null, "res_pending": null, "upcomingMaintenance": null, "vm": "RUNNING"}
+[2026-08-27T18:31:53Z]   probe {"k8s_annotation": null, "res_health": "HEALTHY", "res_ongoing": null, "res_pending": null, "upcomingMaintenance": null, "vm": "RUNNING"}
+[2026-08-27T18:33:05Z]   probe {"k8s_annotation": null, "res_health": "HEALTHY", "res_ongoing": null, "res_pending": null, "upcomingMaintenance": null, "vm": "RUNNING"}
+[2026-08-27T18:34:15Z]   probe {"k8s_annotation": null, "res_health": "HEALTHY", "res_ongoing": null, "res_pending": null, "upcomingMaintenance": null, "vm": "RUNNING"}
+[2026-08-27T18:35:26Z] iteration 3 done; found=none
+[2026-08-27T18:35:26Z] ################ ITERATION 4 / 5 ################
+[2026-08-27T18:35:47Z] guard ready=True bootID=6e030763-82ea-48bd-b034-076a17ae4d03
+[2026-08-27T18:35:47Z] guard maint={"k8s_annotation": null, "res_health": "HEALTHY", "res_ongoing": null, "res_pending": null, "upcomingMaintenance": null, "vm": "RUNNING"}
+    ECC_BEFORE_I4 0, 00000000:8F:00.0, 0
+    ECC_BEFORE_I4 1, 00000000:90:00.0, 0
+    ECC_BEFORE_I4 2, 00000000:96:00.0, 0
+    ECC_BEFORE_I4 3, 00000000:97:00.0, 0
+    ECC_BEFORE_I4 4, 00000000:C4:00.0, 0
+    ECC_BEFORE_I4 5, 00000000:C5:00.0, 0
+    ECC_BEFORE_I4 6, 00000000:CB:00.0, 0
+    ECC_BEFORE_I4 7, 00000000:CC:00.0, 0
+    INJECT_T=2026-08-27T18:36:04.618Z
+    KMSG_WROTE_OK
+    === iteration 4 injected at 2026-08-27T18:36:04.618Z ===
+[2026-08-27T18:36:04Z] injected at 2026-08-27T18:36:04.618Z
+    XIDLOG_COUNT 1
+      ts=2026-08-27T18:36:04.679413272Z recv=2026-08-27T18:36:06.685976862Z | [ 1049.078328] [  0.000000] NVRM: Xid (PCI:0000:cc:00): 48, pid=0, name=CLAUDE-SIM-RUN8-I4, An uncorrectable double bit error (DBE) has been detected on GPU in 
+node/gke-ikwak-reliabilit-a4-highgpu-8g-a4-0256e2f1-34t3 labeled
+[2026-08-27T18:37:48Z] perform-reboot label applied at 2026-08-27T18:37:43.136Z
+[2026-08-27T18:41:56Z] bootID changed 6e030763-82ea-48bd-b034-076a17ae4d03 -> 31c198f7-e10d-49d1-8535-2c0eb951af42 at 2026-08-27T18:41:56.291Z
+[2026-08-27T18:49:02Z] node Ready with 8 GPUs at 2026-08-27T18:49:02.849Z
+[2026-08-27T18:49:02Z] observing upcomingMaintenance for 900s
+[2026-08-27T18:49:17Z]   probe {"k8s_annotation": null, "res_health": "HEALTHY", "res_ongoing": null, "res_pending": null, "upcomingMaintenance": null, "vm": "RUNNING"}
+[2026-08-27T18:50:27Z]   probe {"k8s_annotation": null, "res_health": "HEALTHY", "res_ongoing": null, "res_pending": null, "upcomingMaintenance": null, "vm": "RUNNING"}
+[2026-08-27T18:51:38Z]   probe {"k8s_annotation": null, "res_health": "HEALTHY", "res_ongoing": null, "res_pending": null, "upcomingMaintenance": null, "vm": "RUNNING"}
+[2026-08-27T18:52:48Z]   probe {"k8s_annotation": null, "res_health": "HEALTHY", "res_ongoing": null, "res_pending": null, "upcomingMaintenance": null, "vm": "RUNNING"}
+[2026-08-27T18:53:59Z]   probe {"k8s_annotation": null, "res_health": "HEALTHY", "res_ongoing": null, "res_pending": null, "upcomingMaintenance": null, "vm": "RUNNING"}
+[2026-08-27T18:55:09Z]   probe {"k8s_annotation": null, "res_health": "HEALTHY", "res_ongoing": null, "res_pending": null, "upcomingMaintenance": null, "vm": "RUNNING"}
+[2026-08-27T18:56:19Z]   probe {"k8s_annotation": null, "res_health": "HEALTHY", "res_ongoing": null, "res_pending": null, "upcomingMaintenance": null, "vm": "RUNNING"}
+[2026-08-27T18:57:29Z]   probe {"k8s_annotation": null, "res_health": "HEALTHY", "res_ongoing": null, "res_pending": null, "upcomingMaintenance": null, "vm": "RUNNING"}
+[2026-08-27T18:58:39Z]   probe {"k8s_annotation": null, "res_health": "HEALTHY", "res_ongoing": null, "res_pending": null, "upcomingMaintenance": null, "vm": "RUNNING"}
+[2026-08-27T18:59:48Z]   probe {"k8s_annotation": null, "res_health": "HEALTHY", "res_ongoing": null, "res_pending": null, "upcomingMaintenance": null, "vm": "RUNNING"}
+[2026-08-27T19:00:58Z]   probe {"k8s_annotation": null, "res_health": "HEALTHY", "res_ongoing": null, "res_pending": null, "upcomingMaintenance": null, "vm": "RUNNING"}
+[2026-08-27T19:02:08Z]   probe {"k8s_annotation": null, "res_health": "HEALTHY", "res_ongoing": null, "res_pending": null, "upcomingMaintenance": null, "vm": "RUNNING"}
+[2026-08-27T19:03:18Z]   probe {"k8s_annotation": null, "res_health": "HEALTHY", "res_ongoing": null, "res_pending": null, "upcomingMaintenance": null, "vm": "RUNNING"}
+[2026-08-27T19:04:28Z] iteration 4 done; found=none
+[2026-08-27T19:04:28Z] ################ ITERATION 5 / 5 ################
+[2026-08-27T19:04:49Z] guard ready=True bootID=31c198f7-e10d-49d1-8535-2c0eb951af42
+[2026-08-27T19:04:49Z] guard maint={"k8s_annotation": null, "res_health": "HEALTHY", "res_ongoing": null, "res_pending": null, "upcomingMaintenance": null, "vm": "RUNNING"}
+    ECC_BEFORE_I5 0, 00000000:8F:00.0, 0
+    ECC_BEFORE_I5 1, 00000000:90:00.0, 0
+    ECC_BEFORE_I5 2, 00000000:96:00.0, 0
+    ECC_BEFORE_I5 3, 00000000:97:00.0, 0
+    ECC_BEFORE_I5 4, 00000000:C4:00.0, 0
+    ECC_BEFORE_I5 5, 00000000:C5:00.0, 0
+    ECC_BEFORE_I5 6, 00000000:CB:00.0, 0
+    ECC_BEFORE_I5 7, 00000000:CC:00.0, 0
+    INJECT_T=2026-08-27T19:05:05.219Z
+    KMSG_WROTE_OK
+    === iteration 5 injected at 2026-08-27T19:05:05.219Z ===
+[2026-08-27T19:05:05Z] injected at 2026-08-27T19:05:05.219Z
+    XIDLOG_COUNT 1
+      ts=2026-08-27T19:05:05.279998630Z recv=2026-08-27T19:05:07.286664722Z | [ 1435.333385] [  0.000000] NVRM: Xid (PCI:0000:cc:00): 48, pid=0, name=CLAUDE-SIM-RUN8-I5, An uncorrectable double bit error (DBE) has been detected on GPU in 
+node/gke-ikwak-reliabilit-a4-highgpu-8g-a4-0256e2f1-34t3 labeled
+[2026-08-27T19:06:48Z] perform-reboot label applied at 2026-08-27T19:06:43.142Z
+[2026-08-27T19:10:55Z] bootID changed 31c198f7-e10d-49d1-8535-2c0eb951af42 -> a18f1902-5d17-423e-bd57-8acfeb626aaa at 2026-08-27T19:10:55.843Z

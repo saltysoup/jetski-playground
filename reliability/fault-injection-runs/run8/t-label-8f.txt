@@ -1,0 +1,5 @@
+LABEL_SENT=2026-09-04T01:23:32.702Z
+LABEL_ACK=2026-09-04T01:23:39.911Z
+node=gke-ikwak-reliabilit-a4-highgpu-8g-a4-0256e2f1-34t3
+label=cloud.google.com/perform-maintenance=true
+context=repair for the run 8f maintenance event (FAILURE_GPU_XID, raised 2026-09-03T21:11:11.028Z)

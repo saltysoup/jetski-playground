@@ -1,0 +1,10 @@
+=== run9 Phase 0 baseline 2026-09-24T05:28:39.816Z node=-34t3 ===
+index, pci.bus_id, name, driver_version, persistence_mode, ecc.errors.uncorrected.volatile.total, remapped_rows.uncorrectable, remapped_rows.pending, remapped_rows.failure
+0, 00000000:8F:00.0, NVIDIA B200, 580.159.04, Enabled, 0, 0, No, No
+1, 00000000:90:00.0, NVIDIA B200, 580.159.04, Enabled, 0, 0, No, No
+2, 00000000:96:00.0, NVIDIA B200, 580.159.04, Enabled, 0, 0, No, No
+3, 00000000:97:00.0, NVIDIA B200, 580.159.04, Enabled, 0, 0, No, No
+4, 00000000:C4:00.0, NVIDIA B200, 580.159.04, Enabled, 0, 0, No, No
+5, 00000000:C5:00.0, NVIDIA B200, 580.159.04, Enabled, 0, 0, No, No
+6, 00000000:CB:00.0, NVIDIA B200, 580.159.04, Enabled, 0, 0, No, No
+7, 00000000:CC:00.0, NVIDIA B200, 580.159.04, Enabled, 0, 0, No, No

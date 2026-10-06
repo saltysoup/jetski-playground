@@ -1,0 +1,53 @@
+--- holders of /dev/nvidia7 BEFORE ---
+30764:nvidia-persiste
+32404:nv-hostengine
+33057:nvidia-gpu-devi
+33781:dcgm-exporter
+--- stopping nvidia-persistenced (service + path trigger) ---
+Persistence mode is already Disabled for GPU 00000000:CC:00.0.
+All done.
+--- killing remaining holders ---
+  TERM 32404 (nv-hostengine)
+  TERM 33057 (nvidia-gpu-devi)
+  TERM 33781 (dcgm-exporter)
+--- waiting for device to drain ---
+DRAIN_WAITED=0s REMAINING=2
+3451759:nvidia-gpu-devi
+3451765:dcgm-exporter
+--- attempting reset of GPU 7 ---
+The following GPUs could not be reset:
+  GPU 00000000:CC:00.0: In use by another client
+
+1 device is currently being used by one or more other processes (e.g., Fabric Manager, CUDA application, graphics application such as an X server, or a monitoring application such as another instance of nvidia-smi). Please first kill all processes using this device and all compute applications running in the system.
+RESET_RC=255
+--- single-GPU reset refused; attempting full 8-GPU reset ---
+The following GPUs could not be reset:
+  GPU 00000000:8F:00.0: In use by another client
+  GPU 00000000:90:00.0: In use by another client
+  GPU 00000000:96:00.0: In use by another client
+  GPU 00000000:97:00.0: In use by another client
+  GPU 00000000:C4:00.0: In use by another client
+  GPU 00000000:C5:00.0: In use by another client
+  GPU 00000000:CB:00.0: In use by another client
+  GPU 00000000:CC:00.0: In use by another client
+
+8 devices are currently being used by one or more other processes (e.g., Fabric Manager, CUDA application, graphics application such as an X server, or a monitoring application such as another instance of nvidia-smi). Please first kill all processes using these devices and all compute applications running in the system.
+RESET_ALL_RC=255
+--- nvidia-smi verification: all GPUs ---
+index, pci.bus_id, name, persistence_mode, ecc.errors.uncorrected.volatile.total, remapped_rows.uncorrectable, remapped_rows.pending, remapped_rows.failure
+0, 00000000:8F:00.0, NVIDIA B200, Disabled, 0, 0, No, No
+1, 00000000:90:00.0, NVIDIA B200, Disabled, 0, 0, No, No
+2, 00000000:96:00.0, NVIDIA B200, Disabled, 0, 0, No, No
+3, 00000000:97:00.0, NVIDIA B200, Disabled, 0, 0, No, No
+4, 00000000:C4:00.0, NVIDIA B200, Disabled, 0, 0, No, No
+5, 00000000:C5:00.0, NVIDIA B200, Disabled, 0, 0, No, No
+6, 00000000:CB:00.0, NVIDIA B200, Disabled, 0, 0, No, No
+7, 00000000:CC:00.0, NVIDIA B200, Disabled, 0, 0, No, No
+GPU_COUNT=8
+--- restoring persistenced + persistence mode ---
+Persistence mode is already Enabled for GPU 00000000:CC:00.0.
+All done.
+--- holders AFTER restore ---
+3451759:nvidia-gpu-devi
+3451765:dcgm-exporter
+3466037:nvidia-persiste

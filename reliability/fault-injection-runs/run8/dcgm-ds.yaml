@@ -1,0 +1,60 @@
+# Run 8b injector: a full DCGM install (nv-hostengine + dcgmi) on the target node, for
+# the second injection method -- DCGM field injection per
+# https://docs.nvidia.com/datacenter/dcgm/latest/user-guide/dcgm-error-injection.html
+#
+# Why a pod of our own rather than the DCGM already on the node: GKE's managed
+# dcgm-exporter (gke-managed-system/dcgm-exporter-*) runs DCGM in EMBEDDED mode -- the
+# host engine is in-process, there is no nv-hostengine binary on the host and nothing
+# listening on 5555, and the image is distroless so there is no shell to exec into. It
+# cannot be injected into. So we bring our own host engine.
+#
+# The version is pinned to match the DCGM inside GKE's exporter (4.4.1) so that anything
+# we learn about field semantics transfers.
+#
+# NODE is templated by run8b.sh: validated on the control node -6df3 first (no injection,
+# just proving the image pulls and the binaries run), then deployed to the target -34t3.
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: dcgm-inject-run8
+  labels:
+    app: dcgm-inject-run8
+spec:
+  selector:
+    matchLabels:
+      app: dcgm-inject-run8
+  template:
+    metadata:
+      labels:
+        app: dcgm-inject-run8
+    spec:
+      nodeSelector:
+        kubernetes.io/hostname: __NODE__
+      tolerations:
+        - operator: Exists
+      containers:
+        - name: dcgm
+          image: nvcr.io/nvidia/cloud-native/dcgm:4.4.1-2-ubuntu22.04
+          # Do NOT let the image's own entrypoint start a host engine -- run8b.sh starts
+          # it explicitly so the flags are visible in the record.
+          command: ["sleep", "infinity"]
+          securityContext:
+            privileged: true
+          env:
+            - name: LD_LIBRARY_PATH
+              value: /usr/local/nvidia/lib64
+            - name: PATH
+              value: /usr/local/nvidia/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+          volumeMounts:
+            - name: nvidia
+              mountPath: /usr/local/nvidia
+              readOnly: true
+            - name: dev
+              mountPath: /dev
+      volumes:
+        - name: nvidia
+          hostPath:
+            path: /home/kubernetes/bin/nvidia
+        - name: dev
+          hostPath:
+            path: /dev

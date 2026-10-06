@@ -1,0 +1,18 @@
+01:23:05.758 | T      +0.0s | BASELINE | {"34t3_maint": "PENDING", "34t3_reasons": ["FAILURE_GPU_XID", "FAILURE_GPU"], "34t3_resched": true, "34t3_type": "UNSCHEDULED", "34t3_vm": "RUNNING", "34t3_win": "2026-09-11T00:00:00Z", "34t3_winend": "2026-09-11T04:00:00Z", "6df3_maint": "CLEAR", "6df3_reasons": null, "6df3_resched": null, "6df3_type": null, "6df3_vm": "RUNNING", "6df3_win": null, "6df3_winend": null, "block_degraded": null, "block_health": "DEGRADED", "block_ongoing": 0, "block_pending": 1, "block_reasons": null, "ongoing": 0, "pending": 1, "res_health": "DEGRADED"}
+01:23:24.569 | T     +18.8s | heartbeat | res=DEGRADED block=DEGRADED 34t3=PENDING
+01:24:29.018 | T     +83.3s | CHANGE   | {"34t3_maint": ["PENDING", "ONGOING"], "34t3_resched": [true, false], "34t3_type": ["UNSCHEDULED", "SCHEDULED"], "34t3_win": ["2026-09-11T00:00:00Z", "2026-09-04T01:24:35Z"], "34t3_winend": ["2026-09-11T04:00:00Z", "2026-09-04T05:24:25Z"]}
+01:25:01.146 | T    +115.4s | CHANGE   | {"block_ongoing": [0, 1], "block_pending": [1, 0], "ongoing": [0, 1], "pending": [1, 0]}
+01:28:29.351 | T    +323.6s | heartbeat | res=DEGRADED block=DEGRADED 34t3=ONGOING
+01:33:33.326 | T    +627.6s | heartbeat | res=DEGRADED block=DEGRADED 34t3=ONGOING
+01:38:37.435 | T    +931.7s | heartbeat | res=DEGRADED block=DEGRADED 34t3=ONGOING
+01:43:41.087 | T   +1235.3s | heartbeat | res=DEGRADED block=DEGRADED 34t3=ONGOING
+01:48:45.393 | T   +1539.6s | heartbeat | res=DEGRADED block=DEGRADED 34t3=ONGOING
+01:53:50.728 | T   +1845.0s | heartbeat | res=DEGRADED block=DEGRADED 34t3=ONGOING
+01:58:54.562 | T   +2148.8s | heartbeat | res=DEGRADED block=DEGRADED 34t3=ONGOING
+02:02:38.484 | T   +2372.7s | CHANGE   | {"34t3_vm": ["RUNNING", "REPAIRING"]}
+02:03:58.562 | T   +2452.8s | heartbeat | res=DEGRADED block=DEGRADED 34t3=ONGOING
+02:09:02.996 | T   +2757.2s | heartbeat | res=DEGRADED block=DEGRADED 34t3=ONGOING
+02:14:10.339 | T   +3064.6s | heartbeat | res=DEGRADED block=DEGRADED 34t3=ONGOING
+02:19:14.494 | T   +3368.7s | heartbeat | res=DEGRADED block=DEGRADED 34t3=ONGOING
+02:24:20.097 | T   +3674.3s | heartbeat | res=DEGRADED block=DEGRADED 34t3=ONGOING
+02:29:23.980 | T   +3978.2s | heartbeat | res=DEGRADED block=DEGRADED 34t3=ONGOING

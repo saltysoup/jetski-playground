@@ -1,0 +1,16 @@
+=== ray-cluster-kuberay-head-nt7b6 (ray-head)
+ALREADY PATCHED
+  config OK (checkpointing off)
+  patch OK
+  /gcs/ckpt mounted
+=== ray-cluster-kuberay-worker-grp-0-worker-lsfdm (ray-worker)
+PATCHED
+  config OK (checkpointing off)
+  patch OK
+  /gcs/ckpt mounted
+=== ray-cluster-kuberay-worker-grp-0-worker-nqklb (ray-worker)
+ALREADY PATCHED
+  config OK (checkpointing off)
+  patch OK
+  /gcs/ckpt mounted
+All pods prepared.

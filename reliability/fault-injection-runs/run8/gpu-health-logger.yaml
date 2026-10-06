@@ -1,0 +1,121 @@
+# Run 8c: a working path from a GPU hardware fault to Cloud Logging.
+#
+# WHY THIS IS NEEDED. Run 8 established that neither of the two obvious paths carries a
+# GPU error on this cluster:
+#   * GKE's managed dcgm-exporter publishes 21 metrics and zero error fields -- no
+#     DCGM_FI_DEV_ECC_*, no XID_ERRORS, no ROW_REMAP, no RETIRED_PAGES (measured directly
+#     against its :9400 endpoint, 58 KB of output).
+#   * node-problem-detector reads /dev/kmsg but has no Xid, NVRM, ECC or GPU rule in any
+#     of its 19 config files -- only three CPER severity patterns.
+# So a real double-bit ECC error on this node reaches Cloud Logging only as raw serial
+# console text, if at all, and reaches Cloud Monitoring not at all.
+#
+# HOW THIS WORKS. Three facts, each verified on this cluster on 2026-08-27:
+#   1. A standalone nv-hostengine in a pod listens on 5555 (confirmed: PORT_5555_OPEN).
+#      This is the same engine `dcgmi test --inject` writes to, and the same endpoint the
+#      GCP Ops Agent's dcgm receiver expects (`endpoint: localhost:5555`).
+#   2. fluentbit-gke runs as a DaemonSet on every node and ships container stdout to
+#      Cloud Logging, parsing single-line JSON into a structured jsonPayload.
+#   3. `dcgmi dmon -e <fields>` emits clean numeric values for exactly the error fields
+#      the managed exporter drops.
+# Chain them and a DBE becomes a structured, queryable, severity-tagged Cloud Logging
+# entry with no agent install and no change to the managed exporter.
+#
+# Note we do NOT use `dcgmi health -j`. Its JSON is pretty-printed across many lines and
+# word-wraps the diagnostic text into an "overflow" array of ~50-character fragments,
+# which is unparseable as a log record. dmon's tabular numbers are the better source.
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: gpu-health-logger
+  labels:
+    app: gpu-health-logger
+spec:
+  selector:
+    matchLabels:
+      app: gpu-health-logger
+  template:
+    metadata:
+      labels:
+        app: gpu-health-logger
+    spec:
+      nodeSelector:
+        kubernetes.io/hostname: __NODE__
+      tolerations:
+        - operator: Exists
+      containers:
+        - name: health-logger
+          image: nvcr.io/nvidia/cloud-native/dcgm:4.4.1-2-ubuntu22.04
+          securityContext:
+            privileged: true
+          env:
+            - name: LD_LIBRARY_PATH
+              value: /usr/local/nvidia/lib64
+            - name: PATH
+              value: /usr/local/nvidia/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+            - name: NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+            - name: POLL_SEC
+              value: "20"
+            # Emit a healthy record every Nth poll so a silent stream is distinguishable
+            # from a dead logger -- the failure mode that killed run 7's watcher.
+            - name: HEARTBEAT_EVERY
+              value: "15"
+          command:
+            - bash
+            - -c
+            - |
+              set -u
+              # Field IDs verified against `dcgmi dmon -l` on DCGM 4.4.1. The commonly
+              # cited 319/323 are ecc_dbe_volatile_DEVICE and _TEXTURE, not the totals;
+              # the totals -- and what DCGM's own health monitor reads -- are 311/313.
+              F=230,311,313,319,391,393
+
+              pgrep -x nv-hostengine >/dev/null || nv-hostengine >/dev/null 2>&1
+              sleep 5
+              # Without a watcher DCGM does not evaluate these fields at all.
+              dcgmi health -g 0 -s a >/dev/null 2>&1
+
+              n=0
+              while true; do
+                n=$((n+1))
+                ts=$(date -u +%Y-%m-%dT%H:%M:%S.%3NZ)
+                hb=0
+                [ $((n % HEARTBEAT_EVERY)) -eq 0 ] && hb=1
+                dcgmi dmon -e "$F" -c 1 2>/dev/null \
+                  | awk -v ts="$ts" -v node="$NODE_NAME" -v hb="$hb" '
+                    /^GPU/ {
+                      gpu=$2
+                      # N/A means "not supported on this GPU", which is not zero and must
+                      # not be reported as a clean reading.
+                      for (i=3; i<=8; i++) v[i] = ($i == "N/A" ? "null" : $i)
+                      bad = 0
+                      for (i=3; i<=8; i++) if (v[i] != "null" && v[i]+0 > 0) bad = 1
+                      if (!bad && !hb) next
+                      sev = bad ? "ERROR" : "INFO"
+                      msg = bad \
+                        ? "GPU " gpu " uncorrectable memory error detected by DCGM" \
+                        : "GPU " gpu " healthy"
+                      printf "{\"severity\":\"%s\",\"message\":\"%s\",\"timestamp\":\"%s\"," , sev, msg, ts
+                      printf "\"node\":\"%s\",\"gpu\":%s,\"source\":\"dcgm-health-logger\",", node, gpu
+                      printf "\"xid_errors\":%s,\"ecc_dbe_volatile_total\":%s,", v[3], v[4]
+                      printf "\"ecc_dbe_aggregate_total\":%s,\"ecc_dbe_volatile_device\":%s,", v[5], v[6]
+                      printf "\"retired_pages_dbe\":%s,\"uncorrectable_remapped_rows\":%s}\n", v[7], v[8]
+                    }'
+                sleep "$POLL_SEC"
+              done
+          volumeMounts:
+            - name: nvidia
+              mountPath: /usr/local/nvidia
+              readOnly: true
+            - name: dev
+              mountPath: /dev
+      volumes:
+        - name: nvidia
+          hostPath:
+            path: /home/kubernetes/bin/nvidia
+        - name: dev
+          hostPath:
+            path: /dev

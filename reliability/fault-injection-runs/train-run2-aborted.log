@@ -1,0 +1,552 @@
+Finding Ray head pod...
+Found head pod: ray-cluster-kuberay-head-ccp9h
+Submitting job to ray-cluster-kuberay-head-ccp9h...
+--- Running on Ray Head Pod (ray-cluster-kuberay-head-ccp9h) ---
++ export WANDB_MODE=online
++ WANDB_MODE=online
++ export HF_HOME=/opt/nemo-rl/
++ HF_HOME=/opt/nemo-rl/
++ export 'TORCH_CUDA_ARCH_LIST=9.0;10.0'
++ TORCH_CUDA_ARCH_LIST='9.0;10.0'
++ export NCCL_NET=gIB
++ NCCL_NET=gIB
++ export NCCL_CROSS_NIC=0
++ NCCL_CROSS_NIC=0
++ export NCCL_NET_GDR_LEVEL=PIX
++ NCCL_NET_GDR_LEVEL=PIX
++ export NCCL_P2P_NET_CHUNKSIZE=131072
++ NCCL_P2P_NET_CHUNKSIZE=131072
++ export NCCL_P2P_PCI_CHUNKSIZE=131072
++ NCCL_P2P_PCI_CHUNKSIZE=131072
++ export NCCL_P2P_NVL_CHUNKSIZE=524288
++ NCCL_P2P_NVL_CHUNKSIZE=524288
++ export NCCL_NVLS_CHUNKSIZE=524288
++ NCCL_NVLS_CHUNKSIZE=524288
++ export NCCL_IB_GID_INDEX=3
++ NCCL_IB_GID_INDEX=3
++ export NCCL_IB_ADAPTIVE_ROUTING=1
++ NCCL_IB_ADAPTIVE_ROUTING=1
++ export NCCL_IB_QPS_PER_CONNECTION=4
++ NCCL_IB_QPS_PER_CONNECTION=4
++ export NCCL_IB_TC=52
++ NCCL_IB_TC=52
++ export NCCL_IB_FIFO_TC=84
++ NCCL_IB_FIFO_TC=84
++ export NCCL_TUNER_CONFIG_PATH=/usr/local/gib/configs/tuner_config_a4.txtpb
++ NCCL_TUNER_CONFIG_PATH=/usr/local/gib/configs/tuner_config_a4.txtpb
++ python3 examples/run_grpo.py --config examples/configs/recipes/llm/dapo-gemma3-27b-it-2n8g-fsdp2-automodel.yaml
+W0818 23:08:26.906000 816869 /root/.cache/uv/archive-v0/BVjogUP_44OOqQYH0kaem/torch/utils/cpp_extension.py:118] No CUDA runtime is found, using CUDA_HOME='/usr/local/cuda'
+/opt/nemo-rl/3rdparty/Megatron-LM-workspace/Megatron-LM/megatron/core/distributed/fsdp/src/megatron_fsdp/mixed_precision.py:115: UserWarning: Transformer Engine and Apex are not installed. Falling back to local implementations of multi_tensor_applier and multi_tensor_scale
+  warnings.warn(
+/opt/nemo-rl/3rdparty/Megatron-LM-workspace/Megatron-LM/megatron/core/optimizer/__init__.py:25: UserWarning: Transformer Engine and Apex are not installed. Falling back to Torch optimizers.
+  warnings.warn(
+/opt/nemo-rl/3rdparty/Megatron-LM-workspace/Megatron-LM/megatron/core/optimizer/optimizer.py:29: UserWarning: Transformer Engine and Apex are not installed. Falling back to local implementations of multi_tensor_applier and multi_tensor_scale
+  warnings.warn(
+/opt/nemo-rl/3rdparty/Megatron-LM-workspace/Megatron-LM/megatron/core/optimizer/clip_grads.py:32: UserWarning: Transformer Engine and Apex are not installed. Falling back to local implementations of multi_tensor_applier, multi_tensor_l2norm, and multi_tensor_scale
+  warnings.warn(
+/opt/nemo-rl/3rdparty/Megatron-LM-workspace/Megatron-LM/megatron/core/models/backends.py:34: UserWarning: Apex is not installed. Falling back to Torch Norm
+  warnings.warn("Apex is not installed. Falling back to Torch Norm")
+Loaded configuration from: examples/configs/recipes/llm/dapo-gemma3-27b-it-2n8g-fsdp2-automodel.yaml
+Applied CLI overrides
+Final config:
+{'checkpointing': {'checkpoint_dir': 'results/dapo-gemma3-27b-it-2n8g',
+                   'checkpoint_must_save_by': None,
+                   'enabled': True,
+                   'higher_is_better': True,
+                   'keep_top_k': 3,
+                   'metric_name': 'val:accuracy',
+                   'model_save_format': 'safetensors',
+                   'save_consolidated': False,
+                   'save_optimizer': True,
+                   'save_period': 10},
+ 'cluster': {'gpus_per_node': 8, 'num_nodes': 2},
+ 'data': {'default': {'env_name': 'math',
+                      'processor': 'math_hf_data_processor',
+                      'prompt_file': 'examples/prompts/cot.txt',
+                      'system_prompt_file': None},
+          'max_input_seq_length': 2048,
+          'num_workers': 1,
+          'shuffle': True,
+          'train': {'dataset_name': 'DAPOMath17K',
+                    'seed': 42,
+                    'split_validation_size': 0.05},
+          'use_multiple_dataloader': False,
+          'validation': {'dataset_name': 'DAPOMathAIME2024'}},
+ 'env': {'math': {'math_verify_impl': 'hf_math_verify', 'num_workers': 8}},
+ 'grpo': {'adv_estimator': {'minus_baseline': True,
+                            'name': 'grpo',
+                            'normalize_rewards': True,
+                            'use_leave_one_out_baseline': True},
+          'async_grpo': {'enabled': False,
+                         'in_flight_weight_updates': False,
+                         'max_trajectory_age_steps': 1,
+                         'recompute_kv_cache_after_weight_updates': False},
+          'batch_multiplier': 1,
+          'dynamic_sampling_max_gen_batches': 10,
+          'max_num_epochs': 1,
+          'max_num_steps': 10,
+          'max_rollout_turns': 1,
+          'max_val_samples': 256,
+          'normalize_rewards': True,
+          'num_generations_per_prompt': 16,
+          'num_prompts_per_step': 32,
+          'overlong_filtering': False,
+          'reward_scaling': {'enabled': False,
+                             'source_max': 1.0,
+                             'source_min': 0.0,
+                             'target_max': 1.0,
+                             'target_min': 0.0},
+          'reward_shaping': {'enabled': False,
+                             'max_response_length': 4096,
+                             'overlong_buffer_length': 128,
+                             'overlong_buffer_penalty': 1,
+                             'stop_properly_penalty_coef': None},
+          'seed': 42,
+          'seq_logprob_error_threshold': None,
+          'use_dynamic_sampling': False,
+          'use_leave_one_out_baseline': True,
+          'val_at_end': True,
+          'val_at_start': True,
+          'val_batch_size': 256,
+          'val_period': 10},
+ 'logger': {'gpu_monitoring': {'collection_interval': 10, 'flush_interval': 10},
+            'log_dir': 'logs/dapo-gemma3-27b-it-2n8g',
+            'mlflow': {'experiment_name': 'grpo-dev',
+                       'run_name': 'grpo-dev-logger',
+                       'tracking_uri': 'http://localhost:5000'},
+            'mlflow_enabled': False,
+            'monitor_gpus': True,
+            'num_val_samples_to_print': 0,
+            'swanlab': {'name': 'grpo-dev-logger', 'project': 'grpo-dev'},
+            'swanlab_enabled': False,
+            'tensorboard': {},
+            'tensorboard_enabled': True,
+            'wandb': {'name': 'dapo-gemma3-27b-it-2n8g',
+                      'project': 'nemorl-gemma3'},
+            'wandb_enabled': True},
+ 'loss_fn': {'force_on_policy_ratio': False,
+             'kl_input_clamp_value': 20.0,
+             'kl_output_clamp_value': 10.0,
+             'ratio_clip_c': None,
+             'ratio_clip_max': 0.2,
+             'ratio_clip_min': 0.2,
+             'reference_policy_kl_penalty': 0.01,
+             'reference_policy_kl_type': 'k3',
+             'sequence_level_importance_ratios': False,
+             'token_level_loss': True,
+             'truncated_importance_sampling_ratio': None,
+             'truncated_importance_sampling_ratio_min': None,
+             'truncated_importance_sampling_type': 'tis',
+             'use_importance_sampling_correction': False,
+             'use_kl_in_reward': False,
+             'use_on_policy_kl_approximation': False},
+ 'policy': {'draft': {'aux_layer_indices': None,
+                      'enabled': False,
+                      'loss_weight': 0.1,
+                      'model_name': None,
+                      'num_layers': None},
+            'dtensor_cfg': {'_v2': True,
+                            'activation_checkpointing': True,
+                            'automodel_kwargs': {},
+                            'context_parallel_size': 1,
+                            'cpu_offload': False,
+                            'custom_parallel_plan': None,
+                            'enabled': True,
+                            'lora_cfg': {'alpha': 32,
+                                         'dim': 8,
+                                         'dropout': 0.0,
+                                         'dropout_position': 'post',
+                                         'enabled': False,
+                                         'exclude_modules': [],
+                                         'lora_A_init': 'xavier',
+                                         'match_all_linear': True,
+                                         'target_modules': [],
+                                         'use_triton': True},
+                            'sequence_parallel': False,
+                            'tensor_parallel_size': 2},
+            'dynamic_batching': {'enabled': True,
+                                 'logprob_mb_tokens': 4096,
+                                 'sequence_length_round': 64,
+                                 'train_mb_tokens': 4096},
+            'generation': {'backend': 'vllm',
+                           'colocated': {'enabled': True,
+                                         'resources': {'gpus_per_node': None,
+                                                       'num_nodes': None}},
+                           'max_new_tokens': 2048,
+                           'mcore_generation_config': {'block_size_tokens': 256,
+                                                       'buffer_size_gb': 10,
+                                                       'enable_chunked_prefill': True,
+                                                       'max_tokens': 16384,
+                                                       'num_cuda_graphs': 4,
+                                                       'unified_memory_level': 0,
+                                                       'use_cuda_graphs_for_non_decode_steps': True},
+                           'stop_strings': None,
+                           'stop_token_ids': None,
+                           'temperature': 1.0,
+                           'top_k': None,
+                           'top_p': 1.0,
+                           'vllm_cfg': {'async_engine': False,
+                                        'enable_vllm_metrics_logger': True,
+                                        'enforce_eager': False,
+                                        'expert_parallel_size': 1,
+                                        'gpu_memory_utilization': 0.6,
+                                        'kv_cache_dtype': 'auto',
+                                        'max_model_len': 4096,
+                                        'num_first_layers_in_bf16': 0,
+                                        'num_last_layers_in_bf16': 0,
+                                        'pipeline_parallel_size': 1,
+                                        'precision': 'bfloat16',
+                                        'tensor_parallel_size': 4,
+                                        'use_deep_gemm': False,
+                                        'vllm_metrics_logger_interval': 0.5},
+                           'vllm_kwargs': {}},
+            'generation_batch_size': 32,
+            'hf_config_overrides': {},
+            'logprob_batch_size'2026-08-18 23:08:28,025	INFO worker.py:1669 -- Using address 127.0.0.1:6379 set in the environment variable RAY_ADDRESS
+2026-08-18 23:08:28,026	INFO worker.py:1810 -- Connecting to existing Ray cluster at address: 10.4.2.58:6379...
+2026-08-18 23:08:28,051	INFO worker.py:2004 -- Connected to Ray cluster. View the dashboard at [1m[32mhttp://10.4.2.58:8265 [39m[22m
+/opt/nemo_rl_venv/lib/python3.13/site-packages/ray/_private/worker.py:2052: FutureWarning: Tip: In future versions of Ray, Ray will no longer override accelerator visible devices env var if num_gpus=0 or num_gpus=None (default). To enable this behavior and turn off this error message, set RAY_ACCEL_ENV_VAR_OVERRIDE_ON_ZERO=0
+  warnings.warn(
+wandb: [wandb.login()] Loaded credentials for https://api.wandb.ai from WANDB_API_KEY.
+wandb: Currently logged in as: saltysoup to https://api.wandb.ai. Use `wandb login --relogin` to force relogin
+wandb: setting up run v5vgwj7f
+wandb: Tracking run with wandb version 0.25.1
+wandb: Run data is saved locally in logs/dapo-gemma3-27b-it-2n8g/exp_002/wandb/wandb/run-20260818_230855-v5vgwj7f
+wandb: Run `wandb offline` to turn off syncing.
+wandb: Syncing run dapo-gemma3-27b-it-2n8g
+wandb: ⭐️ View project at https://wandb.ai/saltysoup/nemorl-gemma3
+wandb: 🚀 View run at https://wandb.ai/saltysoup/nemorl-gemma3/runs/v5vgwj7f
+: 1,
+            'logprob_chunk_size': None,
+            'make_sequence_length_divisible_by': 8,
+            'max_grad_norm': 1.0,
+            'max_total_sequence_length': 4096,
+            'megatron_cfg': {'activation_checkpointing': False,
+                             'apply_rope_fusion': True,
+                             'bias_activation_fusion': True,
+                             'context_parallel_size': 1,
+                             'converter_type': 'Qwen2ForCausalLM',
+                             'defer_fp32_logits': False,
+                             'distributed_data_parallel_config': {'data_parallel_sharding_strategy': 'optim_grads_params',
+                                                                  'grad_reduce_in_fp32': False,
+                                                                  'overlap_grad_reduce': True,
+                                                                  'overlap_param_gather': True,
+                                                                  'use_custom_fsdp': False},
+                             'empty_unused_memory_level': 1,
+                             'enabled': False,
+                             'env_vars': None,
+                             'expert_model_parallel_size': 1,
+                             'expert_tensor_parallel_size': 1,
+                             'force_reconvert_from_hf': False,
+                             'fp8_cfg': {'enabled': False,
+                                         'fp8': 'e4m3',
+                                         'fp8_param': False,
+                                         'fp8_recipe': 'blockwise'},
+                             'freeze_moe_router': True,
+                             'gradient_accumulation_fusion': False,
+                             'moe_enable_deepep': False,
+                             'moe_per_layer_logging': False,
+                             'moe_permute_fusion': False,
+                             'moe_router_bias_update_rate': 0.0,
+                             'moe_router_dtype': 'fp64',
+                             'moe_router_load_balancing_type': 'none',
+                             'moe_shared_expert_overlap': False,
+                             'moe_token_dispatcher_type': 'alltoall',
+                             'num_layers_in_first_pipeline_stage': None,
+                             'num_layers_in_last_pipeline_stage': None,
+                             'optimizer': {'adam_beta1': 0.9,
+                                           'adam_beta2': 0.999,
+                                           'adam_eps': 1e-08,
+                                           'bf16': True,
+                                           'clip_grad': 1.0,
+                                           'fp16': False,
+                                           'lr': 5e-06,
+                                           'min_lr': 5e-07,
+                                           'optimizer': 'adam',
+                                           'optimizer_cpu_offload': False,
+                                           'optimizer_offload_fraction': 0.0,
+                                           'params_dtype': 'float32',
+                                           'sgd_momentum': 0.9,
+                                           'use_distributed_optimizer': True,
+                                           'use_precision_aware_optimizer': True,
+                                           'weight_decay': 0.01},
+                             'peft': {'a2a_experimental': False,
+                                      'alpha': 32,
+                                      'dim': 8,
+                                      'dropout': 0.0,
+                                      'dropout_position': 'post',
+                                      'enabled': False,
+                                      'exclude_modules': [],
+                                      'lora_A_init_method': 'xavier',
+                                      'lora_B_init_method': 'zero',
+                                      'lora_dtype': 'None',
+                                      'target_modules': []},
+                             'pipeline_dtype': 'bfloat16',
+                             'pipeline_model_parallel_size': 1,
+                             'scheduler': {'end_weight_decay': 0.01,
+                                           'lr_decay_iters': 1000,
+                                           'lr_decay_style': 'constant',
+                                           'lr_warmup_init': 5e-07,
+                                           'lr_warmup_iters': 13,
+                                           'start_weight_decay': 0.01,
+                                           'weight_decay_incr_style': 'constant'},
+                             'sequence_parallel': False,
+                             'tensor_model_parallel_size': 1},
+            'model_name': 'google/gemma-3-27b-it',
+            'offload_optimizer_for_logprob': False,
+            'optimizer': {'kwargs': {'betas': [0.9, 0.999],
+                                     'eps': 1e-08,
+                                     'foreach': False,
+                                     'fused': False,
+                                     'lr': 1e-06,
+                                     'weight_decay': 0.01},
+                          'name': 'torch.optim.AdamW'},
+            'precision': 'bfloat16',
+            'scheduler': [{'kwargs': {'end_factor': 1,
+                                      'start_factor': 0.1,
+                                      'total_iters': 10},
+                           'name': 'torch.optim.lr_scheduler.LinearLR'},
+                          {'kwargs': {'factor': 1, 'total_iters': 10000000000},
+                           'name': 'torch.optim.lr_scheduler.ConstantLR'},
+                          {'milestones': [10]}],
+            'sequence_packing': {'algorithm': 'modified_first_fit_decreasing',
+                                 'enabled': False,
+                                 'logprob_mb_tokens': 4096,
+                                 'sequence_length_round': 64,
+                                 'train_mb_tokens': 4096},
+            'tokenizer': {'chat_template_kwargs': None,
+                          'name': 'google/gemma-3-27b-it'},
+            'train_global_batch_size': 512,
+            'train_micro_batch_size': 1}}
+📊 Using log directory: logs/dapo-gemma3-27b-it-2n8g/exp_002
+📊 Using checkpoint directory: results/dapo-gemma3-27b-it-2n8g
+No chat template provided, using tokenizer's default
+
+▶ Setting up envs...
+
+▶ Setting up data...
+  - Loaded training dataset DAPOMath17K with 1791700 samples.
+  ✓ Training dataset loaded with 1791700 samples.
+  - Loaded validation dataset DAPOMathAIME2024 with 960 samples.
+  ✓ Validation dataset loaded with 960 samples.
+Unexpected error during git code logging: Artifact type 'code' is reserved for internal use. Please use a different type.
+No uncommitted changes found
+Logged diff against main branch
+Initialized WandbLogger for project nemorl-gemma3, run dapo-gemma3-27b-it-2n8g at logs/dapo-gemma3-27b-it-2n8g/exp_002/wandb
+Initialized TensorboardLogger at logs/dapo-gemma3-27b-it-2n8g/exp_002/tensorboard
+GPU monitoring started with collection interval=10s, flush interval=10s
+  ✓ Training dataloader loaded with 55990 samples
+  ✓ Validation dataloader loaded with 960 samples
+[WARN] truncated_importance_sampling_ratio is not set, so the following parameters are ignored: truncated_importance_sampling_type. Set truncated_importance_sampling_ratio to enable truncated importance sampling.
+
+▶ Setting up compute cluster...
+  ✓ Ray cluster for policy initialized with 2 nodes
+
+▶ Setting up model and training...
+  ⚙️  Using sequential worker initialization (colocated mode)
+/opt/nemo-rl/nemo_rl/algorithms/grpo.py:546: UserWarning: Optimizer state not found at results/dapo-gemma3-27b-it-2n8g/step_10/policy/optimizer (DTensor path), and no embedded optimizer state detected under results/dapo-gemma3-27b-it-2n8g/step_10/policy/weights (Megatron path). Optimizer will be freshly initialized.
+  weights_path, optimizer_path = checkpointer.get_resume_paths(last_checkpoint_path)
+Initializing vllm_policy workers:   0%|          | 0/16 [00:00<?, ?worker/s]Initializing vllm_policy workers:   6%|▋         | 1/16 [00:24<06:12, 24.82s/worker]Initializing vllm_policy workers:  44%|████▍     | 7/16 [00:24<00:23,  2.61s/worker]Initializing vllm_policy workers:  81%|████████▏ | 13/16 [00:28<00:04,  1.45s/worker]Initializing vllm_policy workers: 100%|██████████| 16/16 [00:28<00:00,  1.07s/worker]Initializing vllm_policy workers: 100%|██████████| 16/16 [00:28<00:00,  1.78s/worker]
+Error fetching metrics from 10.4.0.99:8080: HTTPConnectionPool(host='10.4.0.99', port=8080): Max retries exceeded with url: /metrics (Caused by ConnectTimeoutError(<HTTPConnection(host='10.4.0.99', port=8080) at 0x79c25a131cd0>, 'Connection to 10.4.0.99 timed out. (connect timeout=5.0)'))
+Error fetching metrics from 10.4.1.88:8080: HTTPConnectionPool(host='10.4.1.88', port=8080): Max retries exceeded with url: /metrics (Caused by ConnectTimeoutError(<HTTPConnection(host='10.4.1.88', port=8080) at 0x79c25a133a80>, 'Connection to 10.4.1.88 timed out. (connect timeout=5.0)'))
+Error fetching metrics from 10.4.0.99:8080: HTTPConnectionPool(host='10.4.0.99', port=8080): Max retries exceeded with url: /metrics (Caused by ConnectTimeoutError(<HTTPConnection(host='10.4.0.99', port=8080) at 0x79c25a2b5f20>, 'Connection to 10.4.0.99 timed out. (connect timeout=5.0)'))
+Error fetching metrics from 10.4.1.88:8080: HTTPConnectionPool(host='10.4.1.88', port=8080): Max retries exceeded with url: /metrics (Caused by ConnectTimeoutError(<HTTPConnection(host='10.4.1.88', port=8080) at 0x79c256fcf460>, 'Connection to 10.4.1.88 timed out. (connect timeout=5.0)'))
+  ✓ 16 workers initialized in 28.62s
+[36m(VllmGenerationWorker pid=30807, ip=10.4.0.101)[0m /opt/ray_venvs/nemo_rl.models.generation.vllm.vllm_worker.VllmGenerationWorker/lib/python3.13/site-packages/vllm/entrypoints/openai/chat_completion/protocol.py:346: SyntaxWarning: invalid escape sequence '\e'
+[36m(VllmGenerationWorker pid=30807, ip=10.4.0.101)[0m   "(e.g. 'abcdabcdabcd...' or '\emoji \emoji \emoji ...'). This feature "
+[36m(VllmGenerationWorker pid=30807, ip=10.4.0.101)[0m /opt/ray_venvs/nemo_rl.models.generation.vllm.vllm_worker.VllmGenerationWorker/lib/python3.13/site-packages/vllm/entrypoints/openai/completion/protocol.py:176: SyntaxWarning: invalid escape sequence '\e'
+[36m(VllmGenerationWorker pid=30807, ip=10.4.0.101)[0m   "(e.g. 'abcdabcdabcd...' or '\emoji \emoji \emoji ...'). This feature "
+[36m(VllmGenerationWorker pid=30807, ip=10.4.0.101)[0m The argument `trust_remote_code` is to be used with Auto classes. It has no effect here and is ignored.
+[36m(VllmGenerationWorker pid=68865, ip=10.4.1.93)[0m /opt/ray_venvs/nemo_rl.models.generation.vllm.vllm_worker.VllmGenerationWorker/lib/python3.13/site-packages/vllm/entrypoints/openai/completion/protocol.py:176: SyntaxWarning: invalid escape sequence '\e'[32m [repeated 4x across cluster][0m
+[36m(VllmGenerationWorker pid=68865, ip=10.4.1.93)[0m   "(e.g. 'abcdabcdabcd...' or '\emoji \emoji \emoji ...'). This feature "[32m [repeated 4x across cluster][0m
+[36m(VllmGenerationWorker pid=68409, ip=10.4.1.93)[0m The argument `trust_remote_code` is to be used with Auto classes. It has no effect here and is ignored.[32m [repeated 4x across cluster][0m
+[36m(VllmGenerationWorker pid=30807, ip=10.4.0.101)[0m VLLM_RAY_BUNDLE_INDICES environment variable set to: 0,1,2,3
+Error fetching metrics from 10.4.0.99:8080: HTTPConnectionPool(host='10.4.0.99', port=8080): Max retries exceeded with url: /metrics (Caused by ConnectTimeoutError(<HTTPConnection(host='10.4.0.99', port=8080) at 0x79c256a1a360>, 'Connection to 10.4.0.99 timed out. (connect timeout=5.0)'))
+[36m(VllmGenerationWorker pid=68409, ip=10.4.1.93)[0m VLLM_RAY_BUNDLE_INDICES environment variable set to: 0,1,2,3[32m [repeated 2x across cluster] (Ray deduplicates logs by default. Set RAY_DEDUP_LOGS=0 to disable log deduplication, or see https://docs.ray.io/en/master/ray-observability/user-guides/configure-logging.html#log-deduplication for more options.)[0m
+Error fetching metrics from 10.4.1.88:8080: HTTPConnectionPool(host='10.4.1.88', port=8080): Max retries exceeded with url: /metrics (Caused by ConnectTimeoutError(<HTTPConnection(host='10.4.1.88', port=8080) at 0x79c256a1a690>, 'Connection to 10.4.1.88 timed out. (connect timeout=5.0)'))
+[36m(VllmGenerationWorker pid=30807, ip=10.4.0.101)[0m Detected ['Gemma3ForConditionalGeneration'] which may crash when skip_tokenizer_init is True. NeMo-RL is forcing it to False for this architecture. See https://github.com/NVIDIA-NeMo/RL/issues/1681 for more details.
+[36m(VllmGenerationWorker pid=68865, ip=10.4.1.93)[0m VLLM_RAY_BUNDLE_INDICES environment variable set to: 4,5,6,7
+[36m(VllmGenerationWorker pid=30807, ip=10.4.0.101)[0m INFO 08-18 23:09:59 [utils.py:238] non-default args: {'served_model_name': 'google/gemma-3-27b-it', 'trust_remote_code': True, 'dtype': 'bfloat16', 'max_model_len': 4096, 'distributed_executor_backend': 'ray', 'tensor_parallel_size': 4, 'enable_prefix_caching': True, 'gpu_memory_utilization': 0.6, 'logprobs_mode': 'processed_logprobs', 'worker_extension_cls': 'nemo_rl.models.generation.vllm.vllm_backend.VllmInternalWorkerExtension', 'enable_sleep_mode': True, 'model': 'google/gemma-3-27b-it'}
+[36m(VllmGenerationWorker pid=30807, ip=10.4.0.101)[0m WARNING 08-18 23:09:59 [envs.py:1710] Unknown vLLM environment variable detected: VLLM_USE_V1
+[36m(VllmGenerationWorker pid=68865, ip=10.4.1.93)[0m Detected ['Gemma3ForConditionalGeneration'] which may crash when skip_tokenizer_init is True. NeMo-RL is forcing it to False for this architecture. See https://github.com/NVIDIA-NeMo/RL/issues/1681 for more details.[32m [repeated 2x across cluster][0m
+[36m(VllmGenerationWorker pid=30806, ip=10.4.0.101)[0m INFO 08-18 23:09:59 [utils.py:238] non-default args: {'served_model_name': 'google/gemma-3-27b-it', 'trust_remote_code': True, 'dtype': 'bfloat16', 'seed': 1, 'max_model_len': 4096, 'distributed_executor_backend': 'ray', 'tensor_parallel_size': 4, 'enable_prefix_caching': True, 'gpu_memory_utilization': 0.6, 'logprobs_mode': 'processed_logprobs', 'worker_extension_cls': 'nemo_rl.models.generation.vllm.vllm_backend.VllmInternalWorkerExtension', 'enable_sleep_mode': True, 'model': 'google/gemma-3-27b-it'}
+[36m(VllmGenerationWorker pid=30806, ip=10.4.0.101)[0m WARNING 08-18 23:09:59 [arg_utils.py:1321] The global random seed is set to 1. Since VLLM_ENABLE_V1_MULTIPROCESSING is set to False, this may affect the random state of the Python process that launched vLLM.
+Error fetching metrics from 10.4.0.99:8080: HTTPConnectionPool(host='10.4.0.99', port=8080): Max retries exceeded with url: /metrics (Caused by ConnectTimeoutError(<HTTPConnection(host='10.4.0.99', port=8080) at 0x79c256a1a470>, 'Connection to 10.4.0.99 timed out. (connect timeout=5.0)'))
+[36m(VllmGenerationWorker pid=68865, ip=10.4.1.93)[0m WARNING 08-18 23:10:02 [envs.py:1710] Unknown vLLM environment variable detected: VLLM_USE_V1[32m [repeated 2x across cluster][0m
+[36m(VllmGenerationWorker pid=68409, ip=10.4.1.93)[0m Detected ['Gemma3ForConditionalGeneration'] which may crash when skip_tokenizer_init is True. NeMo-RL is forcing it to False for this architecture. See https://github.com/NVIDIA-NeMo/RL/issues/1681 for more details.
+[36m(VllmGenerationWorker pid=68865, ip=10.4.1.93)[0m INFO 08-18 23:10:02 [utils.py:238] non-default args: {'served_model_name': 'google/gemma-3-27b-it', 'trust_remote_code': True, 'dtype': 'bfloat16', 'seed': 1025, 'max_model_len': 4096, 'distributed_executor_backend': 'ray', 'tensor_parallel_size': 4, 'enable_prefix_caching': True, 'gpu_memory_utilization': 0.6, 'logprobs_mode': 'processed_logprobs', 'worker_extension_cls': 'nemo_rl.models.generation.vllm.vllm_backend.VllmInternalWorkerExtension', 'enable_sleep_mode': True, 'model': 'google/gemma-3-27b-it'}
+[36m(VllmGenerationWorker pid=68409, ip=10.4.1.93)[0m INFO 08-18 23:10:06 [utils.py:238] non-default args: {'served_model_name': 'google/gemma-3-27b-it', 'trust_remote_code': True, 'dtype': 'bfloat16', 'seed': 1024, 'max_model_len': 4096, 'distributed_executor_backend': 'ray', 'tensor_parallel_size': 4, 'enable_prefix_caching': True, 'gpu_memory_utilization': 0.6, 'logprobs_mode': 'processed_logprobs', 'worker_extension_cls': 'nemo_rl.models.generation.vllm.vllm_backend.VllmInternalWorkerExtension', 'enable_sleep_mode': True, 'model': 'google/gemma-3-27b-it'}
+[36m(VllmGenerationWorker pid=68409, ip=10.4.1.93)[0m WARNING 08-18 23:10:06 [arg_utils.py:1321] The global random seed is set to 1024. Since VLLM_ENABLE_V1_MULTIPROCESSING is set to False, this may affect the random state of the Python process that launched vLLM.
+[36m(VllmGenerationWorker pid=30806, ip=10.4.0.101)[0m INFO 08-18 23:10:08 [model.py:531] Resolved architecture: Gemma3ForConditionalGeneration
+[36m(VllmGenerationWorker pid=30806, ip=10.4.0.101)[0m INFO 08-18 23:10:08 [model.py:1554] Using max model len 4096
+[36m(VllmGenerationWorker pid=30806, ip=10.4.0.101)[0m INFO 08-18 23:10:08 [arg_utils.py:1539] Using ray runtime env (env vars redacted): {'py_executable': '/opt/ray_venvs/nemo_rl.models.generation.vllm.vllm_worker.VllmGenerationWorker/bin/python', 'env_vars': {'AVAILABLE_ADDR_LIST': '***', 'AVAILABLE_PORT_LIST': '***', 'AWS_OFI_NCCL_VERSION': '***', 'BASH_ENV': '***', 'CAL_VERSION': '***', 'CUBLASMP_VERSION': '***', 'CUBLAS_VERSION': '***', 'CUDA_ARCH_LIST': '***', 'CUDA_DRIVER_VERSION': '***', 'CUDA_VERSION': '***', 'CUDNN_FRONTEND_VERSION': '***', 'CUDNN_HOME': '***', 'CUDNN_VERSION': '***', 'CUFFT_VERSION': '***', 'CUFILE_VERSION': '***', 'CURAND_VERSION': '***', 'CUSOLVER_VERSION': '***', 'CUSPARSELT_VERSION': '***', 'CUSPARSE_VERSION': '***', 'DALI_BUILD': '***', 'DALI_URL_SUFFIX': '***', 'DALI_VERSION': '***', 'EFA_VERSION': '***', 'ENV': '***', 'GDRCOPY_VERSION': '***', 'HF_HOME': '***', 'HF_TOKEN': '***', 'HOME': '***', 'HOSTNAME': '***', 'HPCX_VERSION': '***', 'KMP_DUPLICATE_LIB_OK': '***', 'KMP_INIT_AT_FORK': '***', 'KUBERAY_GEN_RAY_START_CMD': '***', 'KUBERNETES_PORT': '***', 'KUBERNETES_PORT_443_TCP': '***', 'KUBERNETES_PORT_443_TCP_ADDR': '***', 'KUBERNETES_PORT_443_TCP_PORT': '***', 'KUBERNETES_PORT_443_TCP_PROTO': '***', 'KUBERNETES_SERVICE_HOST': '***', 'KUBERNETES_SERVICE_PORT': '***', 'KUBERNETES_SERVICE_PORT_HTTPS': '***', 'LC_CTYPE': '***', 'LD_LIBRARY_PATH': '***', 'LIBRARY_PATH': '***', 'LLM_D_BENCHMARK_HARNESS_PORT': '***', 'LLM_D_BENCHMARK_HARNESS_PORT_20873_TCP': '***', 'LLM_D_BENCHMARK_HARNESS_PORT_20873_TCP_ADDR': '***', 'LLM_D_BENCHMARK_HARNESS_PORT_20873_TCP_PORT': '***', 'LLM_D_BENCHMARK_HARNESS_PORT_20873_TCP_PROTO': '***', 'LLM_D_BENCHMARK_HARNESS_SERVICE_HOST': '***', 'LLM_D_BENCHMARK_HARNESS_SERVICE_PORT': '***', 'LLM_D_BENCHMARK_HARNESS_SERVICE_PORT_RSYNC': '***', 'LLM_D_ROUTER_EPP_PORT': '***', 'LLM_D_ROUTER_EPP_PORT_8081_TCP': '***', 'LLM_D_ROUTER_EPP_PORT_8081_TCP_ADDR': '***', 'LLM_D_ROUTER_EPP_PORT_8081_TCP_PORT': '***', 'LLM_D_ROUTER_EPP_PORT_8081_TCP_PROTO': '***', 'LLM_D_ROUTER_EPP_PORT_9002_TCP': '***', 'LLM_D_ROUTER_EPP_PORT_9002_TCP_ADDR': '***', 'LLM_D_ROUTER_EPP_PORT_9002_TCP_PORT': '***', 'LLM_D_ROUTER_EPP_PORT_9002_TCP_PROTO': '***', 'LLM_D_ROUTER_EPP_PORT_9090_TCP': '***', 'LLM_D_ROUTER_EPP_PORT_9090_TCP_ADDR': '***', 'LLM_D_ROUTER_EPP_PORT_9090_TCP_PORT': '***', 'LLM_D_ROUTER_EPP_PORT_9090_TCP_PROTO': '***', 'LLM_D_ROUTER_EPP_SERVICE_HOST': '***', 'LLM_D_ROUTER_EPP_SERVICE_PORT': '***', 'LLM_D_ROUTER_EPP_SERVICE_PORT_GRPC_EXT_PROC': '***', 'LLM_D_ROUTER_EPP_SERVICE_PORT_HTTP': '***', 'LLM_D_ROUTER_EPP_SERVICE_PORT_HTTP_METRICS': '***', 'LOCAL_RANK': '***', 'MASTER_ADDR': '***', 'MASTER_PORT': '***', 'MODEL_OPT_VERSION': '***', 'MOFED_VERSION': '***', 'NCCL_CROSS_NIC': '***', 'NCCL_IB_ADAPTIVE_ROUTING': '***', 'NCCL_IB_FIFO_TC': '***', 'NCCL_IB_GID_INDEX': '***', 'NCCL_IB_QPS_PER_CONNECTION': '***', 'NCCL_IB_TC': '***', 'NCCL_NET': '***', 'NCCL_NET_GDR_LEVEL': '***', 'NCCL_NVLS_CHUNKSIZE': '***', 'NCCL_P2P_NET_CHUNKSIZE': '***', 'NCCL_P2P_NVL_CHUNKSIZE': '***', 'NCCL_P2P_PCI_CHUNKSIZE': '***', 'NCCL_TUNER_CONFIG_PATH': '***', 'NCCL_VERSION': '***', 'NEMO_RL_COMMIT': '***', 'NEMO_RL_VENV_DIR': '***', 'NODE_RANK': '***', 'NPP_VERSION': '***', 'NRL_CONTAINER': '***', 'NSIGHT_COMPUTE_VERSION': '***', 'NSIGHT_SYSTEMS_VERSION': '***', 'NVIDIA_BUILD_ID': '***', 'NVIDIA_BUILD_REF': '***', 'NVIDIA_DRIVER_CAPABILITIES': '***', 'NVIDIA_PRODUCT_NAME': '***', 'NVIDIA_REQUIRE_CUDA': '***', 'NVIDIA_REQUIRE_JETPACK_HOST_MOUNTS': '***', 'NVIDIA_VISIBLE_DEVICES': '***', 'NVJITLINK_VERSION': '***', 'NVJPEG_VERSION': '***', 'NVSHMEM_VERSION': '***', 'OLDPWD': '***', 'OMPI_MCA_coll_hcoll_enable': '***', 'OPAL_PREFIX': '***', 'OPENMPI_VERSION': '***', 'OPENUCX_VERSION': '***', 'PATH': '***', 'POLYGRAPHY_VERSION': '***', 'PWD': '***', 'PYTHONBREAKPOINT': '***', 'RANK': '***', 'RAY_ADDRESS': '***', 'RAY_CLIENT_MODE': '***', 'RAY_CLOUD_INSTANCE_ID': '***', 'RAY_CLUSTER_NAME': '***', 'RAY_DASHBOARD_ENABLE_K8S_DISK_USAGE': '***', 'RAY_ENABLE_UV_RUN_RUNTIME_ENV': '***', 'RAY_EXPERIMENTAL_NOSET_CUDA_VISIBLE_DEVICES': '***', 'RAY_GROUP': '***', 'RAY_NODE_TYPE_NAME': '***', 'RAY_PORT': '***', 'RAY_USAGE_STATS_ENABLED': '***', 'RAY_USAGE_STATS_EXTRA_TAGS': '***', 'RAY_USAGE_STATS_KUBERAY_IN_USE': '***', 'RDMACORE_VERSION': '***', 'SGLANG_SERVING_K3_PORT': '***', 'SGLANG_SERVING_K3_PORT_30000_TCP': '***', 'SGLANG_SERVING_K3_PORT_30000_TCP_ADDR': '***', 'SGLANG_SERVING_K3_PORT_30000_TCP_PORT': '***', 'SGLANG_SERVING_K3_PORT_30000_TCP_PROTO': '***', 'SGLANG_SERVING_K3_SERVICE_HOST': '***', 'SGLANG_SERVING_K3_SERVICE_PORT': '***', 'SGLANG_SERVING_K3_SERVICE_PORT_HTTP': '***', 'SHELL': '***', 'SHLVL': '***', 'SWANLAB_API_HOST': '***', 'SWANLAB_RUNTIME': '***', 'SWANLAB_WEB_HOST': '***', 'TORCHINDUCTOR_CACHE_DIR': '***', 'TORCH_CUDA_ARCH_LIST': '***', 'TRANSFORMER_ENGINE_VERSION': '***', 'TRTOSS_VERSION': '***', 'TRT_VERSION': '***', 'UV_LINK_MODE': '***', 'UV_PROJECT_ENVIRONMENT': '***', 'VIRTUAL_ENV': '***', 'VLLM_CACHE_ROOT': '***', 'VLLM_ENABLE_V1_MULTIPROCESSING': '***', 'VLLM_SKIP_P2P_CHECK': '***', 'WANDB_API_KEY': '***', 'WANDB_MODE': '***', 'WANDB_SERVICE': '***', 'WORLD_SIZE': '***', '_': '***', '_CUDA_COMPAT_PATH': '***', '_MLFLOW_TELEMETRY_SESSION_ID': '***'}}[36m(VllmGenerationWorker pid=30806, ip=10.4.0.101)[0m <frozen importlib._bootstrap_external>:1325: FutureWarning: The cuda.cudart module is deprecated and will be removed in a future release, please switch to use the cuda.bindings.runtime module instead.
+[36m(VllmGenerationWorker pid=30806, ip=10.4.0.101)[0m <frozen importlib._bootstrap_external>:1325: FutureWarning: The cuda.nvrtc module is deprecated and will be removed in a future release, please switch to use the cuda.bindings.nvrtc module instead.
+[36m(VllmGenerationWorker pid=68865, ip=10.4.1.93)[0m The argument `trust_remote_code` is to be used with Auto classes. It has no effect here and is ignored.[32m [repeated 3x across cluster][0m
+[36m(VllmGenerationWorker pid=30807, ip=10.4.0.101)[0m <frozen importlib._bootstrap_external>:1325: FutureWarning: The cuda.cudart module is deprecated and will be removed in a future release, please switch to use the cuda.bindings.runtime module instead.
+[36m(VllmGenerationWorker pid=30807, ip=10.4.0.101)[0m <frozen importlib._bootstrap_external>:1325: FutureWarning: The cuda.nvrtc module is deprecated and will be removed in a future release, please switch to use the cuda.bindings.nvrtc module instead.
+[36m(VllmGenerationWorker pid=68409, ip=10.4.1.93)[0m <frozen importlib._bootstrap_external>:1325: FutureWarning: The cuda.cudart module is deprecated and will be removed in a future release, please switch to use the cuda.bindings.runtime module instead.
+[36m(VllmGenerationWorker pid=68409, ip=10.4.1.93)[0m <frozen importlib._bootstrap_external>:1325: FutureWarning: The cuda.nvrtc module is deprecated and will be removed in a future release, please switch to use the cuda.bindings.nvrtc module instead.
+
+[36m(VllmGenerationWorker pid=30806, ip=10.4.0.101)[0m INFO 08-18 23:10:08 [scheduler.py:231] Chunked prefill is enabled with max_num_batched_tokens=16384.
+[36m(VllmGenerationWorker pid=30806, ip=10.4.0.101)[0m WARNING 08-18 23:10:08 [vllm.py:736] Async scheduling will be disabled because it is not supported with the `ray` distributed executor backend (only `mp`, `uni`, and `external_launcher` are supported).
+[36m(VllmGenerationWorker pid=30806, ip=10.4.0.101)[0m INFO 08-18 23:10:08 [vllm.py:747] Asynchronous scheduling is disabled.
+[36m(VllmGenerationWorker pid=30806, ip=10.4.0.101)[0m WARNING 08-18 23:10:09 [cuda.py:293] Forcing --disable_chunked_mm_input for models with multimodal-bidirectional attention.
+Error fetching metrics from 10.4.1.88:8080: HTTPConnectionPool(host='10.4.1.88', port=8080): Max retries exceeded with url: /metrics (Caused by ConnectTimeoutError(<HTTPConnection(host='10.4.1.88', port=8080) at 0x79c256a1a690>, 'Connection to 10.4.1.88 timed out. (connect timeout=5.0)'))
+[36m(VllmGenerationWorker pid=68409, ip=10.4.1.93)[0m WARNING 08-18 23:10:06 [envs.py:1710] Unknown vLLM environment variable detected: VLLM_USE_V1
+[36m(VllmGenerationWorker pid=68865, ip=10.4.1.93)[0m WARNING 08-18 23:10:13 [arg_utils.py:1321] The global random seed is set to 1025. Since VLLM_ENABLE_V1_MULTIPROCESSING is set to False, this may affect the random state of the Python process that launched vLLM.[32m [repeated 2x across cluster][0m
+[36m(VllmGenerationWorker pid=30807, ip=10.4.0.101)[0m INFO 08-18 23:10:14 [model.py:531] Resolved architecture: Gemma3ForConditionalGeneration
+[36m(VllmGenerationWorker pid=30807, ip=10.4.0.101)[0m INFO 08-18 23:10:14 [model.py:1554] Using max model len 4096
+[36m(VllmGenerationWorker pid=30807, ip=10.4.0.101)[0m INFO 08-18 23:10:14 [arg_utils.py:1539] Using ray runtime env (env vars redacted): {'py_executable': '/opt/ray_venvs/nemo_rl.models.generation.vllm.vllm_worker.VllmGenerationWorker/bin/python', 'env_vars': {'AVAILABLE_ADDR_LIST': '***', 'AVAILABLE_PORT_LIST': '***', 'AWS_OFI_NCCL_VERSION': '***', 'BASH_ENV': '***', 'CAL_VERSION': '***', 'CUBLASMP_VERSION': '***', 'CUBLAS_VERSION': '***', 'CUDA_ARCH_LIST': '***', 'CUDA_DRIVER_VERSION': '***', 'CUDA_VERSION': '***', 'CUDNN_FRONTEND_VERSION': '***', 'CUDNN_HOME': '***', 'CUDNN_VERSION': '***', 'CUFFT_VERSION': '***', 'CUFILE_VERSION': '***', 'CURAND_VERSION': '***', 'CUSOLVER_VERSION': '***', 'CUSPARSELT_VERSION': '***', 'CUSPARSE_VERSION': '***', 'DALI_BUILD': '***', 'DALI_URL_SUFFIX': '***', 'DALI_VERSION': '***', 'EFA_VERSION': '***', 'ENV': '***', 'GDRCOPY_VERSION': '***', 'HF_HOME': '***', 'HF_TOKEN': '***', 'HOME': '***', 'HOSTNAME': '***', 'HPCX_VERSION': '***', 'KMP_DUPLICATE_LIB_OK': '***', 'KMP_INIT_AT_FORK': '***', 'KUBERAY_GEN_RAY_START_CMD': '***', 'KUBERNETES_PORT': '***', 'KUBERNETES_PORT_443_TCP': '***', 'KUBERNETES_PORT_443_TCP_ADDR': '***', 'KUBERNETES_PORT_443_TCP_PORT': '***', 'KUBERNETES_PORT_443_TCP_PROTO': '***', 'KUBERNETES_SERVICE_HOST': '***', 'KUBERNETES_SERVICE_PORT': '***', 'KUBERNETES_SERVICE_PORT_HTTPS': '***', 'LC_CTYPE': '***', 'LD_LIBRARY_PATH': '***', 'LIBRARY_PATH': '***', 'LLM_D_BENCHMARK_HARNESS_PORT': '***', 'LLM_D_BENCHMARK_HARNESS_PORT_20873_TCP': '***', 'LLM_D_BENCHMARK_HARNESS_PORT_20873_TCP_ADDR': '***', 'LLM_D_BENCHMARK_HARNESS_PORT_20873_TCP_PORT': '***', 'LLM_D_BENCHMARK_HARNESS_PORT_20873_TCP_PROTO': '***', 'LLM_D_BENCHMARK_HARNESS_SERVICE_HOST': '***', 'LLM_D_BENCHMARK_HARNESS_SERVICE_PORT': '***', 'LLM_D_BENCHMARK_HARNESS_SERVICE_PORT_RSYNC': '***', 'LLM_D_ROUTER_EPP_PORT': '***', 'LLM_D_ROUTER_EPP_PORT_8081_TCP': '***', 'LLM_D_ROUTER_EPP_PORT_8081_TCP_ADDR': '***', 'LLM_D_ROUTER_EPP_PORT_8081_TCP_PORT': '***', 'LLM_D_ROUTER_EPP_PORT_8081_TCP_PROTO': '***', 'LLM_D_ROUTER_EPP_PORT_9002_TCP': '***', 'LLM_D_ROUTER_EPP_PORT_9002_TCP_ADDR': '***', 'LLM_D_ROUTER_EPP_PORT_9002_TCP_PORT': '***', 'LLM_D_ROUTER_EPP_PORT_9002_TCP_PROTO': '***', 'LLM_D_ROUTER_EPP_PORT_9090_TCP': '***', 'LLM_D_ROUTER_EPP_PORT_9090_TCP_ADDR': '***', 'LLM_D_ROUTER_EPP_PORT_9090_TCP_PORT': '***', 'LLM_D_ROUTER_EPP_PORT_9090_TCP_PROTO': '***', 'LLM_D_ROUTER_EPP_SERVICE_HOST': '***', 'LLM_D_ROUTER_EPP_SERVICE_PORT': '***', 'LLM_D_ROUTER_EPP_SERVICE_PORT_GRPC_EXT_PROC': '***', 'LLM_D_ROUTER_EPP_SERVICE_PORT_HTTP': '***', 'LLM_D_ROUTER_EPP_SERVICE_PORT_HTTP_METRICS': '***', 'LOCAL_RANK': '***', 'MASTER_ADDR': '***', 'MASTER_PORT': '***', 'MODEL_OPT_VERSION': '***', 'MOFED_VERSION': '***', 'NCCL_CROSS_NIC': '***', 'NCCL_IB_ADAPTIVE_ROUTING': '***', 'NCCL_IB_FIFO_TC': '***', 'NCCL_IB_GID_INDEX': '***', 'NCCL_IB_QPS_PER_CONNECTION': '***', 'NCCL_IB_TC': '***', 'NCCL_NET': '***', 'NCCL_NET_GDR_LEVEL': '***', 'NCCL_NVLS_CHUNKSIZE': '***', 'NCCL_P2P_NET_CHUNKSIZE': '***', 'NCCL_P2P_NVL_CHUNKSIZE': '***', 'NCCL_P2P_PCI_CHUNKSIZE': '***', 'NCCL_TUNER_CONFIG_PATH': '***', 'NCCL_VERSION': '***', 'NEMO_RL_COMMIT': '***', 'NEMO_RL_VENV_DIR': '***', 'NODE_RANK': '***', 'NPP_VERSION': '***', 'NRL_CONTAINER': '***', 'NSIGHT_COMPUTE_VERSION': '***', 'NSIGHT_SYSTEMS_VERSION': '***', 'NVIDIA_BUILD_ID': '***', 'NVIDIA_BUILD_REF': '***', 'NVIDIA_DRIVER_CAPABILITIES': '***', 'NVIDIA_PRODUCT_NAME': '***', 'NVIDIA_REQUIRE_CUDA': '***', 'NVIDIA_REQUIRE_JETPACK_HOST_MOUNTS': '***', 'NVIDIA_VISIBLE_DEVICES': '***', 'NVJITLINK_VERSION': '***', 'NVJPEG_VERSION': '***', 'NVSHMEM_VERSION': '***', 'OLDPWD': '***', 'OMPI_MCA_coll_hcoll_enable': '***', 'OPAL_PREFIX': '***', 'OPENMPI_VERSION': '***', 'OPENUCX_VERSION': '***', 'PATH': '***', 'POLYGRAPHY_VERSION': '***', 'PWD': '***', 'PYTHONBREAKPOINT': '***', 'RANK': '***', 'RAY_ADDRESS': '***', 'RAY_CLIENT_MODE': '***', 'RAY_CLOUD_INSTANCE_ID': '***', 'RAY_CLUSTER_NAME': '***', 'RAY_DASHBOARD_ENABLE_K8S_DISK_USAGE': '***', 'RAY_ENABLE_UV_RUN_RUNTIME_ENV': '***', 'RAY_EXPERIMENTAL_NOSET_CUDA_VISIBLE_DEVICES': '***', 'RAY_GROUP': '***', 'RAY_NODE_TYPE_NAME': '***', 'RAY_PORT': '***', 'RAY_USAGE_STATS_ENABLED': '***', 'RAY_USAGE_STATS_EXTRA_TAGS': '***', 'RAY_USAGE_STATS_KUBERAY_IN_USE': '***', 'RDMACORE_VERSION': '***', 'SGLANG_SERVING_K3_PORT': '***', 'SGLANG_SERVING_K3_PORT_30000_TCP': '***', 'SGLANG_SERVING_K3_PORT_30000_TCP_ADDR': '***', 'SGLANG_SERVING_K3_PORT_30000_TCP_PORT': '***', 'SGLANG_SERVING_K3_PORT_30000_TCP_PROTO': '***', 'SGLANG_SERVING_K3_SERVICE_HOST': '***', 'SGLANG_SERVING_K3_SERVICE_PORT': '***', 'SGLANG_SERVING_K3_SERVICE_PORT_HTTP': '***', 'SHELL': '***', 'SHLVL': '***', 'SWANLAB_API_HOST': '***', 'SWANLAB_RUNTIME': '***', 'SWANLAB_WEB_HOST': '***', 'TORCHINDUCTOR_CACHE_DIR': '***', 'TORCH_CUDA_ARCH_LIST': '***', 'TRANSFORMER_ENGINE_VERSION': '***', 'TRTOSS_VERSION': '***', 'TRT_VERSION': '***', 'UV_LINK_MODE': '***', 'UV_PROJECT_ENVIRONMENT': '***', 'VIRTUAL_ENV': '***', 'VLLM_CACHE_ROOT': '***', 'VLLM_ENABLE_V1_MULTIPROCESSING': '***', 'VLLM_SKIP_P2P_CHECK': '***', 'WANDB_API_KEY': '***', 'WANDB_MODE': '***', 'WANDB_SERVICE': '***', 'WORLD_SIZE': '***', '_': '***', '_CUDA_COMPAT_PATH': '***', '_MLFLOW_TELEMETRY_SESSION_ID': '***'}}
+[36m(VllmGenerationWorker pid=30807, ip=10.4.0.101)[0m INFO 08-18 23:10:14 [scheduler.py:231] Chunked prefill is enabled with max_num_batched_tokens=16384.
+[36m(VllmGenerationWorker pid=30807, ip=10.4.0.101)[0m WARNING 08-18 23:10:14 [vllm.py:736] Async scheduling will be disabled because it is not supported with the `ray` distributed executor backend (only `mp`, `uni`, and `external_launcher` are supported).
+[36m(VllmGenerationWorker pid=30807, ip=10.4.0.101)[0m INFO 08-18 23:10:14 [vllm.py:747] Asynchronous scheduling is disabled.
+[36m(VllmGenerationWorker pid=30807, ip=10.4.0.101)[0m WARNING 08-18 23:10:15 [cuda.py:293] Forcing --disable_chunked_mm_input for models with multimodal-bidirectional attention.
+[36m(VllmGenerationWorker pid=68865, ip=10.4.1.93)[0m INFO 08-18 23:10:20 [model.py:531] Resolved architecture: Gemma3ForConditionalGeneration[32m [repeated 2x across cluster][0m
+[36m(VllmGenerationWorker pid=68865, ip=10.4.1.93)[0m INFO 08-18 23:10:20 [model.py:1554] Using max model len 4096[32m [repeated 2x across cluster][0m
+[36m(VllmGenerationWorker pid=68865, ip=10.4.1.93)[0m INFO 08-18 23:10:20 [arg_utils.py:1539] Using ray runtime env (env vars redacted): {'py_executable': '/opt/ray_venvs/nemo_rl.models.generation.vllm.vllm_worker.VllmGenerationWorker/bin/python', 'env_vars': {'AVAILABLE_ADDR_LIST': '***', 'AVAILABLE_PORT_LIST': '***', 'AWS_OFI_NCCL_VERSION': '***', 'BASH_ENV': '***', 'CAL_VERSION': '***', 'CUBLASMP_VERSION': '***', 'CUBLAS_VERSION': '***', 'CUDA_ARCH_LIST': '***', 'CUDA_DRIVER_VERSION': '***', 'CUDA_VERSION': '***', 'CUDNN_FRONTEND_VERSION': '***', 'CUDNN_HOME': '***', 'CUDNN_VERSION': '***', 'CUFFT_VERSION': '***', 'CUFILE_VERSION': '***', 'CURAND_VERSION': '***', 'CUSOLVER_VERSION': '***', 'CUSPARSELT_VERSION': '***', 'CUSPARSE_VERSION': '***', 'DALI_BUILD': '***', 'DALI_URL_SUFFIX': '***', 'DALI_VERSION': '***', 'EFA_VERSION': '***', 'ENV': '***', 'GDRCOPY_VERSION': '***', 'HF_HOME': '***', 'HF_TOKEN': '***', 'HOME': '***', 'HOSTNAME': '***', 'HPCX_VERSION': '***', 'KMP_DUPLICATE_LIB_OK': '***', 'KMP_INIT_AT_FORK': '***', 'KUBERAY_GEN_RAY_START_CMD': '***', 'KUBERNETES_PORT': '***', 'KUBERNETES_PORT_443_TCP': '***', 'KUBERNETES_PORT_443_TCP_ADDR': '***', 'KUBERNETES_PORT_443_TCP_PORT': '***', 'KUBERNETES_PORT_443_TCP_PROTO': '***', 'KUBERNETES_SERVICE_HOST': '***', 'KUBERNETES_SERVICE_PORT': '***', 'KUBERNETES_SERVICE_PORT_HTTPS': '***', 'LC_CTYPE': '***', 'LD_LIBRARY_PATH': '***', 'LIBRARY_PATH': '***', 'LLM_D_BENCHMARK_HARNESS_PORT': '***', 'LLM_D_BENCHMARK_HARNESS_PORT_20873_TCP': '***', 'LLM_D_BENCHMARK_HARNESS_PORT_20873_TCP_ADDR': '***', 'LLM_D_BENCHMARK_HARNESS_PORT_20873_TCP_PORT': '***', 'LLM_D_BENCHMARK_HARNESS_PORT_20873_TCP_PROTO': '***', 'LLM_D_BENCHMARK_HARNESS_SERVICE_HOST': '***', 'LLM_D_BENCHMARK_HARNESS_SERVICE_PORT': '***', 'LLM_D_BENCHMARK_HARNESS_SERVICE_PORT_RSYNC': '***', 'LLM_D_ROUTER_EPP_PORT': '***', 'LLM_D_ROUTER_EPP_PORT_8081_TCP': '***', 'LLM_D_ROUTER_EPP_PORT_8081_TCP_ADDR': '***', 'LLM_D_ROUTER_EPP_PORT_8081_TCP_PORT': '***', 'LLM_D_ROUTER_EPP_PORT_8081_TCP_PROTO': '***', 'LLM_D_ROUTER_EPP_PORT_9002_TCP': '***', 'LLM_D_ROUTER_EPP_PORT_9002_TCP_ADDR': '***', 'LLM_D_ROUTER_EPP_PORT_9002_TCP_PORT': '***', 'LLM_D_ROUTER_EPP_PORT_9002_TCP_PROTO': '***', 'LLM_D_ROUTER_EPP_PORT_9090_TCP': '***', 'LLM_D_ROUTER_EPP_PORT_9090_TCP_ADDR': '***', 'LLM_D_ROUTER_EPP_PORT_9090_TCP_PORT': '***', 'LLM_D_ROUTER_EPP_PORT_9090_TCP_PROTO': '***', 'LLM_D_ROUTER_EPP_SERVICE_HOST': '***', 'LLM_D_ROUTER_EPP_SERVICE_PORT': '***', 'LLM_D_ROUTER_EPP_SERVICE_PORT_GRPC_EXT_PROC': '***', 'LLM_D_ROUTER_EPP_SERVICE_PORT_HTTP': '***', 'LLM_D_ROUTER_EPP_SERVICE_PORT_HTTP_METRICS': '***', 'LOCAL_RANK': '***', 'MASTER_ADDR': '***', 'MASTER_PORT': '***', 'MODEL_OPT_VERSION': '***', 'MOFED_VERSION': '***', 'NCCL_CROSS_NIC': '***', 'NCCL_IB_ADAPTIVE_ROUTING': '***', 'NCCL_IB_FIFO_TC': '***', 'NCCL_IB_GID_INDEX': '***', 'NCCL_IB_QPS_PER_CONNECTION': '***', 'NCCL_IB_TC': '***', 'NCCL_NET': '***', 'NCCL_NET_GDR_LEVEL': '***', 'NCCL_NVLS_CHUNKSIZE': '***', 'NCCL_P2P_NET_CHUNKSIZE': '***', 'NCCL_P2P_NVL_CHUNKSIZE': '***', 'NCCL_P2P_PCI_CHUNKSIZE': '***', 'NCCL_TUNER_CONFIG_PATH': '***', 'NCCL_VERSION': '***', 'NEMO_RL_COMMIT': '***', 'NEMO_RL_VENV_DIR': '***', 'NODE_RANK': '***', 'NPP_VERSION': '***', 'NRL_CONTAINER': '***', 'NSIGHT_COMPUTE_VERSION': '***', 'NSIGHT_SYSTEMS_VERSION': '***', 'NVIDIA_BUILD_ID': '***', 'NVIDIA_BUILD_REF': '***', 'NVIDIA_DRIVER_CAPABILITIES': '***', 'NVIDIA_PRODUCT_NAME': '***', 'NVIDIA_REQUIRE_CUDA': '***', 'NVIDIA_REQUIRE_JETPACK_HOST_MOUNTS': '***', 'NVIDIA_VISIBLE_DEVICES': '***', 'NVJITLINK_VERSION': '***', 'NVJPEG_VERSION': '***', 'NVSHMEM_VERSION': '***', 'OLDPWD': '***', 'OMPI_MCA_coll_hcoll_enable': '***', 'OPAL_PREFIX': '***', 'OPENMPI_VERSION': '***', 'OPENUCX_VERSION': '***', 'PATH': '***', 'POLYGRAPHY_VERSION': '***', 'PWD': '***', 'PYTHONBREAKPOINT': '***', 'RANK': '***', 'RAY_ADDRESS': '***', 'RAY_CLIENT_MODE': '***', 'RAY_CLOUD_INSTANCE_ID': '***', 'RAY_CLUSTER_NAME': '***', 'RAY_DASHBOARD_ENABLE_K8S_DISK_USAGE': '***', 'RAY_ENABLE_UV_RUN_RUNTIME_ENV': '***', 'RAY_EXPERIMENTAL_NOSET_CUDA_VISIBLE_DEVICES': '***', 'RAY_GROUP': '***', 'RAY_NODE_TYPE_NAME': '***', 'RAY_PORT': '***', 'RAY_USAGE_STATS_ENABLED': '***', 'RAY_USAGE_STATS_EXTRA_TAGS': '***', 'RAY_USAGE_STATS_KUBERAY_IN_USE': '***', 'RDMACORE_VERSION': '***', 'SGLANG_SERVING_K3_PORT': '***', 'SGLANG_SERVING_K3_PORT_30000_TCP': '***', 'SGLANG_SERVING_K3_PORT_30000_TCP_ADDR': '***', 'SGLANG_SERVING_K3_PORT_30000_TCP_PORT': '***', 'SGLANG_SERVING_K3_PORT_30000_TCP_PROTO': '***', 'SGLANG_SERVING_K3_SERVICE_HOST': '***', 'SGLANG_SERVING_K3_SERVICE_PORT': '***', 'SGLANG_SERVING_K3_SERVICE_PORT_HTTP': '***', 'SHELL': '***', 'SHLVL': '***', 'SWANLAB_API_HOST': '***', 'SWANLAB_RUNTIME': '***', 'SWANLAB_WEB_HOST': '***', 'TORCHINDUCTOR_CACHE_DIR': '***', 'TORCH_CUDA_ARCH_LIST': '***', 'TRANSFORMER_ENGINE_VERSION': '***', 'TRTOSS_VERSION': '***', 'TRT_VERSION': '***', 'UV_LINK_MODE': '***', 'UV_PROJECT_ENVIRONMENT': '***', 'VIRTUAL_ENV': '***', 'VLLM_CACHE_ROOT': '***', 'VLLM_ENABLE_V1_MULTIPROCESSING': '***', 'VLLM_SKIP_P2P_CHECK': '***', 'WANDB_API_KEY': '***', 'WANDB_MODE': '***', 'WANDB_SERVICE': '***', 'WORLD_SIZE': '***', '_': '***', '_CUDA_COMPAT_PATH': '***', '_MLFLOW_TELEMETRY_SESSION_ID': '***'}}[32m [repeated 2x across cluster][0m[36m(VllmGenerationWorker pid=30806, ip=10.4.0.101)[0m The image processor of type `Gemma3ImageProcessor` is now loaded as a fast processor by default, even if the model checkpoint was saved with a slow processor. This is a breaking change and may produce slightly different outputs. To continue using the slow processor, instantiate this class with `use_fast=False`. 
+[36m(VllmGenerationWorker pid=68865, ip=10.4.1.93)[0m <frozen importlib._bootstrap_external>:1325: FutureWarning: The cuda.cudart module is deprecated and will be removed in a future release, please switch to use the cuda.bindings.runtime module instead.
+[36m(VllmGenerationWorker pid=68865, ip=10.4.1.93)[0m <frozen importlib._bootstrap_external>:1325: FutureWarning: The cuda.nvrtc module is deprecated and will be removed in a future release, please switch to use the cuda.bindings.nvrtc module instead.
+[36m(VllmGenerationWorker pid=30807, ip=10.4.0.101)[0m The image processor of type `Gemma3ImageProcessor` is now loaded as a fast processor by default, even if the model checkpoint was saved with a slow processor. This is a breaking change and may produce slightly different outputs. To continue using the slow processor, instantiate this class with `use_fast=False`. 
+[36m(VllmGenerationWorker pid=68865, ip=10.4.1.93)[0m The image processor of type `Gemma3ImageProcessor` is now loaded as a fast processor by default, even if the model checkpoint was saved with a slow processor. This is a breaking change and may produce slightly different outputs. To continue using the slow processor, instantiate this class with `use_fast=False`. 
+
+[36m(VllmGenerationWorker pid=68865, ip=10.4.1.93)[0m INFO 08-18 23:10:20 [scheduler.py:231] Chunked prefill is enabled with max_num_batched_tokens=16384.[32m [repeated 2x across cluster][0m
+[36m(VllmGenerationWorker pid=68865, ip=10.4.1.93)[0m WARNING 08-18 23:10:20 [vllm.py:736] Async scheduling will be disabled because it is not supported with the `ray` distributed executor backend (only `mp`, `uni`, and `external_launcher` are supported).[32m [repeated 2x across cluster][0m
+[36m(VllmGenerationWorker pid=68865, ip=10.4.1.93)[0m INFO 08-18 23:10:20 [vllm.py:747] Asynchronous scheduling is disabled.[32m [repeated 2x across cluster][0m
+[36m(VllmGenerationWorker pid=68409, ip=10.4.1.93)[0m WARNING 08-18 23:10:17 [cuda.py:293] Forcing --disable_chunked_mm_input for models with multimodal-bidirectional attention.
+[36m(VllmGenerationWorker pid=68865, ip=10.4.1.93)[0m WARNING 08-18 23:10:20 [cuda.py:293] Forcing --disable_chunked_mm_input for models with multimodal-bidirectional attention.
+Error fetching metrics from 10.4.0.99:8080: HTTPConnectionPool(host='10.4.0.99', port=8080): Max retries exceeded with url: /metrics (Caused by ConnectTimeoutError(<HTTPConnection(host='10.4.0.99', port=8080) at 0x79c256a1a580>, 'Connection to 10.4.0.99 timed out. (connect timeout=5.0)'))
+Error fetching metrics from 10.4.1.88:8080: HTTPConnectionPool(host='10.4.1.88', port=8080): Max retries exceeded with url: /metrics (Caused by ConnectTimeoutError(<HTTPConnection(host='10.4.1.88', port=8080) at 0x79c256a1a7a0>, 'Connection to 10.4.1.88 timed out. (connect timeout=5.0)'))
+[36m(VllmGenerationWorker pid=30806, ip=10.4.0.101)[0m INFO 08-18 23:10:41 [core.py:101] Initializing a V1 LLM engine (v0.17.1) with config: model='google/gemma-3-27b-it', speculative_config=None, tokenizer='google/gemma-3-27b-it', skip_tokenizer_init=False, tokenizer_mode=auto, revision=None, tokenizer_revision=None, trust_remote_code=True, dtype=torch.bfloat16, max_seq_len=4096, download_dir=None, load_format=auto, tensor_parallel_size=4, pipeline_parallel_size=1, data_parallel_size=1, disable_custom_all_reduce=False, quantization=None, enforce_eager=False, enable_return_routed_experts=False, kv_cache_dtype=auto, device_config=cuda, structured_outputs_config=StructuredOutputsConfig(backend='auto', disable_fallback=False, disable_any_whitespace=False, disable_additional_properties=False, reasoning_parser='', reasoning_parser_plugin='', enable_in_reasoning=False), observability_config=ObservabilityConfig(show_hidden_metrics_for_version=None, otlp_traces_endpoint=None, collect_detailed_traces=None, kv_cache_metrics=False, kv_cache_metrics_sample=0.01, cudagraph_metrics=False, enable_layerwise_nvtx_tracing=False, enable_mfu_metrics=False, enable_mm_processor_stats=False, enable_logging_iteration_details=False), seed=1, served_model_name=google/gemma-3-27b-it, enable_prefix_caching=True, enable_chunked_prefill=True, pooler_config=None, compilation_config={'level': None, 'mode': <CompilationMode.VLLM_COMPILE: 3>, 'debug_dump_path': None, 'cache_dir': '', 'compile_cache_save_format': 'binary', 'backend': 'inductor', 'custom_ops': ['none'], 'splitting_ops': ['vllm::unified_attention', 'vllm::unified_attention_with_output', 'vllm::unified_mla_attention', 'vllm::unified_mla_attention_with_output', 'vllm::mamba_mixer2', 'vllm::mamba_mixer', 'vllm::short_conv', 'vllm::linear_attention', 'vllm::plamo2_mamba_mixer', 'vllm::gdn_attention_core', 'vllm::kda_attention', 'vllm::sparse_attn_indexer', 'vllm::rocm_aiter_sparse_attn_indexer', 'vllm::unified_kv_cache_update', 'vllm::unified_mla_kv_cache_update'], 'compile_mm_encoder': False, 'compile_sizes': [], 'compile_ranges_split_points': [3120, 16384], 'inductor_compile_config': {'enable_auto_functionalized_v2': False, 'combo_kernels': True, 'benchmark_combo_kernel': True}, 'inductor_passes': {}, 'cudagraph_mode': <CUDAGraphMode.FULL_AND_PIECEWISE: (2, 1)>, 'cudagraph_num_of_warmups': 1, 'cudagraph_capture_sizes': [1, 2, 4, 8, 16, 24, 32, 40, 48, 56, 64, 72, 80, 88, 96, 104, 112, 120, 128, 136, 144, 152, 160, 168, 176, 184, 192, 200, 208, 216, 224, 232, 240, 248, 256, 272, 288, 304, 320, 336, 352, 368, 384, 400, 416, 432, 448, 464, 480, 496, 512], 'cudagraph_copy_inputs': False, 'cudagraph_specialize_lora': True, 'use_inductor_graph_partition': False, 'pass_config': {'fuse_norm_quant': False, 'fuse_act_quant': False, 'fuse_attn_quant': False, 'enable_sp': False, 'fuse_gemm_comms': False, 'fuse_allreduce_rms': True}, 'max_cudagraph_capture_size': 512, 'dynamic_shapes_config': {'type': <DynamicShapesType.BACKED: 'backed'>, 'evaluate_guards': False, 'assume_32_bit_indexing': False}, 'local_cache_dir': None, 'fast_moe_cold_start': True, 'static_all_moe_layers': []}
+[36m(VllmGenerationWorker pid=30806, ip=10.4.0.101)[0m INFO 08-18 23:10:41 [ray_utils.py:364] Ray is already initialized. Skipping Ray initialization.
+[36m(VllmGenerationWorker pid=30806, ip=10.4.0.101)[0m INFO 08-18 23:10:41 [ray_utils.py:395] Using the existing placement group
+Error fetching metrics from 10.4.0.99:8080: HTTPConnectionPool(host='10.4.0.99', port=8080): Max retries exceeded with url: /metrics (Caused by ConnectTimeoutError(<HTTPConnection(host='10.4.0.99', port=8080) at 0x79c256a1aad0>, 'Connection to 10.4.0.99 timed out. (connect timeout=5.0)'))
+[36m(VllmGenerationWorker pid=30806, ip=10.4.0.101)[0m INFO 08-18 23:10:47 [ray_env.py:100] Env var prefixes to copy: ['HF_', 'HUGGING_FACE_', 'LMCACHE_', 'NCCL_', 'UCX_', 'VLLM_']
+[36m(VllmGenerationWorker pid=30806, ip=10.4.0.101)[0m INFO 08-18 23:10:47 [ray_env.py:101] Copying the following environment variables to workers: ['HF_HOME', 'HF_TOKEN', 'LD_LIBRARY_PATH', 'NCCL_CROSS_NIC', 'NCCL_IB_ADAPTIVE_ROUTING', 'NCCL_IB_FIFO_TC', 'NCCL_IB_GID_INDEX', 'NCCL_IB_QPS_PER_CONNECTION', 'NCCL_IB_TC', 'NCCL_NET', 'NCCL_NET_GDR_LEVEL', 'NCCL_NVLS_CHUNKSIZE', 'NCCL_P2P_NET_CHUNKSIZE', 'NCCL_P2P_NVL_CHUNKSIZE', 'NCCL_P2P_PCI_CHUNKSIZE', 'NCCL_TUNER_CONFIG_PATH', 'NCCL_VERSION', 'VLLM_ALLOW_INSECURE_SERIALIZATION', 'VLLM_CACHE_ROOT', 'VLLM_ENABLE_V1_MULTIPROCESSING', 'VLLM_RAY_BUNDLE_INDICES', 'VLLM_RAY_PER_WORKER_GPUS', 'VLLM_SKIP_P2P_CHECK', 'VLLM_USE_V1']
+[36m(VllmGenerationWorker pid=30806, ip=10.4.0.101)[0m INFO 08-18 23:10:47 [ray_env.py:111] To exclude env vars from copying, add them to /root/.config/vllm/ray_non_carry_over_env_vars.json
+[36m(RayWorkerWrapper pid=32761, ip=10.4.0.101)[0m WARNING 08-18 23:10:47 [system_utils.py:38] Overwriting environment variable LD_LIBRARY_PATH from '/opt/nemo_rl_venv/lib/python3.13/site-packages/nvidia/cudnn/lib:/usr/local/cuda/compat/lib:/usr/local/nvidia/lib:/usr/local/nvidia/lib64' to '/root/.cache/uv/archive-v0/ylrCeXPfy6IQsjbFEFRBj/cv2/../../lib64:/opt/nemo_rl_venv/lib/python3.13/site-packages/nvidia/cudnn/lib:/usr/local/cuda/compat/lib:/usr/local/nvidia/lib:/usr/local/nvidia/lib64'
+[36m(VllmGenerationWorker pid=30807, ip=10.4.0.101)[0m INFO 08-18 23:10:47 [core.py:101] Initializing a V1 LLM engine (v0.17.1) with config: model='google/gemma-3-27b-it', speculative_config=None, tokenizer='google/gemma-3-27b-it', skip_tokenizer_init=False, tokenizer_mode=auto, revision=None, tokenizer_revision=None, trust_remote_code=True, dtype=torch.bfloat16, max_seq_len=4096, download_dir=None, load_format=auto, tensor_parallel_size=4, pipeline_parallel_size=1, data_parallel_size=1, disable_custom_all_reduce=False, quantization=None, enforce_eager=False, enable_return_routed_experts=False, kv_cache_dtype=auto, device_config=cuda, structured_outputs_config=StructuredOutputsConfig(backend='auto', disable_fallback=False, disable_any_whitespace=False, disable_additional_properties=False, reasoning_parser='', reasoning_parser_plugin='', enable_in_reasoning=False), observability_config=ObservabilityConfig(show_hidden_metrics_for_version=None, otlp_traces_endpoint=None, collect_detailed_traces=None, kv_cache_metrics=False, kv_cache_metrics_sample=0.01, cudagraph_metrics=False, enable_layerwise_nvtx_tracing=False, enable_mfu_metrics=False, enable_mm_processor_stats=False, enable_logging_iteration_details=False), seed=0, served_model_name=google/gemma-3-27b-it, enable_prefix_caching=True, enable_chunked_prefill=True, pooler_config=None, compilation_config={'level': None, 'mode': <CompilationMode.VLLM_COMPILE: 3>, 'debug_dump_path': None, 'cache_dir': '', 'compile_cache_save_format': 'binary', 'backend': 'inductor', 'custom_ops': ['none'], 'splitting_ops': ['vllm::unified_attention', 'vllm::unified_attention_with_output', 'vllm::unified_mla_attention', 'vllm::unified_mla_attention_with_output', 'vllm::mamba_mixer2', 'vllm::mamba_mixer', 'vllm::short_conv', 'vllm::linear_attention', 'vllm::plamo2_mamba_mixer', 'vllm::gdn_attention_core', 'vllm::kda_attention', 'vllm::sparse_attn_indexer', 'vllm::rocm_aiter_sparse_attn_indexer', 'vllm::unified_kv_cache_update', 'vllm::unified_mla_kv_cache_update'], 'compile_mm_encoder': False, 'compile_sizes': [], 'compile_ranges_split_points': [3120, 16384], 'inductor_compile_config': {'enable_auto_functionalized_v2': False, 'combo_kernels': True, 'benchmark_combo_kernel': True}, 'inductor_passes': {}, 'cudagraph_mode': <CUDAGraphMode.FULL_AND_PIECEWISE: (2, 1)>, 'cudagraph_num_of_warmups': 1, 'cudagraph_capture_sizes': [1, 2, 4, 8, 16, 24, 32, 40, 48, 56, 64, 72, 80, 88, 96, 104, 112, 120, 128, 136, 144, 152, 160, 168, 176, 184, 192, 200, 208, 216, 224, 232, 240, 248, 256, 272, 288, 304, 320, 336, 352, 368, 384, 400, 416, 432, 448, 464, 480, 496, 512], 'cudagraph_copy_inputs': False, 'cudagraph_specialize_lora': True, 'use_inductor_graph_partition': False, 'pass_config': {'fuse_norm_quant': False, 'fuse_act_quant': False, 'fuse_attn_quant': False, 'enable_sp': False, 'fuse_gemm_comms': False, 'fuse_allreduce_rms': True}, 'max_cudagraph_capture_size': 512, 'dynamic_shapes_config': {'type': <DynamicShapesType.BACKED: 'backed'>, 'evaluate_guards': False, 'assume_32_bit_indexing': False}, 'local_cache_dir': None, 'fast_moe_cold_start': True, 'static_all_moe_layers': []}[36m(RayWorkerWrapper pid=32760, ip=10.4.0.101)[0m <frozen importlib._bootstrap_external>:1325: FutureWarning: The cuda.cudart module is deprecated and will be removed in a future release, please switch to use the cuda.bindings.runtime module instead.
+[36m(RayWorkerWrapper pid=32760, ip=10.4.0.101)[0m <frozen importlib._bootstrap_external>:1325: FutureWarning: The cuda.nvrtc module is deprecated and will be removed in a future release, please switch to use the cuda.bindings.nvrtc module instead.
+[36m(VllmGenerationWorker pid=68409, ip=10.4.1.93)[0m The image processor of type `Gemma3ImageProcessor` is now loaded as a fast processor by default, even if the model checkpoint was saved with a slow processor. This is a breaking change and may produce slightly different outputs. To continue using the slow processor, instantiate this class with `use_fast=False`. 
+
+[36m(VllmGenerationWorker pid=30807, ip=10.4.0.101)[0m INFO 08-18 23:10:47 [ray_utils.py:364] Ray is already initialized. Skipping Ray initialization.
+[36m(VllmGenerationWorker pid=30807, ip=10.4.0.101)[0m INFO 08-18 23:10:47 [ray_utils.py:395] Using the existing placement group
+[36m(RayWorkerWrapper pid=32761, ip=10.4.0.101)[0m INFO 08-18 23:10:49 [worker_base.py:283] Injected <class 'nemo_rl.models.generation.vllm.vllm_backend.VllmInternalWorkerExtension'> into <class 'vllm.v1.worker.gpu_worker.Worker'> for extended collective_rpc calls ['_load_draft_weights', '_maybe_process_fp8_kv_cache', '_split_policy_and_draft_weights', 'cleanup', 'get_zmq_address', 'init_collective', 'maybe_init_zmq', 'prepare_refit_info', 'report_device_id', 'start_gpu_profiling', 'stop_gpu_profiling', 'update_weights_from_collective', 'update_weights_via_ipc_zmq']
+[36m(RayWorkerWrapper pid=32761, ip=10.4.0.101)[0m WARNING 08-18 23:10:49 [worker_base.py:301] Missing `shared_worker_lock` argument from executor. This argument is needed for mm_processor_cache_type='shm'.
+Error fetching metrics from 10.4.1.88:8080: HTTPConnectionPool(host='10.4.1.88', port=8080): Max retries exceeded with url: /metrics (Caused by ConnectTimeoutError(<HTTPConnection(host='10.4.1.88', port=8080) at 0x79c256a1b570>, 'Connection to 10.4.1.88 timed out. (connect timeout=5.0)'))
+[36m(RayWorkerWrapper pid=32761, ip=10.4.0.101)[0m INFO 08-18 23:10:52 [parallel_state.py:1393] world_size=4 rank=2 local_rank=2 distributed_init_method=tcp://127.0.0.1:45033 backend=nccl
+[36m(RayWorkerWrapper pid=32760, ip=10.4.0.101)[0m WARNING 08-18 23:10:47 [system_utils.py:38] Overwriting environment variable LD_LIBRARY_PATH from '/opt/nemo_rl_venv/lib/python3.13/site-packages/nvidia/cudnn/lib:/usr/local/cuda/compat/lib:/usr/local/nvidia/lib:/usr/local/nvidia/lib64' to '/root/.cache/uv/archive-v0/ylrCeXPfy6IQsjbFEFRBj/cv2/../../lib64:/opt/nemo_rl_venv/lib/python3.13/site-packages/nvidia/cudnn/lib:/usr/local/cuda/compat/lib:/usr/local/nvidia/lib:/usr/local/nvidia/lib64'[32m [repeated 3x across cluster][0m
+[36m(VllmGenerationWorker pid=68865, ip=10.4.1.93)[0m INFO 08-18 23:10:53 [core.py:101] Initializing a V1 LLM engine (v0.17.1) with config: model='google/gemma-3-27b-it', speculative_config=None, tokenizer='google/gemma-3-27b-it', skip_tokenizer_init=False, tokenizer_mode=auto, revision=None, tokenizer_revision=None, trust_remote_code=True, dtype=torch.bfloat16, max_seq_len=4096, download_dir=None, load_format=auto, tensor_parallel_size=4, pipeline_parallel_size=1, data_parallel_size=1, disable_custom_all_reduce=False, quantization=None, enforce_eager=False, enable_return_routed_experts=False, kv_cache_dtype=auto, device_config=cuda, structured_outputs_config=StructuredOutputsConfig(backend='auto', disable_fallback=False, disable_any_whitespace=False, disable_additional_properties=False, reasoning_parser='', reasoning_parser_plugin='', enable_in_reasoning=False), observability_config=ObservabilityConfig(show_hidden_metrics_for_version=None, otlp_traces_endpoint=None, collect_detailed_traces=None, kv_cache_metrics=False, kv_cache_metrics_sample=0.01, cudagraph_metrics=False, enable_layerwise_nvtx_tracing=False, enable_mfu_metrics=False, enable_mm_processor_stats=False, enable_logging_iteration_details=False), seed=1025, served_model_name=google/gemma-3-27b-it, enable_prefix_caching=True, enable_chunked_prefill=True, pooler_config=None, compilation_config={'level': None, 'mode': <CompilationMode.VLLM_COMPILE: 3>, 'debug_dump_path': None, 'cache_dir': '', 'compile_cache_save_format': 'binary', 'backend': 'inductor', 'custom_ops': ['none'], 'splitting_ops': ['vllm::unified_attention', 'vllm::unified_attention_with_output', 'vllm::unified_mla_attention', 'vllm::unified_mla_attention_with_output', 'vllm::mamba_mixer2', 'vllm::mamba_mixer', 'vllm::short_conv', 'vllm::linear_attention', 'vllm::plamo2_mamba_mixer', 'vllm::gdn_attention_core', 'vllm::kda_attention', 'vllm::sparse_attn_indexer', 'vllm::rocm_aiter_sparse_attn_indexer', 'vllm::unified_kv_cache_update', 'vllm::unified_mla_kv_cache_update'], 'compile_mm_encoder': False, 'compile_sizes': [], 'compile_ranges_split_points': [3120, 16384], 'inductor_compile_config': {'enable_auto_functionalized_v2': False, 'combo_kernels': True, 'benchmark_combo_kernel': True}, 'inductor_passes': {}, 'cudagraph_mode': <CUDAGraphMode.FULL_AND_PIECEWISE: (2, 1)>, 'cudagraph_num_of_warmups': 1, 'cudagraph_capture_sizes': [1, 2, 4, 8, 16, 24, 32, 40, 48, 56, 64, 72, 80, 88, 96, 104, 112, 120, 128, 136, 144, 152, 160, 168, 176, 184, 192, 200, 208, 216, 224, 232, 240, 248, 256, 272, 288, 304, 320, 336, 352, 368, 384, 400, 416, 432, 448, 464, 480, 496, 512], 'cudagraph_copy_inputs': False, 'cudagraph_specialize_lora': True, 'use_inductor_graph_partition': False, 'pass_config': {'fuse_norm_quant': False, 'fuse_act_quant': False, 'fuse_attn_quant': False, 'enable_sp': False, 'fuse_gemm_comms': False, 'fuse_allreduce_rms': True}, 'max_cudagraph_capture_size': 512, 'dynamic_shapes_config': {'type': <DynamicShapesType.BACKED: 'backed'>, 'evaluate_guards': False, 'assume_32_bit_indexing': False}, 'local_cache_dir': None, 'fast_moe_cold_start': True, 'static_all_moe_layers': []}
+[36m(VllmGenerationWorker pid=68865, ip=10.4.1.93)[0m INFO 08-18 23:10:53 [ray_utils.py:364] Ray is already initialized. Skipping Ray initialization.
+[36m(VllmGenerationWorker pid=68865, ip=10.4.1.93)[0m INFO 08-18 23:10:53 [ray_utils.py:395] Using the existing placement group
+[36m(RayWorkerWrapper pid=32758, ip=10.4.0.101)[0m INFO 08-18 23:10:53 [pynccl.py:111] vLLM is using nccl==2.27.5
+[36m(RayWorkerWrapper pid=32761, ip=10.4.0.101)[0m INFO 08-18 23:10:56 [parallel_state.py:1715] rank 2 in world size 4 is assigned as DP rank 0, PP rank 0, PCP rank 0, TP rank 2, EP rank N/A, EPLB rank N/A
+[36m(RayWorkerWrapper pid=32760, ip=10.4.0.101)[0m INFO 08-18 23:10:49 [worker_base.py:283] Injected <class 'nemo_rl.models.generation.vllm.vllm_backend.VllmInternalWorkerExtension'> into <class 'vllm.v1.worker.gpu_worker.Worker'> for extended collective_rpc calls ['_load_draft_weights', '_maybe_process_fp8_kv_cache', '_split_policy_and_draft_weights', 'cleanup', 'get_zmq_address', 'init_collective', 'maybe_init_zmq', 'prepare_refit_info', 'report_device_id', 'start_gpu_profiling', 'stop_gpu_profiling', 'update_weights_from_collective', 'update_weights_via_ipc_zmq'][32m [repeated 3x across cluster][0m
+[36m(RayWorkerWrapper pid=32760, ip=10.4.0.101)[0m WARNING 08-18 23:10:49 [worker_base.py:301] Missing `shared_worker_lock` argument from executor. This argument is needed for mm_processor_cache_type='shm'.[32m [repeated 3x across cluster][0m
+[36m(VllmGenerationWorker pid=30807, ip=10.4.0.101)[0m INFO 08-18 23:10:56 [ray_env.py:100] Env var prefixes to copy: ['HF_', 'HUGGING_FACE_', 'LMCACHE_', 'NCCL_', 'UCX_', 'VLLM_']
+[36m(VllmGenerationWorker pid=30807, ip=10.4.0.101)[0m INFO 08-18 23:10:56 [ray_env.py:101] Copying the following environment variables to workers: ['HF_HOME', 'HF_TOKEN', 'LD_LIBRARY_PATH', 'NCCL_CROSS_NIC', 'NCCL_IB_ADAPTIVE_ROUTING', 'NCCL_IB_FIFO_TC', 'NCCL_IB_GID_INDEX', 'NCCL_IB_QPS_PER_CONNECTION', 'NCCL_IB_TC', 'NCCL_NET', 'NCCL_NET_GDR_LEVEL', 'NCCL_NVLS_CHUNKSIZE', 'NCCL_P2P_NET_CHUNKSIZE', 'NCCL_P2P_NVL_CHUNKSIZE', 'NCCL_P2P_PCI_CHUNKSIZE', 'NCCL_TUNER_CONFIG_PATH', 'NCCL_VERSION', 'VLLM_ALLOW_INSECURE_SERIALIZATION', 'VLLM_CACHE_ROOT', 'VLLM_ENABLE_V1_MULTIPROCESSING', 'VLLM_RAY_BUNDLE_INDICES', 'VLLM_RAY_PER_WORKER_GPUS', 'VLLM_SKIP_P2P_CHECK', 'VLLM_USE_V1']
+[36m(VllmGenerationWorker pid=30807, ip=10.4.0.101)[0m INFO 08-18 23:10:56 [ray_env.py:111] To exclude env vars from copying, add them to /root/.config/vllm/ray_non_carry_over_env_vars.json
+[36m(VllmGenerationWorker pid=68409, ip=10.4.1.93)[0m INFO 08-18 23:10:57 [core.py:101] Initializing a V1 LLM engine (v0.17.1) with config: model='google/gemma-3-27b-it', speculative_config=None, tokenizer='google/gemma-3-27b-it', skip_tokenizer_init=False, tokenizer_mode=auto, revision=None, tokenizer_revision=None, trust_remote_code=True, dtype=torch.bfloat16, max_seq_len=4096, download_dir=None, load_format=auto, tensor_parallel_size=4, pipeline_parallel_size=1, data_parallel_size=1, disable_custom_all_reduce=False, quantization=None, enforce_eager=False, enable_return_routed_experts=False, kv_cache_dtype=auto, device_config=cuda, structured_outputs_config=StructuredOutputsConfig(backend='auto', disable_fallback=False, disable_any_whitespace=False, disable_additional_properties=False, reasoning_parser='', reasoning_parser_plugin='', enable_in_reasoning=False), observability_config=ObservabilityConfig(show_hidden_metrics_for_version=None, otlp_traces_endpoint=None, collect_detailed_traces=None, kv_cache_metrics=False, kv_cache_metrics_sample=0.01, cudagraph_metrics=False, enable_layerwise_nvtx_tracing=False, enable_mfu_metrics=False, enable_mm_processor_stats=False, enable_logging_iteration_details=False), seed=1024, served_model_name=google/gemma-3-27b-it, enable_prefix_caching=True, enable_chunked_prefill=True, pooler_config=None, compilation_config={'level': None, 'mode': <CompilationMode.VLLM_COMPILE: 3>, 'debug_dump_path': None, 'cache_dir': '', 'compile_cache_save_format': 'binary', 'backend': 'inductor', 'custom_ops': ['none'], 'splitting_ops': ['vllm::unified_attention', 'vllm::unified_attention_with_output', 'vllm::unified_mla_attention', 'vllm::unified_mla_attention_with_output', 'vllm::mamba_mixer2', 'vllm::mamba_mixer', 'vllm::short_conv', 'vllm::linear_attention', 'vllm::plamo2_mamba_mixer', 'vllm::gdn_attention_core', 'vllm::kda_attention', 'vllm::sparse_attn_indexer', 'vllm::rocm_aiter_sparse_attn_indexer', 'vllm::unified_kv_cache_update', 'vllm::unified_mla_kv_cache_update'], 'compile_mm_encoder': False, 'compile_sizes': [], 'compile_ranges_split_points': [3120, 16384], 'inductor_compile_config': {'enable_auto_functionalized_v2': False, 'combo_kernels': True, 'benchmark_combo_kernel': True}, 'inductor_passes': {}, 'cudagraph_mode': <CUDAGraphMode.FULL_AND_PIECEWISE: (2, 1)>, 'cudagraph_num_of_warmups': 1, 'cudagraph_capture_sizes': [1, 2, 4, 8, 16, 24, 32, 40, 48, 56, 64, 72, 80, 88, 96, 104, 112, 120, 128, 136, 144, 152, 160, 168, 176, 184, 192, 200, 208, 216, 224, 232, 240, 248, 256, 272, 288, 304, 320, 336, 352, 368, 384, 400, 416, 432, 448, 464, 480, 496, 512], 'cudagraph_copy_inputs': False, 'cudagraph_specialize_lora': True, 'use_inductor_graph_partition': False, 'pass_config': {'fuse_norm_quant': False, 'fuse_act_quant': False, 'fuse_attn_quant': False, 'enable_sp': False, 'fuse_gemm_comms': False, 'fuse_allreduce_rms': True}, 'max_cudagraph_capture_size': 512, 'dynamic_shapes_config': {'type': <DynamicShapesType.BACKED: 'backed'>, 'evaluate_guards': False, 'assume_32_bit_indexing': False}, 'local_cache_dir': None, 'fast_moe_cold_start': True, 'static_all_moe_layers': []}[36m(RayWorkerWrapper pid=33344, ip=10.4.0.101)[0m <frozen importlib._bootstrap_external>:1325: FutureWarning: The cuda.cudart module is deprecated and will be removed in a future release, please switch to use the cuda.bindings.runtime module instead.[32m [repeated 4x across cluster][0m
+[36m(RayWorkerWrapper pid=33344, ip=10.4.0.101)[0m <frozen importlib._bootstrap_external>:1325: FutureWarning: The cuda.nvrtc module is deprecated and will be removed in a future release, please switch to use the cuda.bindings.nvrtc module instead.[32m [repeated 4x across cluster][0m
+[36m(RayWorkerWrapper pid=71059, ip=10.4.1.93)[0m <frozen importlib._bootstrap_external>:1325: FutureWarning: The cuda.cudart module is deprecated and will be removed in a future release, please switch to use the cuda.bindings.runtime module instead.[32m [repeated 8x across cluster][0m
+[36m(RayWorkerWrapper pid=71059, ip=10.4.1.93)[0m <frozen importlib._bootstrap_external>:1325: FutureWarning: The cuda.nvrtc module is deprecated and will be removed in a future release, please switch to use the cuda.bindings.nvrtc module instead.[32m [repeated 8x across cluster][0m
+
+[36m(VllmGenerationWorker pid=68409, ip=10.4.1.93)[0m INFO 08-18 23:10:57 [ray_utils.py:364] Ray is already initialized. Skipping Ray initialization.
+[36m(VllmGenerationWorker pid=68409, ip=10.4.1.93)[0m INFO 08-18 23:10:57 [ray_utils.py:395] Using the existing placement group
+[36m(RayWorkerWrapper pid=32760, ip=10.4.0.101)[0m INFO 08-18 23:10:52 [parallel_state.py:1393] world_size=4 rank=1 local_rank=1 distributed_init_method=tcp://127.0.0.1:45033 backend=nccl[32m [repeated 3x across cluster][0m
+[36m(RayWorkerWrapper pid=33344, ip=10.4.0.101)[0m WARNING 08-18 23:10:56 [system_utils.py:38] Overwriting environment variable LD_LIBRARY_PATH from '/opt/nemo_rl_venv/lib/python3.13/site-packages/nvidia/cudnn/lib:/usr/local/cuda/compat/lib:/usr/local/nvidia/lib:/usr/local/nvidia/lib64' to '/root/.cache/uv/archive-v0/ylrCeXPfy6IQsjbFEFRBj/cv2/../../lib64:/opt/nemo_rl_venv/lib/python3.13/site-packages/nvidia/cudnn/lib:/usr/local/cuda/compat/lib:/usr/local/nvidia/lib:/usr/local/nvidia/lib64'[32m [repeated 4x across cluster][0m
+[36m(RayWorkerWrapper pid=33342, ip=10.4.0.101)[0m INFO 08-18 23:11:00 [pynccl.py:111] vLLM is using nccl==2.27.5
+[36m(RayWorkerWrapper pid=32760, ip=10.4.0.101)[0m INFO 08-18 23:10:56 [parallel_state.py:1715] rank 1 in world size 4 is assigned as DP rank 0, PP rank 0, PCP rank 0, TP rank 1, EP rank N/A, EPLB rank N/A[32m [repeated 3x across cluster][0m
+[36m(RayWorkerWrapper pid=70508, ip=10.4.1.93)[0m INFO 08-18 23:11:01 [worker_base.py:283] Injected <class 'nemo_rl.models.generation.vllm.vllm_backend.VllmInternalWorkerExtension'> into <class 'vllm.v1.worker.gpu_worker.Worker'> for extended collective_rpc calls ['_load_draft_weights', '_maybe_process_fp8_kv_cache', '_split_policy_and_draft_weights', 'cleanup', 'get_zmq_address', 'init_collective', 'maybe_init_zmq', 'prepare_refit_info', 'report_device_id', 'start_gpu_profiling', 'stop_gpu_profiling', 'update_weights_from_collective', 'update_weights_via_ipc_zmq'][32m [repeated 5x across cluster][0m
+[36m(RayWorkerWrapper pid=70508, ip=10.4.1.93)[0m WARNING 08-18 23:11:01 [worker_base.py:301] Missing `shared_worker_lock` argument from executor. This argument is needed for mm_processor_cache_type='shm'.[32m [repeated 5x across cluster][0m
+[36m(VllmGenerationWorker pid=68865, ip=10.4.1.93)[0m INFO 08-18 23:10:59 [ray_env.py:100] Env var prefixes to copy: ['HF_', 'HUGGING_FACE_', 'LMCACHE_', 'NCCL_', 'UCX_', 'VLLM_']
+[36m(VllmGenerationWorker pid=68865, ip=10.4.1.93)[0m INFO 08-18 23:10:59 [ray_env.py:101] Copying the following environment variables to workers: ['HF_HOME', 'HF_TOKEN', 'LD_LIBRARY_PATH', 'NCCL_CROSS_NIC', 'NCCL_IB_ADAPTIVE_ROUTING', 'NCCL_IB_FIFO_TC', 'NCCL_IB_GID_INDEX', 'NCCL_IB_QPS_PER_CONNECTION', 'NCCL_IB_TC', 'NCCL_NET', 'NCCL_NET_GDR_LEVEL', 'NCCL_NVLS_CHUNKSIZE', 'NCCL_P2P_NET_CHUNKSIZE', 'NCCL_P2P_NVL_CHUNKSIZE', 'NCCL_P2P_PCI_CHUNKSIZE', 'NCCL_TUNER_CONFIG_PATH', 'NCCL_VERSION', 'VLLM_ALLOW_INSECURE_SERIALIZATION', 'VLLM_CACHE_ROOT', 'VLLM_ENABLE_V1_MULTIPROCESSING', 'VLLM_RAY_BUNDLE_INDICES', 'VLLM_RAY_PER_WORKER_GPUS', 'VLLM_SKIP_P2P_CHECK', 'VLLM_USE_V1']
+[36m(VllmGenerationWorker pid=68865, ip=10.4.1.93)[0m INFO 08-18 23:10:59 [ray_env.py:111] To exclude env vars from copying, add them to /root/.config/vllm/ray_non_carry_over_env_vars.json
+[36m(RayWorkerWrapper pid=33344, ip=10.4.0.101)[0m INFO 08-18 23:11:00 [parallel_state.py:1393] world_size=4 rank=2 local_rank=2 distributed_init_method=tcp://127.0.0.1:53489 backend=nccl[32m [repeated 4x across cluster][0m
+[36m(RayWorkerWrapper pid=70507, ip=10.4.1.93)[0m WARNING 08-18 23:10:59 [system_utils.py:38] Overwriting environment variable LD_LIBRARY_PATH from '/opt/nemo_rl_venv/lib/python3.13/site-packages/nvidia/cudnn/lib:/usr/local/cuda/compat/lib:/usr/local/nvidia/lib:/usr/local/nvidia/lib64' to '/root/.cache/uv/archive-v0/ylrCeXPfy6IQsjbFEFRBj/cv2/../../lib64:/opt/nemo_rl_venv/lib/python3.13/site-packages/nvidia/cudnn/lib:/usr/local/cuda/compat/lib:/usr/local/nvidia/lib:/usr/local/nvidia/lib64'[32m [repeated 4x across cluster][0m
+[36m(VllmGenerationWorker pid=68409, ip=10.4.1.93)[0m INFO 08-18 23:11:04 [ray_env.py:100] Env var prefixes to copy: ['HF_', 'HUGGING_FACE_', 'LMCACHE_', 'NCCL_', 'UCX_', 'VLLM_']
+[36m(VllmGenerationWorker pid=68409, ip=10.4.1.93)[0m INFO 08-18 23:11:04 [ray_env.py:101] Copying the following environment variables to workers: ['HF_HOME', 'HF_TOKEN', 'LD_LIBRARY_PATH', 'NCCL_CROSS_NIC', 'NCCL_IB_ADAPTIVE_ROUTING', 'NCCL_IB_FIFO_TC', 'NCCL_IB_GID_INDEX', 'NCCL_IB_QPS_PER_CONNECTION', 'NCCL_IB_TC', 'NCCL_NET', 'NCCL_NET_GDR_LEVEL', 'NCCL_NVLS_CHUNKSIZE', 'NCCL_P2P_NET_CHUNKSIZE', 'NCCL_P2P_NVL_CHUNKSIZE', 'NCCL_P2P_PCI_CHUNKSIZE', 'NCCL_TUNER_CONFIG_PATH', 'NCCL_VERSION', 'VLLM_ALLOW_INSECURE_SERIALIZATION', 'VLLM_CACHE_ROOT', 'VLLM_ENABLE_V1_MULTIPROCESSING', 'VLLM_RAY_BUNDLE_INDICES', 'VLLM_RAY_PER_WORKER_GPUS', 'VLLM_SKIP_P2P_CHECK', 'VLLM_USE_V1']
+[36m(VllmGenerationWorker pid=68409, ip=10.4.1.93)[0m INFO 08-18 23:11:04 [ray_env.py:111] To exclude env vars from copying, add them to /root/.config/vllm/ray_non_carry_over_env_vars.json
+Error fetching metrics from 10.4.0.99:8080: HTTPConnectionPool(host='10.4.0.99', port=8080): Max retries exceeded with url: /metrics (Caused by ConnectTimeoutError(<HTTPConnection(host='10.4.0.99', port=8080) at 0x79c256a1b9b0>, 'Connection to 10.4.0.99 timed out. (connect timeout=5.0)'))
+[36m(RayWorkerWrapper pid=70508, ip=10.4.1.93)[0m INFO 08-18 23:11:05 [pynccl.py:111] vLLM is using nccl==2.27.5
+[36m(RayWorkerWrapper pid=33344, ip=10.4.0.101)[0m INFO 08-18 23:11:03 [parallel_state.py:1715] rank 2 in world size 4 is assigned as DP rank 0, PP rank 0, PCP rank 0, TP rank 2, EP rank N/A, EPLB rank N/A[32m [repeated 4x across cluster][0m
+[36m(RayWorkerWrapper pid=71058, ip=10.4.1.93)[0m INFO 08-18 23:11:06 [worker_base.py:283] Injected <class 'nemo_rl.models.generation.vllm.vllm_backend.VllmInternalWorkerExtension'> into <class 'vllm.v1.worker.gpu_worker.Worker'> for extended collective_rpc calls ['_load_draft_weights', '_maybe_process_fp8_kv_cache', '_split_policy_and_draft_weights', 'cleanup', 'get_zmq_address', 'init_collective', 'maybe_init_zmq', 'prepare_refit_info', 'report_device_id', 'start_gpu_profiling', 'stop_gpu_profiling', 'update_weights_from_collective', 'update_weights_via_ipc_zmq'][32m [repeated 6x across cluster][0m
+[36m(RayWorkerWrapper pid=71058, ip=10.4.1.93)[0m WARNING 08-18 23:11:06 [worker_base.py:301] Missing `shared_worker_lock` argument from executor. This argument is needed for mm_processor_cache_type='shm'.[32m [repeated 6x across cluster][0m
+[36m(RayWorkerWrapper pid=71057, ip=10.4.1.93)[0m INFO 08-18 23:11:09 [parallel_state.py:1393] world_size=4 rank=1 local_rank=1 distributed_init_method=tcp://127.0.0.1:52245 backend=nccl[32m [repeated 5x across cluster][0m
+[36m(RayWorkerWrapper pid=71059, ip=10.4.1.93)[0m WARNING 08-18 23:11:04 [system_utils.py:38] Overwriting environment variable LD_LIBRARY_PATH from '/opt/nemo_rl_venv/lib/python3.13/site-packages/nvidia/cudnn/lib:/usr/local/cuda/compat/lib:/usr/local/nvidia/lib:/usr/local/nvidia/lib64' to '/root/.cache/uv/archive-v0/ylrCeXPfy6IQsjbFEFRBj/cv2/../../lib64:/opt/nemo_rl_venv/lib/python3.13/site-packages/nvidia/cudnn/lib:/usr/local/cuda/compat/lib:/usr/local/nvidia/lib:/usr/local/nvidia/lib64'[32m [repeated 4x across cluster][0m
+Error fetching metrics from 10.4.1.88:8080: HTTPConnectionPool(host='10.4.1.88', port=8080): Max retries exceeded with url: /metrics (Caused by ConnectTimeoutError(<HTTPConnection(host='10.4.1.88', port=8080) at 0x79c256a1b680>, 'Connection to 10.4.1.88 timed out. (connect timeout=5.0)'))
+[36m(RayWorkerWrapper pid=71056, ip=10.4.1.93)[0m INFO 08-18 23:11:10 [pynccl.py:111] vLLM is using nccl==2.27.5
+[36m(RayWorkerWrapper pid=71058, ip=10.4.1.93)[0m INFO 08-18 23:11:12 [parallel_state.py:1715] rank 3 in world size 4 is assigned as DP rank 0, PP rank 0, PCP rank 0, TP rank 3, EP rank N/A, EPLB rank N/A[32m [repeated 5x across cluster][0m
+[36m(RayWorkerWrapper pid=71057, ip=10.4.1.93)[0m INFO 08-18 23:11:06 [worker_base.py:283] Injected <class 'nemo_rl.models.generation.vllm.vllm_backend.VllmInternalWorkerExtension'> into <class 'vllm.v1.worker.gpu_worker.Worker'> for extended collective_rpc calls ['_load_draft_weights', '_maybe_process_fp8_kv_cache', '_split_policy_and_draft_weights', 'cleanup', 'get_zmq_address', 'init_collective', 'maybe_init_zmq', 'prepare_refit_info', 'report_device_id', 'start_gpu_profiling', 'stop_gpu_profiling', 'update_weights_from_collective', 'update_weights_via_ipc_zmq'][36m(RayWorkerWrapper pid=32758, ip=10.4.0.101)[0m The image processor of type `Gemma3ImageProcessor` is now loaded as a fast processor by default, even if the model checkpoint was saved with a slow processor. This is a breaking change and may produce slightly different outputs. To continue using the slow processor, instantiate this class with `use_fast=False`. 
+[36m(RayWorkerWrapper pid=71058, ip=10.4.1.93)[0m <frozen importlib._bootstrap_external>:1325: FutureWarning: The cuda.cudart module is deprecated and will be removed in a future release, please switch to use the cuda.bindings.runtime module instead.[32m [repeated 3x across cluster][0m
+[36m(RayWorkerWrapper pid=71058, ip=10.4.1.93)[0m <frozen importlib._bootstrap_external>:1325: FutureWarning: The cuda.nvrtc module is deprecated and will be removed in a future release, please switch to use the cuda.bindings.nvrtc module instead.[32m [repeated 3x across cluster][0m
+*** SIGTERM received at time=1787094696 on cpu 11 ***
+PC: @     0x79c874d37d71  (unknown)  (unknown)
+    @     0x79c874ce4330  (unknown)  (unknown)
+    @     0x79c874d3ac8e        224  pthread_cond_timedwait
+    @     0x79c848840a8f       1184  ray::core::GetRequest::Wait()
+    @     0x79c848842be7       1328  ray::core::CoreWorkerMemoryStore::GetImpl()
+    @     0x79c848843639         64  ray::core::CoreWorkerMemoryStore::Get()
+    @     0x79c84884383f        208  ray::core::CoreWorkerMemoryStore::Get()
+    @     0x79c8486ea526       1488  ray::core::CoreWorker::GetObjects()
+    @     0x79c8486eb1b0        160  ray::core::CoreWorker::Get()
+    @     0x79c8486173a0        272  __pyx_pw_3ray_7_raylet_10CoreWorker_35get_objects()
+    @          0x18180af        576  _PyEval_EvalFrameDefault
+    @          0x180f9d4        160  slot_tp_init
+    @          0x1801f91         64  type_call
+    @          0x1824aa9        576  _PyEval_EvalFrameDefault
+    @          0x187be68        112  PyEval_EvalCode
+    @          0x18ae6af         80  run_eval_code_obj
+    @          0x18f104d         96  run_mod.llvm.4925521003579235080
+    @          0x1a5e417         96  pyrun_file
+    @          0x1a5dfc2         80  _PyRun_SimpleFileObject
+    @          0x1a5ece2         64  _PyRun_AnyFileObject
+    @          0x1a5ec7e        208  pymain_run_file_obj
+    @          0x1a5eb78         48  pymain_run_file
+    @          0x19a113a        112  Py_RunMain
+    @          0x19a0dee        624  pymain_main.llvm.9255495055956678347
+    @          0x19a0c06         48  main
+    @     0x79c874cc91ca        160  (unknown)
+    @     0x79c874cc928b         96  __libc_start_main
+    @          0x19e8ce9  (unknown)  _start
+[2026-08-18 23:11:37,074 E 816869 816869] logging.cc:474: *** SIGTERM received at time=1787094697 on cpu 11 ***
+[2026-08-18 23:11:37,074 E 816869 816869] logging.cc:474: PC: @     0x79c874d37d71  (unknown)  (unknown)
+[2026-08-18 23:11:37,074 E 816869 816869] logging.cc:474:     @     0x79c874ce4330  (unknown)  (unknown)
+[2026-08-18 23:11:37,074 E 816869 816869] logging.cc:474:     @     0x79c874d3ac8e        224  pthread_cond_timedwait
+[2026-08-18 23:11:37,074 E 816869 816869] logging.cc:474:     @     0x79c848840a8f       1184  ray::core::GetRequest::Wait()
+[2026-08-18 23:11:37,074 E 816869 816869] logging.cc:474:     @     0x79c848842be7       1328  ray::core::CoreWorkerMemoryStore::GetImpl()
+[2026-08-18 23:11:37,074 E 816869 816869] logging.cc:474:     @     0x79c848843639         64  ray::core::CoreWorkerMemoryStore::Get()
+[2026-08-18 23:11:37,074 E 816869 816869] logging.cc:474:     @     0x79c84884383f        208  ray::core::CoreWorkerMemoryStore::Get()
+[2026-08-18 23:11:37,074 E 816869 816869] logging.cc:474:     @     0x79c8486ea526       1488  ray::core::CoreWorker::GetObjects()
+[2026-08-18 23:11:37,074 E 816869 816869] logging.cc:474:     @     0x79c8486eb1b0        160  ray::core::CoreWorker::Get()
+[2026-08-18 23:11:37,074 E 816869 816869] logging.cc:474:     @     0x79c8486173a0        272  __pyx_pw_3ray_7_raylet_10CoreWorker_35get_objects()
+[2026-08-18 23:11:37,074 E 816869 816869] logging.cc:474:     @          0x18180af        576  _PyEval_EvalFrameDefault
+[2026-08-18 23:11:37,074 E 816869 816869] logging.cc:474:     @          0x180f9d4        160  slot_tp_init
+[2026-08-18 23:11:37,074 E 816869 816869] logging.cc:474:     @          0x1801f91         64  type_call
+[2026-08-18 23:11:37,074 E 816869 816869] logging.cc:474:     @          0x1824aa9        576  _PyEval_EvalFrameDefault
+[2026-08-18 23:11:37,074 E 816869 816869] logging.cc:474:     @          0x187be68        112  PyEval_EvalCode
+[2026-08-18 23:11:37,074 E 816869 816869] logging.cc:474:     @          0x18ae6af         80  run_eval_code_obj
+[2026-08-18 23:11:37,074 E 816869 816869] logging.cc:474:     @          0x18f104d         96  run_mod.llvm.4925521003579235080
+[2026-08-18 23:11:37,074 E 816869 816869] logging.cc:474:     @          0x1a5e417         96  pyrun_file
+[2026-08-18 23:11:37,074 E 816869 816869] logging.cc:474:     @          0x1a5dfc2         80  _PyRun_SimpleFileObject
+[2026-08-18 23:11:37,074 E 816869 816869] logging.cc:474:     @          0x1a5ece2         64  _PyRun_AnyFileObject
+[2026-08-18 23:11:37,074 E 816869 816869] logging.cc:474:     @          0x1a5ec7e        208  pymain_run_file_obj
+[2026-08-18 23:11:37,074 E 816869 816869] logging.cc:474:     @          0x1a5eb78         48  pymain_run_file
+[2026-08-18 23:11:37,074 E 816869 816869] logging.cc:474:     @          0x19a113a        112  Py_RunMain
+[2026-08-18 23:11:37,074 E 816869 816869] logging.cc:474:     @          0x19a0dee        624  pymain_main.llvm.9255495055956678347
+[2026-08-18 23:11:37,074 E 816869 816869] logging.cc:474:     @          0x19a0c06         48  main
+[2026-08-18 23:11:37,074 E 816869 816869] logging.cc:474:     @     0x79c874cc91ca        160  (unknown)
+[2026-08-18 23:11:37,074 E 816869 816869] logging.cc:474:     @     0x79c874cc928b         96  __libc_start_main
+[2026-08-18 23:11:37,074 E 816869 816869] logging.cc:474:     @          0x19e8ce9  (unknown)  _start
+
+[36m(RayWorkerWrapper pid=71057, ip=10.4.1.93)[0m WARNING 08-18 23:11:06 [worker_base.py:301] Missing `shared_worker_lock` argument from executor. This argument is needed for mm_processor_cache_type='shm'.
+Error fetching metrics from 10.4.0.99:8080: HTTPConnectionPool(host='10.4.0.99', port=8080): Max retries exceeded with url: /metrics (Caused by ConnectTimeoutError(<HTTPConnection(host='10.4.0.99', port=8080) at 0x79c256a1b8a0>, 'Connection to 10.4.0.99 timed out. (connect timeout=5.0)'))
+Error fetching metrics from 10.4.1.88:8080: HTTPConnectionPool(host='10.4.1.88', port=8080): Max retries exceeded with url: /metrics (Caused by ConnectTimeoutError(<HTTPConnection(host='10.4.1.88', port=8080) at 0x79c256a1a9c0>, 'Connection to 10.4.1.88 timed out. (connect timeout=5.0)'))
+[36m(RayWorkerWrapper pid=32758, ip=10.4.0.101)[0m INFO 08-18 23:11:34 [base.py:106] Offloader set to NoopOffloader
+[36m(RayWorkerWrapper pid=71059, ip=10.4.1.93)[0m INFO 08-18 23:11:09 [parallel_state.py:1393] world_size=4 rank=2 local_rank=2 distributed_init_method=tcp://127.0.0.1:52245 backend=nccl[32m [repeated 3x across cluster][0m
+[36m(RayWorkerWrapper pid=71059, ip=10.4.1.93)[0m INFO 08-18 23:11:12 [parallel_state.py:1715] rank 2 in world size 4 is assigned as DP rank 0, PP rank 0, PCP rank 0, TP rank 2, EP rank N/A, EPLB rank N/A[32m [repeated 3x across cluster][0m
+[36m(RayWorkerWrapper pid=70506, ip=10.4.1.93)[0m The image processor of type `Gemma3ImageProcessor` is now loaded as a fast processor by default, even if the model checkpoint was saved with a slow processor. This is a breaking change and may produce slightly different outputs. To continue using the slow processor, instantiate this class with `use_fast=False`. 
+[36m(RayWorkerWrapper pid=70509, ip=10.4.1.93)[0m The image processor of type `Gemma3ImageProcessor` is now loaded as a fast processor by default, even if the model checkpoint was saved with a slow processor. This is a breaking change and may produce slightly different outputs. To continue using the slow processor, instantiate this class with `use_fast=False`. 
+bash: line 30: 816869 Aborted                 (core dumped) python3 examples/run_grpo.py --config examples/configs/recipes/llm/dapo-gemma3-27b-it-2n8g-fsdp2-automodel.yaml
++ echo '--- Job Finished ---'
+--- Job Finished ---
+Job submission complete.

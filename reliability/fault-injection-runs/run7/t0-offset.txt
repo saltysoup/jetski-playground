@@ -1,0 +1,4 @@
+poller_t0=2026-08-24T22:03:16Z
+real_t0=2026-08-24T22:05:13.765Z
+offset_seconds=117.765
+# true T+ = (poller T+ column) - 117.765

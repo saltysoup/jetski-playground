@@ -1,0 +1,105 @@
+18:16:43.317 | T    +5.318s | START          | T0=2026-08-20T18:16:38+00:00 head=ray-cluster-kuberay-head-nt7b6 target=34t3 submission=dapo-run6c cloud_fast=20.0min
+18:16:48.314 | T   +10.314s | CHANGE-NODE    | {"34t3": {"active_maint": null, "gpu": "8", "maint_status": null, "perform_label": null, "ready": "True", "taints": ["gpu"], "uid": "11db4e2c", "unsched": false}, "6df3": {"active_maint": null, "gpu": "8", "maint_status": null, "perform_label": null, "ready": "True", "taints": ["gpu"], "uid": "5463fbfc", "unsched": false}}
+18:16:53.098 | T   +15.098s | CHANGE-POD     | {"worker-nqklb": {"deleting": false, "node": "6df3", "phase": "Running", "ready": "2/2"}, "worker-z4hj7": {"deleting": false, "node": "34t3", "phase": "Running", "ready": "2/2"}, "y-head-nt7b6": {"deleting": false, "node": "94kc", "phase": "Running", "ready": "2/2"}}
+18:16:58.401 | T   +20.401s | CHANGE-GPU     | cluster allocatable nvidia.com/gpu = 16
+18:17:03.845 | T   +25.846s | CHANGE-CLOUD   | {"34t3_maint": "CLEAR", "34t3_reasons": null, "34t3_resched": null, "34t3_vm": "RUNNING", "34t3_win": null, "6df3_maint": "CLEAR", "6df3_reasons": null, "6df3_resched": null, "6df3_vm": "RUNNING", "6df3_win": null, "block_degraded": null, "block_health": "HEALTHY", "ongoing": null, "pending": null, "res_health": "HEALTHY"}
+18:17:11.320 | T   +33.321s | CHANGE-JOB     | ray job dapo-run6c status = RUNNING
+18:17:14.496 | T   +36.496s | heartbeat      | tick=1 gpu=16 job=RUNNING m1=False m2=False
+18:20:11.106 | T  +213.106s | CHANGE-CLOUD   | {"34t3_maint": "CLEAR", "34t3_reasons": null, "34t3_resched": null, "34t3_vm": "RUNNING", "34t3_win": null, "6df3_maint": "CLEAR", "6df3_reasons": null, "6df3_resched": null, "6df3_vm": "RUNNING", "6df3_win": null, "block_degraded": null, "block_health": "DEGRADED", "ongoing": null, "pending": null, "res_health": "DEGRADED"}
+18:19:46.672 | T  +188.673s | M1-LOG         | entry_ts=2026-08-20T18:19:46.672803043Z (T+188.673s) receive_ts=2026-08-20T18:19:48.685570389Z (T+190.686s) :: [79296.432578] [  0.000000] NVRM: Xid (PCI:0000:cc:00): 79, pid=0, name=CLAUDE-SIM-RUN6, GPU has fallen off the bus.\r\n
+18:22:14.137 | T  +336.137s | CHANGE-JOB     | ray job dapo-run6c status = ?
+18:22:16.502 | T  +338.503s | M2-ALERT       | publishTime=2026-08-20T18:22:01.950Z (T+323.95s) attrs={}
+18:22:16.503 | T  +338.503s | heartbeat      | tick=13 gpu=16 job=? m1=True m2=True
+18:27:22.064 | T  +644.065s | heartbeat      | tick=26 gpu=16 job=? m1=True m2=True
+18:32:25.633 | T  +947.634s | heartbeat      | tick=39 gpu=16 job=? m1=True m2=True
+18:37:44.505 | T +1266.506s | heartbeat      | tick=53 gpu=16 job=? m1=True m2=True
+18:43:00.395 | T +1582.396s | heartbeat      | tick=67 gpu=16 job=? m1=True m2=True
+18:48:19.064 | T +1901.065s | heartbeat      | tick=81 gpu=16 job=? m1=True m2=True
+18:53:29.914 | T +2211.915s | heartbeat      | tick=96 gpu=16 job=? m1=True m2=True
+18:58:43.154 | T +2525.155s | heartbeat      | tick=115 gpu=16 job=? m1=True m2=True
+19:03:52.366 | T +2834.367s | heartbeat      | tick=135 gpu=16 job=? m1=True m2=True
+19:08:58.308 | T +3140.309s | heartbeat      | tick=155 gpu=16 job=? m1=True m2=True
+19:14:07.104 | T +3449.105s | heartbeat      | tick=175 gpu=16 job=? m1=True m2=True
+19:19:07.347 | T +3749.347s | heartbeat      | tick=194 gpu=16 job=? m1=True m2=True
+19:24:20.242 | T +4062.242s | heartbeat      | tick=214 gpu=16 job=? m1=True m2=True
+19:29:39.206 | T +4381.206s | heartbeat      | tick=235 gpu=16 job=? m1=True m2=True
+19:34:45.393 | T +4687.393s | heartbeat      | tick=256 gpu=16 job=? m1=True m2=True
+19:39:58.336 | T +5000.337s | heartbeat      | tick=277 gpu=16 job=? m1=True m2=True
+19:45:05.958 | T +5307.958s | heartbeat      | tick=298 gpu=16 job=? m1=True m2=True
+19:50:23.690 | T +5625.691s | heartbeat      | tick=319 gpu=16 job=? m1=True m2=True
+19:55:29.583 | T +5931.584s | heartbeat      | tick=340 gpu=16 job=? m1=True m2=True
+20:00:45.952 | T +6247.953s | heartbeat      | tick=361 gpu=16 job=? m1=True m2=True
+20:05:49.583 | T +6551.584s | heartbeat      | tick=381 gpu=16 job=? m1=True m2=True
+20:10:56.620 | T +6858.621s | heartbeat      | tick=399 gpu=16 job=? m1=True m2=True
+20:16:05.572 | T +7167.573s | heartbeat      | tick=417 gpu=16 job=? m1=True m2=True
+20:21:18.268 | T +7480.269s | heartbeat      | tick=435 gpu=16 job=? m1=True m2=True
+20:26:29.289 | T +7791.289s | heartbeat      | tick=456 gpu=16 job=? m1=True m2=True
+20:31:34.425 | T +8096.425s | heartbeat      | tick=476 gpu=16 job=? m1=True m2=True
+20:36:44.450 | T +8406.451s | heartbeat      | tick=497 gpu=16 job=? m1=True m2=True
+20:41:51.384 | T +8713.384s | heartbeat      | tick=515 gpu=16 job=? m1=True m2=True
+20:47:05.895 | T +9027.896s | heartbeat      | tick=534 gpu=16 job=? m1=True m2=True
+20:52:15.803 | T +9337.803s | heartbeat      | tick=553 gpu=16 job=? m1=True m2=True
+20:57:24.384 | T +9646.384s | heartbeat      | tick=573 gpu=16 job=? m1=True m2=True
+21:02:30.330 | T +9952.330s | heartbeat      | tick=593 gpu=16 job=? m1=True m2=True
+21:07:41.991 | T+10263.991s | heartbeat      | tick=612 gpu=16 job=? m1=True m2=True
+21:12:53.751 | T+10575.751s | heartbeat      | tick=631 gpu=16 job=? m1=True m2=True
+21:18:03.517 | T+10885.517s | heartbeat      | tick=651 gpu=16 job=? m1=True m2=True
+21:23:04.944 | T+11186.944s | heartbeat      | tick=670 gpu=16 job=? m1=True m2=True
+21:28:14.512 | T+11496.512s | heartbeat      | tick=690 gpu=16 job=? m1=True m2=True
+21:33:24.952 | T+11806.952s | heartbeat      | tick=709 gpu=16 job=? m1=True m2=True
+21:38:30.100 | T+12112.101s | heartbeat      | tick=725 gpu=16 job=? m1=True m2=True
+21:43:43.989 | T+12425.990s | heartbeat      | tick=745 gpu=16 job=? m1=True m2=True
+21:48:44.128 | T+12726.129s | heartbeat      | tick=765 gpu=16 job=? m1=True m2=True
+21:53:48.098 | T+13030.098s | heartbeat      | tick=785 gpu=16 job=? m1=True m2=True
+21:58:55.368 | T+13337.368s | heartbeat      | tick=805 gpu=16 job=? m1=True m2=True
+22:04:08.875 | T+13650.876s | heartbeat      | tick=826 gpu=16 job=? m1=True m2=True
+22:09:19.633 | T+13961.633s | heartbeat      | tick=846 gpu=16 job=? m1=True m2=True
+22:14:31.120 | T+14273.120s | heartbeat      | tick=867 gpu=16 job=? m1=True m2=True
+22:19:40.431 | T+14582.432s | heartbeat      | tick=887 gpu=16 job=? m1=True m2=True
+22:24:57.986 | T+14899.986s | heartbeat      | tick=907 gpu=16 job=? m1=True m2=True
+22:30:00.277 | T+15202.277s | heartbeat      | tick=927 gpu=16 job=? m1=True m2=True
+22:35:10.196 | T+15512.197s | heartbeat      | tick=947 gpu=16 job=? m1=True m2=True
+22:40:22.752 | T+15824.753s | heartbeat      | tick=967 gpu=16 job=? m1=True m2=True
+22:45:35.504 | T+16137.505s | heartbeat      | tick=988 gpu=16 job=? m1=True m2=True
+22:50:36.443 | T+16438.444s | heartbeat      | tick=1007 gpu=16 job=? m1=True m2=True
+22:55:48.593 | T+16750.593s | heartbeat      | tick=1027 gpu=16 job=? m1=True m2=True
+23:00:58.200 | T+17060.200s | heartbeat      | tick=1047 gpu=16 job=? m1=True m2=True
+23:06:02.409 | T+17364.410s | heartbeat      | tick=1067 gpu=16 job=? m1=True m2=True
+23:11:04.308 | T+17666.309s | heartbeat      | tick=1087 gpu=16 job=? m1=True m2=True
+23:16:17.122 | T+17979.123s | heartbeat      | tick=1108 gpu=16 job=? m1=True m2=True
+23:21:23.516 | T+18285.516s | heartbeat      | tick=1128 gpu=16 job=? m1=True m2=True
+23:26:34.198 | T+18596.199s | heartbeat      | tick=1148 gpu=16 job=? m1=True m2=True
+23:31:34.272 | T+18896.272s | heartbeat      | tick=1168 gpu=16 job=? m1=True m2=True
+23:36:47.147 | T+19209.148s | heartbeat      | tick=1189 gpu=16 job=? m1=True m2=True
+23:41:52.203 | T+19514.204s | heartbeat      | tick=1210 gpu=16 job=? m1=True m2=True
+23:46:57.287 | T+19819.287s | heartbeat      | tick=1231 gpu=16 job=? m1=True m2=True
+23:52:05.286 | T+20127.286s | heartbeat      | tick=1252 gpu=16 job=? m1=True m2=True
+23:55:26.680 | T+20328.681s | CHANGE-CLOUD   | {"34t3_maint": "PENDING", "34t3_reasons": ["FAILURE_GPU_XID", "FAILURE_GPU"], "34t3_resched": true, "34t3_vm": "RUNNING", "34t3_win": "2026-08-28T00:00:00Z", "6df3_maint": "CLEAR", "6df3_reasons": null, "6df3_resched": null, "6df3_vm": "RUNNING", "6df3_win": null, "block_degraded": null, "block_health": "DEGRADED", "ongoing": 0, "pending": 1, "res_health": "DEGRADED"}
+23:55:34.409 | T+20336.410s | CHANGE-NODE    | {"34t3": {"active_maint": null, "gpu": "8", "maint_status": "PENDING", "perform_label": null, "ready": "True", "taints": ["gpu"], "uid": "11db4e2c", "unsched": false}, "6df3": {"active_maint": null, "gpu": "8", "maint_status": null, "perform_label": null, "ready": "True", "taints": ["gpu"], "uid": "5463fbfc", "unsched": false}}
+23:57:11.011 | T+20433.011s | heartbeat      | tick=1273 gpu=16 job=? m1=True m2=True
+00:02:24.150 | T+20746.150s | heartbeat      | tick=1295 gpu=16 job=? m1=True m2=True
+00:07:35.737 | T+21057.737s | heartbeat      | tick=1316 gpu=16 job=? m1=True m2=True
+00:12:43.937 | T+21365.937s | heartbeat      | tick=1337 gpu=16 job=? m1=True m2=True
+00:17:49.479 | T+21671.479s | heartbeat      | tick=1357 gpu=16 job=? m1=True m2=True
+00:22:57.415 | T+21979.416s | heartbeat      | tick=1377 gpu=16 job=? m1=True m2=True
+00:28:00.160 | T+22282.161s | heartbeat      | tick=1396 gpu=16 job=? m1=True m2=True
+00:33:10.993 | T+22592.994s | heartbeat      | tick=1415 gpu=16 job=? m1=True m2=True
+00:38:13.216 | T+22895.216s | heartbeat      | tick=1433 gpu=16 job=? m1=True m2=True
+00:43:15.786 | T+23197.786s | heartbeat      | tick=1452 gpu=16 job=? m1=True m2=True
+00:48:15.864 | T+23497.865s | heartbeat      | tick=1471 gpu=16 job=? m1=True m2=True
+00:53:20.021 | T+23802.021s | heartbeat      | tick=1491 gpu=16 job=? m1=True m2=True
+00:58:27.456 | T+24109.456s | heartbeat      | tick=1512 gpu=16 job=? m1=True m2=True
+01:03:37.178 | T+24419.179s | heartbeat      | tick=1533 gpu=16 job=? m1=True m2=True
+01:08:45.661 | T+24727.662s | heartbeat      | tick=1553 gpu=16 job=? m1=True m2=True
+01:13:56.453 | T+25038.453s | heartbeat      | tick=1573 gpu=16 job=? m1=True m2=True
+01:19:04.072 | T+25346.073s | heartbeat      | tick=1593 gpu=16 job=? m1=True m2=True
+01:24:04.128 | T+25646.129s | heartbeat      | tick=1612 gpu=16 job=? m1=True m2=True
+01:29:05.072 | T+25947.073s | heartbeat      | tick=1631 gpu=16 job=? m1=True m2=True
+01:34:16.175 | T+26258.175s | heartbeat      | tick=1651 gpu=16 job=? m1=True m2=True
+01:39:25.258 | T+26567.258s | heartbeat      | tick=1672 gpu=16 job=? m1=True m2=True
+01:44:25.301 | T+26867.302s | heartbeat      | tick=1692 gpu=16 job=? m1=True m2=True
+01:49:29.851 | T+27171.851s | heartbeat      | tick=1711 gpu=16 job=? m1=True m2=True
+01:54:31.027 | T+27473.027s | heartbeat      | tick=1730 gpu=16 job=? m1=True m2=True
+01:59:31.477 | T+27773.477s | heartbeat      | tick=1749 gpu=16 job=? m1=True m2=True
+02:04:40.746 | T+28082.746s | heartbeat      | tick=1769 gpu=16 job=? m1=True m2=True
+02:09:59.617 | T+28401.618s | heartbeat      | tick=1789 gpu=16 job=? m1=True m2=True

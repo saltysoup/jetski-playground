@@ -1,0 +1,361 @@
+daemonset.apps/dcgm-inject-run8 unchanged
+[2026-08-27T19:42:03Z] waiting for the DCGM pod
+[2026-08-27T19:42:13Z] DCGM pod = dcgm-inject-run8-mnmnp
+[2026-08-27T19:42:18Z] GKE dcgm-exporter on this node = 10.4.0.2
+[2026-08-27T19:42:18Z] ################ 8b ITERATION 1 / 5 ################
+    Health monitor systems set successfully.
+[2026-08-27T19:42:33Z] injecting on gpu 7 at 2026-08-27T19:42:33.611Z: xid=48 dbe_vol=1 dbe_agg=1 dbe_dev=1 retired=16 remapped=4
+    --- reinjector ---
+    reinjector_procs=3
+    --- dmon (xid, dbe_vol, dbe_agg, dbe_dev, retired, remapped) ---
+    #Entity    XIDER        EDVTL        EDATL        EDVDV                   RPDBE                   URMPS             
+    ID                                                                                                                  
+    GPU 7      48           1            0            0                       16                      0                 
+    GPU 7      48           1            1            1                       16                      4                 
+    GPU 7      48           1            1            1                       16                      4                 
+    --- health ---
+    +---------------------------+----------------------------------------------------------+
+    | Health Monitor Report                                                                |
+    +===========================+==========================================================+
+    | Overall Health            | Failure                                                  |
+    | GPU                       |                                                          |
+    | -> 7                      | Failure                                                  |
+    |    -> Errors              |                                                          |
+    |       -> Memory system    | Failure                                                  |
+    |                           | Detected -889958048 volatile double-bit ECC error(s) in  |
+    |                           | GPU 2818663952. Drain the GPU and reset it or reboot     |
+    |                           | the node., Detected -889958256 volatile double-bit       |
+    |                           | ECC error(s) in GPU 2818663952. Drain the GPU and        |
+    |                           | reset it or reboot the node., Detected 1 volatile        |
+    |                           | double-bit ECC error(s) in GPU 7. Drain the GPU and      |
+    |                           | reset it or reboot the node., An excess of 15 retired    |
+    |                           | pages due to DBEs have been detected and more than       |
+    |                           | one page has been retired due to DBEs in the past        |
+    |                           | week in GPU 7. Run a field diagnostic on the GPU.,       |
+    |                           | Detected -889956704 volatile double-bit ECC error(s)     |
+    |                           | in GPU 2818587648. Drain the GPU and reset it or         |
+    |                           | reboot the node., Detected -889958032 volatile           |
+    |                           | double-bit ECC error(s) in GPU 2818587648. Drain the     |
+    |                           | GPU and reset it or reboot the node., Detected           |
+    |                           | -889958080 volatile double-bit ECC error(s) in GPU       |
+    |                           | 2818587648. Drain the GPU and reset it or reboot the     |
+    |                           | node.                                                    |
+    +---------------------------+----------------------------------------------------------+
+    --- real NVML counters (proof this is cache-only) ---
+    7, 00000000:CC:00.0, 0, [N/A]
+[2026-08-27T19:43:53Z] GKE dcgm-exporter's view of GPU 7 (its embedded DCGM, not ours):
+    EXPORTER_BYTES=58123
+    EXPORTER_ERROR_METRICS=0
+[2026-08-27T19:43:58Z] node conditions / GPU-related events:
+    NetworkUnavailable=False DeprecatedAuthsFieldInContainerdConfiguration=False XfsShutdown=False ReadOnlyRootFileSystem=False DeprecatedUsingV1Alpha2Cri=False FrequentDockerRestart=False DeprecatedOtherContainerdFeatures=False KernelDeadlock=False DeprecatedPullingSchemaV1Image=False ResourceExhausted=False SysctlChanged=True KubeletConfigChanged=True DeprecatedConfigsFieldInContainerdConfiguration=False Swap=False FrequentKubeletRestart=False FrequentContainerdRestart=False DPv2MigrationUnsupportedCNI=False DeprecatedMirrorsFieldInContainerdConfiguration=False UnsupportedEBPFPrograms=False CperHardwareErrorFatal=False StoragePressureRootFileSystem=False FrequentUnregisterNetDevice=False CorruptDockerOverlay2=False MemoryPressure=False DiskPressure=False PIDPressure=False Ready=True 
+    16m         Warning   KubeletConfigChangeDetected              node/gke-ikwak-reliabilit-a4-highgpu-8g-a4-0256e2f1-34t3               kubelet-monitor, gke-ikwak-reliabilit-a4-highgpu-8g-a4-0256e2f1-34t3                     Node condition KubeletConfigChanged is now: True, reason: KubeletConfigChangeDetected, message: "{\"managed\": {\"cpuCFSQuota\": true}}"            16m          1       gke-ikwak-reliabilit-a4-highgpu-8g-a4-0256e2f1-34t3.18cfc029be622f9e
+    16m         Normal    RegisteredNode                           node/gke-ikwak-reliabilit-a4-highgpu-8g-a4-0256e2f1-34t3               node-controller                                                                          Node gke-ikwak-reliabilit-a4-highgpu-8g-a4-0256e2f1-34t3 event: Registered Node gke-ikwak-reliabilit-a4-highgpu-8g-a4-0256e2f1-34t3 in Controller   16m          1       gke-ikwak-reliabilit-a4-highgpu-8g-a4-0256e2f1-34t3.18cfc029fedf24df
+    16m         Normal    Synced                                   node/gke-ikwak-reliabilit-a4-highgpu-8g-a4-0256e2f1-34t3               cloud-node-controller                                                                    Node synced successfully                                                                                                                            16m          1       gke-ikwak-reliabilit-a4-highgpu-8g-a4-0256e2f1-34t3.18cfc02a0fe55f3d
+    16m         Normal    NodeReady                                node/gke-ikwak-reliabilit-a4-highgpu-8g-a4-0256e2f1-34t3               kubelet, gke-ikwak-reliabilit-a4-highgpu-8g-a4-0256e2f1-34t3                             Node gke-ikwak-reliabilit-a4-highgpu-8g-a4-0256e2f1-34t3 status is now: NodeReady                                                                   16m          1       gke-ikwak-reliabilit-a4-highgpu-8g-a4-0256e2f1-34t3.18cfc02a7a13c91c
+    10m         Warning   NodeRegistrationCheckerDidNotRunChecks   node/gke-ikwak-reliabilit-a4-highgpu-8g-a4-0256e2f1-34t3               node-registration-checker-monitor, gke-ikwak-reliabilit-a4-highgpu-8g-a4-0256e2f1-34t3   Thu Aug 27 19:33:36 UTC 2026 - **     Node ready and registered. **                                                                                 10m          1       gke-ikwak-reliabilit-a4-highgpu-8g-a4-0256e2f1-34t3.18cfc07c2df6ae99
+[2026-08-27T19:44:09Z] Cloud Logging scan since 2026-08-27T19:42:33.611Z:
+    LOGSCAN_COUNT 0 since=2026-08-27T19:42:33.611Z
+[2026-08-27T19:44:14Z] observing upcomingMaintenance for 900s (fault held present throughout)
+[2026-08-27T19:44:24Z]   probe {"k8s_annotation": null, "res_health": "HEALTHY", "res_ongoing": null, "res_pending": null, "upcomingMaintenance": null, "vm": "RUNNING"}
+[2026-08-27T19:45:33Z]   probe {"k8s_annotation": null, "res_health": "HEALTHY", "res_ongoing": null, "res_pending": null, "upcomingMaintenance": null, "vm": "RUNNING"}
+[2026-08-27T19:46:43Z]   probe {"k8s_annotation": null, "res_health": "HEALTHY", "res_ongoing": null, "res_pending": null, "upcomingMaintenance": null, "vm": "RUNNING"}
+[2026-08-27T19:47:52Z]   probe {"k8s_annotation": null, "res_health": "HEALTHY", "res_ongoing": null, "res_pending": null, "upcomingMaintenance": null, "vm": "RUNNING"}
+[2026-08-27T19:49:02Z]   probe {"k8s_annotation": null, "res_health": "HEALTHY", "res_ongoing": null, "res_pending": null, "upcomingMaintenance": null, "vm": "RUNNING"}
+[2026-08-27T19:50:11Z]   probe {"k8s_annotation": null, "res_health": "HEALTHY", "res_ongoing": null, "res_pending": null, "upcomingMaintenance": null, "vm": "RUNNING"}
+[2026-08-27T19:51:20Z]   probe {"k8s_annotation": null, "res_health": "HEALTHY", "res_ongoing": null, "res_pending": null, "upcomingMaintenance": null, "vm": "RUNNING"}
+[2026-08-27T19:52:30Z]   probe {"k8s_annotation": null, "res_health": "HEALTHY", "res_ongoing": null, "res_pending": null, "upcomingMaintenance": null, "vm": "RUNNING"}
+[2026-08-27T19:53:39Z]   probe {"k8s_annotation": null, "res_health": "HEALTHY", "res_ongoing": null, "res_pending": null, "upcomingMaintenance": null, "vm": "RUNNING"}
+[2026-08-27T19:54:48Z]   probe {"k8s_annotation": null, "res_health": "HEALTHY", "res_ongoing": null, "res_pending": null, "upcomingMaintenance": null, "vm": "RUNNING"}
+[2026-08-27T19:55:58Z]   probe {"k8s_annotation": null, "res_health": "HEALTHY", "res_ongoing": null, "res_pending": null, "upcomingMaintenance": null, "vm": "RUNNING"}
+[2026-08-27T19:57:07Z]   probe {"k8s_annotation": null, "res_health": "HEALTHY", "res_ongoing": null, "res_pending": null, "upcomingMaintenance": null, "vm": "RUNNING"}
+[2026-08-27T19:58:16Z]   probe {"k8s_annotation": null, "res_health": "HEALTHY", "res_ongoing": null, "res_pending": null, "upcomingMaintenance": null, "vm": "RUNNING"}
+[2026-08-27T19:59:16Z] end-of-window health check:
+    reinjector_procs=3
+    | Overall Health            | Failure                                                  |
+    |       -> Memory system    | Failure                                                  |
+[2026-08-27T19:59:31Z] 8b iteration 1 done; found=none
+[2026-08-27T19:59:31Z] ################ 8b ITERATION 2 / 5 ################
+    Health monitor systems set successfully.
+[2026-08-27T19:59:44Z] injecting on gpu 7 at 2026-08-27T19:59:44.549Z: xid=48 dbe_vol=2 dbe_agg=2 dbe_dev=2 retired=32 remapped=8
+    --- reinjector ---
+    reinjector_procs=4
+    --- dmon (xid, dbe_vol, dbe_agg, dbe_dev, retired, remapped) ---
+    #Entity    XIDER        EDVTL        EDATL        EDVDV                   RPDBE                   URMPS             
+    ID                                                                                                                  
+    GPU 7      48           2            0            0                       32                      0                 
+    GPU 7      48           2            2            2                       32                      8                 
+    GPU 7      48           2            2            2                       32                      8                 
+    --- health ---
+    +---------------------------+----------------------------------------------------------+
+    | Health Monitor Report                                                                |
+    +===========================+==========================================================+
+    | Overall Health            | Failure                                                  |
+    | GPU                       |                                                          |
+    | -> 7                      | Failure                                                  |
+    |    -> Errors              |                                                          |
+    |       -> Memory system    | Failure                                                  |
+    |                           | Detected -881565344 volatile double-bit ECC error(s) in  |
+    |                           | GPU 2818587648. Drain the GPU and reset it or reboot     |
+    |                           | the node., Detected -881565552 volatile double-bit       |
+    |                           | ECC error(s) in GPU 2818587648. Drain the GPU and        |
+    |                           | reset it or reboot the node., Detected 2 volatile        |
+    |                           | double-bit ECC error(s) in GPU 7. Drain the GPU and      |
+    |                           | reset it or reboot the node., An excess of 15 retired    |
+    |                           | pages due to DBEs have been detected and more than       |
+    |                           | one page has been retired due to DBEs in the past        |
+    |                           | week in GPU 7. Run a field diagnostic on the GPU.,       |
+    |                           | Detected -881564000 volatile double-bit ECC error(s)     |
+    |                           | in GPU 2818585760. Drain the GPU and reset it or         |
+    |                           | reboot the node., Detected -881565328 volatile           |
+    |                           | double-bit ECC error(s) in GPU 2818585760. Drain the     |
+    |                           | GPU and reset it or reboot the node., Detected           |
+    |                           | -881565376 volatile double-bit ECC error(s) in GPU       |
+    |                           | 2818585760. Drain the GPU and reset it or reboot the     |
+    |                           | node.                                                    |
+    +---------------------------+----------------------------------------------------------+
+    --- real NVML counters (proof this is cache-only) ---
+    7, 00000000:CC:00.0, 0, [N/A]
+[2026-08-27T20:01:03Z] GKE dcgm-exporter's view of GPU 7 (its embedded DCGM, not ours):
+    EXPORTER_BYTES=58123
+    EXPORTER_ERROR_METRICS=0
+[2026-08-27T20:01:08Z] node conditions / GPU-related events:
+    NetworkUnavailable=False FrequentDockerRestart=False DeprecatedOtherContainerdFeatures=False KernelDeadlock=False DeprecatedPullingSchemaV1Image=False ResourceExhausted=False SysctlChanged=True KubeletConfigChanged=True DeprecatedConfigsFieldInContainerdConfiguration=False Swap=False FrequentKubeletRestart=False FrequentContainerdRestart=False DPv2MigrationUnsupportedCNI=False DeprecatedMirrorsFieldInContainerdConfiguration=False UnsupportedEBPFPrograms=False CperHardwareErrorFatal=False StoragePressureRootFileSystem=False FrequentUnregisterNetDevice=False CorruptDockerOverlay2=False DeprecatedAuthsFieldInContainerdConfiguration=False XfsShutdown=False ReadOnlyRootFileSystem=False DeprecatedUsingV1Alpha2Cri=False MemoryPressure=False DiskPressure=False PIDPressure=False Ready=True 
+    33m         Warning   KubeletConfigChangeDetected              node/gke-ikwak-reliabilit-a4-highgpu-8g-a4-0256e2f1-34t3               kubelet-monitor, gke-ikwak-reliabilit-a4-highgpu-8g-a4-0256e2f1-34t3                     Node condition KubeletConfigChanged is now: True, reason: KubeletConfigChangeDetected, message: "{\"managed\": {\"cpuCFSQuota\": true}}"            33m          1       gke-ikwak-reliabilit-a4-highgpu-8g-a4-0256e2f1-34t3.18cfc029be622f9e
+    33m         Normal    RegisteredNode                           node/gke-ikwak-reliabilit-a4-highgpu-8g-a4-0256e2f1-34t3               node-controller                                                                          Node gke-ikwak-reliabilit-a4-highgpu-8g-a4-0256e2f1-34t3 event: Registered Node gke-ikwak-reliabilit-a4-highgpu-8g-a4-0256e2f1-34t3 in Controller   33m          1       gke-ikwak-reliabilit-a4-highgpu-8g-a4-0256e2f1-34t3.18cfc029fedf24df
+    33m         Normal    Synced                                   node/gke-ikwak-reliabilit-a4-highgpu-8g-a4-0256e2f1-34t3               cloud-node-controller                                                                    Node synced successfully                                                                                                                            33m          1       gke-ikwak-reliabilit-a4-highgpu-8g-a4-0256e2f1-34t3.18cfc02a0fe55f3d
+    33m         Normal    NodeReady                                node/gke-ikwak-reliabilit-a4-highgpu-8g-a4-0256e2f1-34t3               kubelet, gke-ikwak-reliabilit-a4-highgpu-8g-a4-0256e2f1-34t3                             Node gke-ikwak-reliabilit-a4-highgpu-8g-a4-0256e2f1-34t3 status is now: NodeReady                                                                   33m          1       gke-ikwak-reliabilit-a4-highgpu-8g-a4-0256e2f1-34t3.18cfc02a7a13c91c
+    27m         Warning   NodeRegistrationCheckerDidNotRunChecks   node/gke-ikwak-reliabilit-a4-highgpu-8g-a4-0256e2f1-34t3               node-registration-checker-monitor, gke-ikwak-reliabilit-a4-highgpu-8g-a4-0256e2f1-34t3   Thu Aug 27 19:33:36 UTC 2026 - **     Node ready and registered. **                                                                                 27m          1       gke-ikwak-reliabilit-a4-highgpu-8g-a4-0256e2f1-34t3.18cfc07c2df6ae99
+[2026-08-27T20:01:18Z] Cloud Logging scan since 2026-08-27T19:59:44.549Z:
+    LOGSCAN_COUNT 0 since=2026-08-27T19:59:44.549Z
+[2026-08-27T20:01:22Z] observing upcomingMaintenance for 900s (fault held present throughout)
+[2026-08-27T20:01:31Z]   probe {"k8s_annotation": null, "res_health": "HEALTHY", "res_ongoing": null, "res_pending": null, "upcomingMaintenance": null, "vm": "RUNNING"}
+[2026-08-27T20:02:40Z]   probe {"k8s_annotation": null, "res_health": "HEALTHY", "res_ongoing": null, "res_pending": null, "upcomingMaintenance": null, "vm": "RUNNING"}
+[2026-08-27T20:03:49Z]   probe {"k8s_annotation": null, "res_health": "HEALTHY", "res_ongoing": null, "res_pending": null, "upcomingMaintenance": null, "vm": "RUNNING"}
+[2026-08-27T20:04:59Z]   probe {"k8s_annotation": null, "res_health": "HEALTHY", "res_ongoing": null, "res_pending": null, "upcomingMaintenance": null, "vm": "RUNNING"}
+[2026-08-27T20:06:09Z]   probe {"k8s_annotation": null, "res_health": "HEALTHY", "res_ongoing": null, "res_pending": null, "upcomingMaintenance": null, "vm": "RUNNING"}
+[2026-08-27T20:07:17Z]   probe {"k8s_annotation": null, "res_health": "HEALTHY", "res_ongoing": null, "res_pending": null, "upcomingMaintenance": null, "vm": "RUNNING"}
+[2026-08-27T20:08:27Z]   probe {"k8s_annotation": null, "res_health": "HEALTHY", "res_ongoing": null, "res_pending": null, "upcomingMaintenance": null, "vm": "RUNNING"}
+[2026-08-27T20:09:36Z]   probe {"k8s_annotation": null, "res_health": "HEALTHY", "res_ongoing": null, "res_pending": null, "upcomingMaintenance": null, "vm": "RUNNING"}
+[2026-08-27T20:10:45Z]   probe {"k8s_annotation": null, "res_health": "HEALTHY", "res_ongoing": null, "res_pending": null, "upcomingMaintenance": null, "vm": "RUNNING"}
+[2026-08-27T20:11:55Z]   probe {"k8s_annotation": null, "res_health": "HEALTHY", "res_ongoing": null, "res_pending": null, "upcomingMaintenance": null, "vm": "RUNNING"}
+[2026-08-27T20:13:04Z]   probe {"k8s_annotation": null, "res_health": "HEALTHY", "res_ongoing": null, "res_pending": null, "upcomingMaintenance": null, "vm": "RUNNING"}
+[2026-08-27T20:14:13Z]   probe {"k8s_annotation": null, "res_health": "HEALTHY", "res_ongoing": null, "res_pending": null, "upcomingMaintenance": null, "vm": "RUNNING"}
+[2026-08-27T20:15:23Z]   probe {"k8s_annotation": null, "res_health": "HEALTHY", "res_ongoing": null, "res_pending": null, "upcomingMaintenance": null, "vm": "RUNNING"}
+[2026-08-27T20:16:23Z] end-of-window health check:
+    reinjector_procs=4
+    | Overall Health            | Failure                                                  |
+    |       -> Memory system    | Failure                                                  |
+[2026-08-27T20:16:37Z] 8b iteration 2 done; found=none
+[2026-08-27T20:16:37Z] ################ 8b ITERATION 3 / 5 ################
+    Health monitor systems set successfully.
+[2026-08-27T20:16:50Z] injecting on gpu 7 at 2026-08-27T20:16:50.586Z: xid=48 dbe_vol=3 dbe_agg=3 dbe_dev=3 retired=48 remapped=12
+    --- reinjector ---
+    reinjector_procs=5
+    --- dmon (xid, dbe_vol, dbe_agg, dbe_dev, retired, remapped) ---
+    #Entity    XIDER        EDVTL        EDATL        EDVDV                   RPDBE                   URMPS             
+    ID                                                                                                                  
+    GPU 7      48           3            0            0                       48                      0                 
+    GPU 7      48           3            3            3                       48                      12                
+    GPU 7      48           3            3            3                       48                      12                
+    --- health ---
+    +---------------------------+----------------------------------------------------------+
+    | Health Monitor Report                                                                |
+    +===========================+==========================================================+
+    | Overall Health            | Failure                                                  |
+    | GPU                       |                                                          |
+    | -> 7                      | Failure                                                  |
+    |    -> Errors              |                                                          |
+    |       -> Memory system    | Failure                                                  |
+    |                           | Detected -881565344 volatile double-bit ECC error(s) in  |
+    |                           | GPU 2818587696. Drain the GPU and reset it or reboot     |
+    |                           | the node., Detected -881565552 volatile double-bit       |
+    |                           | ECC error(s) in GPU 2818587696. Drain the GPU and        |
+    |                           | reset it or reboot the node., Detected 3 volatile        |
+    |                           | double-bit ECC error(s) in GPU 7. Drain the GPU and      |
+    |                           | reset it or reboot the node., An excess of 15 retired    |
+    |                           | pages due to DBEs have been detected and more than       |
+    |                           | one page has been retired due to DBEs in the past        |
+    |                           | week in GPU 7. Run a field diagnostic on the GPU.,       |
+    |                           | Detected -881564000 volatile double-bit ECC error(s)     |
+    |                           | in GPU 2818587648. Drain the GPU and reset it or         |
+    |                           | reboot the node., Detected -881565328 volatile           |
+    |                           | double-bit ECC error(s) in GPU 2818587648. Drain the     |
+    |                           | GPU and reset it or reboot the node., Detected           |
+    |                           | -881565376 volatile double-bit ECC error(s) in GPU       |
+    |                           | 2818587648. Drain the GPU and reset it or reboot the     |
+    |                           | node.                                                    |
+    +---------------------------+----------------------------------------------------------+
+    --- real NVML counters (proof this is cache-only) ---
+    7, 00000000:CC:00.0, 0, [N/A]
+[2026-08-27T20:18:09Z] GKE dcgm-exporter's view of GPU 7 (its embedded DCGM, not ours):
+    EXPORTER_BYTES=58123
+    EXPORTER_ERROR_METRICS=0
+[2026-08-27T20:18:15Z] node conditions / GPU-related events:
+    NetworkUnavailable=False CperHardwareErrorFatal=False StoragePressureRootFileSystem=False FrequentUnregisterNetDevice=False CorruptDockerOverlay2=False DeprecatedAuthsFieldInContainerdConfiguration=False XfsShutdown=False ReadOnlyRootFileSystem=False DeprecatedUsingV1Alpha2Cri=False FrequentDockerRestart=False DeprecatedOtherContainerdFeatures=False KernelDeadlock=False DeprecatedPullingSchemaV1Image=False ResourceExhausted=False SysctlChanged=True KubeletConfigChanged=True DeprecatedConfigsFieldInContainerdConfiguration=False Swap=False FrequentKubeletRestart=False FrequentContainerdRestart=False DPv2MigrationUnsupportedCNI=False DeprecatedMirrorsFieldInContainerdConfiguration=False UnsupportedEBPFPrograms=False MemoryPressure=False DiskPressure=False PIDPressure=False Ready=True 
+    50m         Warning   KubeletConfigChangeDetected              node/gke-ikwak-reliabilit-a4-highgpu-8g-a4-0256e2f1-34t3               kubelet-monitor, gke-ikwak-reliabilit-a4-highgpu-8g-a4-0256e2f1-34t3                     Node condition KubeletConfigChanged is now: True, reason: KubeletConfigChangeDetected, message: "{\"managed\": {\"cpuCFSQuota\": true}}"            50m          1       gke-ikwak-reliabilit-a4-highgpu-8g-a4-0256e2f1-34t3.18cfc029be622f9e
+    50m         Normal    RegisteredNode                           node/gke-ikwak-reliabilit-a4-highgpu-8g-a4-0256e2f1-34t3               node-controller                                                                          Node gke-ikwak-reliabilit-a4-highgpu-8g-a4-0256e2f1-34t3 event: Registered Node gke-ikwak-reliabilit-a4-highgpu-8g-a4-0256e2f1-34t3 in Controller   50m          1       gke-ikwak-reliabilit-a4-highgpu-8g-a4-0256e2f1-34t3.18cfc029fedf24df
+    50m         Normal    Synced                                   node/gke-ikwak-reliabilit-a4-highgpu-8g-a4-0256e2f1-34t3               cloud-node-controller                                                                    Node synced successfully                                                                                                                            50m          1       gke-ikwak-reliabilit-a4-highgpu-8g-a4-0256e2f1-34t3.18cfc02a0fe55f3d
+    50m         Normal    NodeReady                                node/gke-ikwak-reliabilit-a4-highgpu-8g-a4-0256e2f1-34t3               kubelet, gke-ikwak-reliabilit-a4-highgpu-8g-a4-0256e2f1-34t3                             Node gke-ikwak-reliabilit-a4-highgpu-8g-a4-0256e2f1-34t3 status is now: NodeReady                                                                   50m          1       gke-ikwak-reliabilit-a4-highgpu-8g-a4-0256e2f1-34t3.18cfc02a7a13c91c
+    44m         Warning   NodeRegistrationCheckerDidNotRunChecks   node/gke-ikwak-reliabilit-a4-highgpu-8g-a4-0256e2f1-34t3               node-registration-checker-monitor, gke-ikwak-reliabilit-a4-highgpu-8g-a4-0256e2f1-34t3   Thu Aug 27 19:33:36 UTC 2026 - **     Node ready and registered. **                                                                                 44m          1       gke-ikwak-reliabilit-a4-highgpu-8g-a4-0256e2f1-34t3.18cfc07c2df6ae99
+[2026-08-27T20:18:26Z] Cloud Logging scan since 2026-08-27T20:16:50.586Z:
+    LOGSCAN_COUNT 0 since=2026-08-27T20:16:50.586Z
+[2026-08-27T20:18:31Z] observing upcomingMaintenance for 900s (fault held present throughout)
+[2026-08-27T20:18:41Z]   probe {"k8s_annotation": null, "res_health": "HEALTHY", "res_ongoing": null, "res_pending": null, "upcomingMaintenance": null, "vm": "RUNNING"}
+[2026-08-27T20:19:52Z]   probe {"k8s_annotation": null, "res_health": "HEALTHY", "res_ongoing": null, "res_pending": null, "upcomingMaintenance": null, "vm": "RUNNING"}
+[2026-08-27T20:21:03Z]   probe {"k8s_annotation": null, "res_health": "HEALTHY", "res_ongoing": null, "res_pending": null, "upcomingMaintenance": null, "vm": "RUNNING"}
+[2026-08-27T20:22:15Z]   probe {"k8s_annotation": null, "res_health": "HEALTHY", "res_ongoing": null, "res_pending": null, "upcomingMaintenance": null, "vm": "RUNNING"}
+[2026-08-27T20:23:30Z]   probe {"k8s_annotation": null, "res_health": "HEALTHY", "res_ongoing": null, "res_pending": null, "upcomingMaintenance": null, "vm": "RUNNING"}
+[2026-08-27T20:24:42Z]   probe {"k8s_annotation": null, "res_health": "HEALTHY", "res_ongoing": null, "res_pending": null, "upcomingMaintenance": null, "vm": "RUNNING"}
+[2026-08-27T20:25:55Z]   probe {"k8s_annotation": null, "res_health": "HEALTHY", "res_ongoing": null, "res_pending": null, "upcomingMaintenance": null, "vm": "RUNNING"}
+[2026-08-27T20:27:06Z]   probe {"k8s_annotation": null, "res_health": "HEALTHY", "res_ongoing": null, "res_pending": null, "upcomingMaintenance": null, "vm": "RUNNING"}
+[2026-08-27T20:28:18Z]   probe {"k8s_annotation": null, "res_health": "HEALTHY", "res_ongoing": null, "res_pending": null, "upcomingMaintenance": null, "vm": "RUNNING"}
+[2026-08-27T20:29:31Z]   probe {"k8s_annotation": null, "res_health": "HEALTHY", "res_ongoing": null, "res_pending": null, "upcomingMaintenance": null, "vm": "RUNNING"}
+[2026-08-27T20:30:52Z]   probe {"k8s_annotation": null, "res_health": "HEALTHY", "res_ongoing": null, "res_pending": null, "upcomingMaintenance": null, "vm": "RUNNING"}
+[2026-08-27T20:32:23Z]   probe {"k8s_annotation": null, "res_health": "HEALTHY", "res_ongoing": null, "res_pending": null, "upcomingMaintenance": null, "vm": "RUNNING"}
+[2026-08-27T20:33:35Z]   probe {"k8s_annotation": null, "res_health": "HEALTHY", "res_ongoing": null, "res_pending": null, "upcomingMaintenance": null, "vm": "RUNNING"}
+[2026-08-27T20:34:35Z] end-of-window health check:
+    reinjector_procs=5
+    | Overall Health            | Failure                                                  |
+    |       -> Memory system    | Failure                                                  |
+[2026-08-27T20:34:53Z] 8b iteration 3 done; found=none
+[2026-08-27T20:34:53Z] ################ 8b ITERATION 4 / 5 ################
+    Health monitor systems set successfully.
+[2026-08-27T20:35:08Z] injecting on gpu 7 at 2026-08-27T20:35:08.906Z: xid=48 dbe_vol=4 dbe_agg=4 dbe_dev=4 retired=64 remapped=16
+    --- reinjector ---
+    reinjector_procs=6
+    --- dmon (xid, dbe_vol, dbe_agg, dbe_dev, retired, remapped) ---
+    #Entity    XIDER        EDVTL        EDATL        EDVDV                   RPDBE                   URMPS             
+    ID                                                                                                                  
+    GPU 7      48           4            0            0                       64                      0                 
+    GPU 7      48           4            4            4                       64                      16                
+    GPU 7      48           4            4            4                       64                      16                
+    --- health ---
+    +---------------------------+----------------------------------------------------------+
+    | Health Monitor Report                                                                |
+    +===========================+==========================================================+
+    | Overall Health            | Failure                                                  |
+    | GPU                       |                                                          |
+    | -> 7                      | Failure                                                  |
+    |    -> Errors              |                                                          |
+    |       -> Memory system    | Failure                                                  |
+    |                           | Detected -889958048 volatile double-bit ECC error(s) in  |
+    |                           | GPU 2818663952. Drain the GPU and reset it or reboot     |
+    |                           | the node., Detected -889958256 volatile double-bit       |
+    |                           | ECC error(s) in GPU 2818663952. Drain the GPU and        |
+    |                           | reset it or reboot the node., Detected 4 volatile        |
+    |                           | double-bit ECC error(s) in GPU 7. Drain the GPU and      |
+    |                           | reset it or reboot the node., 63 or more retired         |
+    |                           | pages have been detected in GPU 7.  Run a field          |
+    |                           | diagnostic on the GPU., Detected -889956704 volatile     |
+    |                           | double-bit ECC error(s) in GPU 2818681056. Drain the     |
+    |                           | GPU and reset it or reboot the node., Detected           |
+    |                           | -889958032 volatile double-bit ECC error(s) in GPU       |
+    |                           | 2818681056. Drain the GPU and reset it or reboot the     |
+    |                           | node., Detected -889958080 volatile double-bit ECC       |
+    |                           | error(s) in GPU 2818681056. Drain the GPU and reset      |
+    |                           | it or reboot the node.                                   |
+    +---------------------------+----------------------------------------------------------+
+    --- real NVML counters (proof this is cache-only) ---
+    7, 00000000:CC:00.0, 0, [N/A]
+[2026-08-27T20:36:32Z] GKE dcgm-exporter's view of GPU 7 (its embedded DCGM, not ours):
+    EXPORTER_BYTES=58123
+    EXPORTER_ERROR_METRICS=0
+[2026-08-27T20:36:39Z] node conditions / GPU-related events:
+    NetworkUnavailable=False SysctlChanged=True KubeletConfigChanged=True DeprecatedConfigsFieldInContainerdConfiguration=False Swap=False FrequentKubeletRestart=False FrequentContainerdRestart=False DPv2MigrationUnsupportedCNI=False DeprecatedMirrorsFieldInContainerdConfiguration=False UnsupportedEBPFPrograms=False CperHardwareErrorFatal=False StoragePressureRootFileSystem=False FrequentUnregisterNetDevice=False CorruptDockerOverlay2=False DeprecatedAuthsFieldInContainerdConfiguration=False XfsShutdown=False ReadOnlyRootFileSystem=False DeprecatedUsingV1Alpha2Cri=False FrequentDockerRestart=False DeprecatedOtherContainerdFeatures=False KernelDeadlock=False DeprecatedPullingSchemaV1Image=False ResourceExhausted=False MemoryPressure=False DiskPressure=False PIDPressure=False Ready=True 
+[2026-08-27T20:36:56Z] Cloud Logging scan since 2026-08-27T20:35:08.906Z:
+    LOGSCAN_COUNT 0 since=2026-08-27T20:35:08.906Z
+[2026-08-27T20:37:06Z] observing upcomingMaintenance for 900s (fault held present throughout)
+[2026-08-27T20:37:20Z]   probe {"k8s_annotation": null, "res_health": "HEALTHY", "res_ongoing": null, "res_pending": null, "upcomingMaintenance": null, "vm": "RUNNING"}
+[2026-08-27T20:38:31Z]   probe {"k8s_annotation": null, "res_health": "HEALTHY", "res_ongoing": null, "res_pending": null, "upcomingMaintenance": null, "vm": "RUNNING"}
+[2026-08-27T20:39:44Z]   probe {"k8s_annotation": null, "res_health": "HEALTHY", "res_ongoing": null, "res_pending": null, "upcomingMaintenance": null, "vm": "RUNNING"}
+[2026-08-27T20:40:56Z]   probe {"k8s_annotation": null, "res_health": "HEALTHY", "res_ongoing": null, "res_pending": null, "upcomingMaintenance": null, "vm": "RUNNING"}
+[2026-08-27T20:42:09Z]   probe {"k8s_annotation": null, "res_health": "HEALTHY", "res_ongoing": null, "res_pending": null, "upcomingMaintenance": null, "vm": "RUNNING"}
+[2026-08-27T20:43:19Z]   probe {"k8s_annotation": null, "res_health": "HEALTHY", "res_ongoing": null, "res_pending": null, "upcomingMaintenance": null, "vm": "RUNNING"}
+[2026-08-27T20:44:29Z]   probe {"k8s_annotation": null, "res_health": "HEALTHY", "res_ongoing": null, "res_pending": null, "upcomingMaintenance": null, "vm": "RUNNING"}
+[2026-08-27T20:45:41Z]   probe {"k8s_annotation": null, "res_health": "HEALTHY", "res_ongoing": null, "res_pending": null, "upcomingMaintenance": null, "vm": "RUNNING"}
+[2026-08-27T20:46:53Z]   probe {"k8s_annotation": null, "res_health": "HEALTHY", "res_ongoing": null, "res_pending": null, "upcomingMaintenance": null, "vm": "RUNNING"}
+[2026-08-27T20:48:04Z]   probe {"k8s_annotation": null, "res_health": "HEALTHY", "res_ongoing": null, "res_pending": null, "upcomingMaintenance": null, "vm": "RUNNING"}
+[2026-08-27T20:49:16Z]   probe {"k8s_annotation": null, "res_health": "HEALTHY", "res_ongoing": null, "res_pending": null, "upcomingMaintenance": null, "vm": "RUNNING"}
+[2026-08-27T20:50:32Z]   probe {"k8s_annotation": null, "res_health": "HEALTHY", "res_ongoing": null, "res_pending": null, "upcomingMaintenance": null, "vm": "RUNNING"}
+[2026-08-27T20:51:48Z]   probe {"k8s_annotation": null, "res_health": "HEALTHY", "res_ongoing": null, "res_pending": null, "upcomingMaintenance": null, "vm": "RUNNING"}
+[2026-08-27T20:52:48Z] end-of-window health check:
+    reinjector_procs=6
+    | Overall Health            | Failure                                                  |
+    |       -> Memory system    | Failure                                                  |
+[2026-08-27T20:53:12Z] 8b iteration 4 done; found=none
+[2026-08-27T20:53:12Z] ################ 8b ITERATION 5 / 5 ################
+    Health monitor systems set successfully.
+[2026-08-27T20:53:33Z] injecting on gpu 7 at 2026-08-27T20:53:33.029Z: xid=48 dbe_vol=5 dbe_agg=5 dbe_dev=5 retired=80 remapped=20
+    --- reinjector ---
+    reinjector_procs=7
+    --- dmon (xid, dbe_vol, dbe_agg, dbe_dev, retired, remapped) ---
+    #Entity    XIDER        EDVTL        EDATL        EDVDV                   RPDBE                   URMPS             
+    ID                                                                                                                  
+    GPU 7      48           5            0            0                       80                      0                 
+    GPU 7      48           5            5            5                       80                      20                
+    GPU 7      48           5            5            5                       80                      20                
+    --- health ---
+    +---------------------------+----------------------------------------------------------+
+    | Health Monitor Report                                                                |
+    +===========================+==========================================================+
+    | Overall Health            | Failure                                                  |
+    | GPU                       |                                                          |
+    | -> 7                      | Failure                                                  |
+    |    -> Errors              |                                                          |
+    |       -> Memory system    | Failure                                                  |
+    |                           | Detected -881565344 volatile double-bit ECC error(s) in  |
+    |                           | GPU 2818676880. Drain the GPU and reset it or reboot     |
+    |                           | the node., Detected -881565552 volatile double-bit       |
+    |                           | ECC error(s) in GPU 2818676880. Drain the GPU and        |
+    |                           | reset it or reboot the node., Detected 5 volatile        |
+    |                           | double-bit ECC error(s) in GPU 7. Drain the GPU and      |
+    |                           | reset it or reboot the node., 63 or more retired         |
+    |                           | pages have been detected in GPU 7.  Run a field          |
+    |                           | diagnostic on the GPU., Detected -881564000 volatile     |
+    |                           | double-bit ECC error(s) in GPU 2818587696. Drain the     |
+    |                           | GPU and reset it or reboot the node., Detected           |
+    |                           | -881565328 volatile double-bit ECC error(s) in GPU       |
+    |                           | 2818587696. Drain the GPU and reset it or reboot the     |
+    |                           | node., Detected -881565376 volatile double-bit ECC       |
+    |                           | error(s) in GPU 2818587696. Drain the GPU and reset      |
+    |                           | it or reboot the node.                                   |
+    +---------------------------+----------------------------------------------------------+
+    --- real NVML counters (proof this is cache-only) ---
+    7, 00000000:CC:00.0, 0, [N/A]
+[2026-08-27T20:54:56Z] GKE dcgm-exporter's view of GPU 7 (its embedded DCGM, not ours):
+    EXPORTER_BYTES=58125
+    EXPORTER_ERROR_METRICS=0
+[2026-08-27T20:55:03Z] node conditions / GPU-related events:
+    NetworkUnavailable=False UnsupportedEBPFPrograms=False CperHardwareErrorFatal=False StoragePressureRootFileSystem=False FrequentUnregisterNetDevice=False CorruptDockerOverlay2=False DeprecatedAuthsFieldInContainerdConfiguration=False XfsShutdown=False ReadOnlyRootFileSystem=False DeprecatedUsingV1Alpha2Cri=False FrequentDockerRestart=False DeprecatedOtherContainerdFeatures=False KernelDeadlock=False DeprecatedPullingSchemaV1Image=False ResourceExhausted=False SysctlChanged=True KubeletConfigChanged=True DeprecatedConfigsFieldInContainerdConfiguration=False Swap=False FrequentKubeletRestart=False FrequentContainerdRestart=False DPv2MigrationUnsupportedCNI=False DeprecatedMirrorsFieldInContainerdConfiguration=False MemoryPressure=False DiskPressure=False PIDPressure=False Ready=True 
+[2026-08-27T20:55:14Z] Cloud Logging scan since 2026-08-27T20:53:33.029Z:
+    LOGSCAN_COUNT 0 since=2026-08-27T20:53:33.029Z
+[2026-08-27T20:55:19Z] observing upcomingMaintenance for 900s (fault held present throughout)
+[2026-08-27T20:55:30Z]   probe {"k8s_annotation": null, "res_health": "HEALTHY", "res_ongoing": null, "res_pending": null, "upcomingMaintenance": null, "vm": "RUNNING"}
+[2026-08-27T20:56:40Z]   probe {"k8s_annotation": null, "res_health": "HEALTHY", "res_ongoing": null, "res_pending": null, "upcomingMaintenance": null, "vm": "RUNNING"}
+[2026-08-27T20:57:50Z]   probe {"k8s_annotation": null, "res_health": "HEALTHY", "res_ongoing": null, "res_pending": null, "upcomingMaintenance": null, "vm": "RUNNING"}
+[2026-08-27T20:59:00Z]   probe {"k8s_annotation": null, "res_health": "HEALTHY", "res_ongoing": null, "res_pending": null, "upcomingMaintenance": null, "vm": "RUNNING"}
+[2026-08-27T21:00:11Z]   probe {"k8s_annotation": null, "res_health": "HEALTHY", "res_ongoing": null, "res_pending": null, "upcomingMaintenance": null, "vm": "RUNNING"}
+[2026-08-27T21:01:24Z]   probe {"k8s_annotation": null, "res_health": "HEALTHY", "res_ongoing": null, "res_pending": null, "upcomingMaintenance": null, "vm": "RUNNING"}
+[2026-08-27T21:02:35Z]   probe {"k8s_annotation": null, "res_health": "HEALTHY", "res_ongoing": null, "res_pending": null, "upcomingMaintenance": null, "vm": "RUNNING"}
+[2026-08-27T21:03:45Z]   probe {"k8s_annotation": null, "res_health": "HEALTHY", "res_ongoing": null, "res_pending": null, "upcomingMaintenance": null, "vm": "RUNNING"}
+[2026-08-27T21:04:55Z]   probe {"k8s_annotation": null, "res_health": "HEALTHY", "res_ongoing": null, "res_pending": null, "upcomingMaintenance": null, "vm": "RUNNING"}
+[2026-08-27T21:06:08Z]   probe {"k8s_annotation": null, "res_health": "HEALTHY", "res_ongoing": null, "res_pending": null, "upcomingMaintenance": null, "vm": "RUNNING"}
+[2026-08-27T21:07:21Z]   probe {"k8s_annotation": null, "res_health": "HEALTHY", "res_ongoing": null, "res_pending": null, "upcomingMaintenance": null, "vm": "RUNNING"}
+[2026-08-27T21:08:36Z]   probe {"k8s_annotation": null, "res_health": "HEALTHY", "res_ongoing": null, "res_pending": null, "upcomingMaintenance": null, "vm": "RUNNING"}
+[2026-08-27T21:09:47Z]   probe {"k8s_annotation": null, "res_health": "HEALTHY", "res_ongoing": null, "res_pending": null, "upcomingMaintenance": null, "vm": "RUNNING"}
+[2026-08-27T21:10:47Z] end-of-window health check:
+    reinjector_procs=7
+    | Overall Health            | Failure                                                  |
+    |       -> Memory system    | Failure                                                  |
+[2026-08-27T21:11:03Z] 8b iteration 5 done; found=none
+[2026-08-27T21:11:14Z] ################ 8b COMPLETE ################
+8b iter=1 inject=2026-08-27T19:42:33.611Z val=1 label=skipped boot=skipped ready=skipped found=none
+  final={"k8s_annotation": null, "res_health": "HEALTHY", "res_ongoing": null, "res_pending": null, "upcomingMaintenance": null, "vm": "RUNNING"}
+8b iter=2 inject=2026-08-27T19:59:44.549Z val=2 label=skipped boot=skipped ready=skipped found=none
+  final={"k8s_annotation": null, "res_health": "HEALTHY", "res_ongoing": null, "res_pending": null, "upcomingMaintenance": null, "vm": "RUNNING"}
+8b iter=3 inject=2026-08-27T20:16:50.586Z val=3 label=skipped boot=skipped ready=skipped found=none
+  final={"k8s_annotation": null, "res_health": "HEALTHY", "res_ongoing": null, "res_pending": null, "upcomingMaintenance": null, "vm": "RUNNING"}
+8b iter=4 inject=2026-08-27T20:35:08.906Z val=4 label=skipped boot=skipped ready=skipped found=none
+  final={"k8s_annotation": null, "res_health": "HEALTHY", "res_ongoing": null, "res_pending": null, "upcomingMaintenance": null, "vm": "RUNNING"}
+8b iter=5 inject=2026-08-27T20:53:33.029Z val=5 label=skipped boot=skipped ready=skipped found=none
+  final={"k8s_annotation": null, "res_health": "HEALTHY", "res_ongoing": null, "res_pending": null, "upcomingMaintenance": null, "vm": "RUNNING"}

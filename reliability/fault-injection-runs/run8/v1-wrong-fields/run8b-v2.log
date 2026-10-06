@@ -1,0 +1,43 @@
+daemonset.apps/dcgm-inject-run8 unchanged
+[2026-08-27T19:38:54Z] waiting for the DCGM pod
+[2026-08-27T19:39:04Z] DCGM pod = dcgm-inject-run8-mnmnp
+[2026-08-27T19:39:09Z] GKE dcgm-exporter on this node = UNRESOLVED
+[2026-08-27T19:39:09Z] ################ 8b ITERATION 1 / 5 ################
+    Health monitor systems set successfully.
+[2026-08-27T19:39:24Z] injecting on gpu 7 at 2026-08-27T19:39:24.757Z: xid=48 dbe_vol=1 dbe_agg=1 dbe_dev=1 retired=16 remapped=4
+    --- reinjector ---
+    reinjector_procs=2
+    --- dmon (xid, dbe_vol, dbe_agg, dbe_dev, retired, remapped) ---
+    #Entity    XIDER        EDVTL        EDATL        EDVDV                   RPDBE                   URMPS             
+    ID                                                                                                                  
+    GPU 7      48           0            0            0                       N/A                     0                 
+    GPU 7      48           0            0            0                       N/A                     0                 
+    GPU 7      48           0            0            0                       N/A                     0                 
+    --- health ---
+    +---------------------------+----------------------------------------------------------+
+    | Health Monitor Report                                                                |
+    +===========================+==========================================================+
+    | Overall Health            | Failure                                                  |
+    | GPU                       |                                                          |
+    | -> 7                      | Failure                                                  |
+    |    -> Errors              |                                                          |
+    |       -> Memory system    | Failure                                                  |
+    |                           | Detected -889958048 volatile double-bit ECC error(s) in  |
+    |                           | GPU 2818681728. Drain the GPU and reset it or reboot     |
+    |                           | the node., Detected -889958256 volatile double-bit       |
+    |                           | ECC error(s) in GPU 2818681728. Drain the GPU and        |
+    |                           | reset it or reboot the node., Detected -889956704        |
+    |                           | volatile double-bit ECC error(s) in GPU 2818681728.      |
+    |                           | Drain the GPU and reset it or reboot the node.,          |
+    |                           | Detected -889958032 volatile double-bit ECC error(s)     |
+    |                           | in GPU 2818681728. Drain the GPU and reset it or         |
+    |                           | reboot the node., Detected -889958080 volatile           |
+    |                           | double-bit ECC error(s) in GPU 2818681728. Drain the     |
+    |                           | GPU and reset it or reboot the node.                     |
+    +---------------------------+----------------------------------------------------------+
+    --- real NVML counters (proof this is cache-only) ---
+    7, 00000000:CC:00.0, 0, [N/A]
+[2026-08-27T19:40:44Z] GKE dcgm-exporter's view of GPU 7 (its embedded DCGM, not ours):
+    EXPORTER_IP_UNRESOLVED
+[2026-08-27T19:40:44Z] node conditions / GPU-related events:
+    NetworkUnavailable=False SysctlChanged=True KubeletConfigChanged=True DeprecatedConfigsFieldInContainerdConfiguration=False Swap=False FrequentKubeletRestart=False FrequentContainerdRestart=False DPv2MigrationUnsupportedCNI=False DeprecatedMirrorsFieldInContainerdConfiguration=False UnsupportedEBPFPrograms=False CperHardwareErrorFatal=False StoragePressureRootFileSystem=False FrequentUnregisterNetDevice=False CorruptDockerOverlay2=False DeprecatedAuthsFieldInContainerdConfiguration=False XfsShutdown=False ReadOnlyRootFileSystem=False DeprecatedUsingV1Alpha2Cri=False FrequentDockerRestart=False DeprecatedOtherContainerdFeatures=False KernelDeadlock=False DeprecatedPullingSchemaV1Image=False ResourceExhausted=False MemoryPressure=False DiskPressure=False PIDPressure=False Ready=True 

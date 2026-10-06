@@ -1,0 +1,59 @@
+BRIDGE_CONTROL_BEFORE=0002
+T0=2026-09-24T20:31:37.078Z
+SBR_ASSERTED
+SBR_RELEASED
+T_RELEASE=2026-09-24T20:31:39.040Z
+BRIDGE_CONTROL_AFTER=0002
+--- GPU vendor/device readback (ffff = gone) ---
+10de
+2901
+--- kernel log, last 40 lines ---
+[Thu Sep 24 20:31:43 2026] NVRM: knvlinkDiscoverPostRxDetLinks_GH100: Getting peer1's postRxDetLinkMask failed!
+[Thu Sep 24 20:31:43 2026] NVRM: _issueRpcAndWait: rpcSendMessage failed with status 0x0000000f for fn 76 sequence 163522!
+[Thu Sep 24 20:31:43 2026] NVRM: knvlinkUpdatePostRxDetectLinkMask_IMPL: Failed to update Rx Detect Link mask!
+[Thu Sep 24 20:31:43 2026] NVRM: knvlinkDiscoverPostRxDetLinks_GH100: Getting peer1's postRxDetLinkMask failed!
+[Thu Sep 24 20:31:43 2026] NVRM: _issueRpcAndWait: rpcSendMessage failed with status 0x0000000f for fn 76 sequence 163523!
+[Thu Sep 24 20:31:43 2026] NVRM: knvlinkUpdatePostRxDetectLinkMask_IMPL: Failed to update Rx Detect Link mask!
+[Thu Sep 24 20:31:43 2026] NVRM: knvlinkDiscoverPostRxDetLinks_GH100: Getting peer1's postRxDetLinkMask failed!
+[Thu Sep 24 20:31:43 2026] NVRM: _issueRpcAndWait: rpcSendMessage failed with status 0x0000000f for fn 76 sequence 163524!
+[Thu Sep 24 20:31:43 2026] NVRM: knvlinkUpdatePostRxDetectLinkMask_IMPL: Failed to update Rx Detect Link mask!
+[Thu Sep 24 20:31:43 2026] NVRM: knvlinkDiscoverPostRxDetLinks_GH100: Getting peer1's postRxDetLinkMask failed!
+[Thu Sep 24 20:31:43 2026] NVRM: _issueRpcAndWait: rpcSendMessage failed with status 0x0000000f for fn 76 sequence 163525!
+[Thu Sep 24 20:31:43 2026] NVRM: knvlinkUpdatePostRxDetectLinkMask_IMPL: Failed to update Rx Detect Link mask!
+[Thu Sep 24 20:31:43 2026] NVRM: knvlinkDiscoverPostRxDetLinks_GH100: Getting peer1's postRxDetLinkMask failed!
+[Thu Sep 24 20:31:43 2026] NVRM: _issueRpcAndWait: rpcSendMessage failed with status 0x0000000f for fn 76 sequence 163526!
+[Thu Sep 24 20:31:43 2026] NVRM: knvlinkUpdatePostRxDetectLinkMask_IMPL: Failed to update Rx Detect Link mask!
+[Thu Sep 24 20:31:43 2026] NVRM: knvlinkDiscoverPostRxDetLinks_GH100: Getting peer1's postRxDetLinkMask failed!
+[Thu Sep 24 20:31:43 2026] NVRM: _issueRpcAndWait: rpcSendMessage failed with status 0x0000000f for fn 76 sequence 163527!
+[Thu Sep 24 20:31:43 2026] NVRM: knvlinkUpdatePostRxDetectLinkMask_IMPL: Failed to update Rx Detect Link mask!
+[Thu Sep 24 20:31:43 2026] NVRM: knvlinkDiscoverPostRxDetLinks_GH100: Getting peer1's postRxDetLinkMask failed!
+[Thu Sep 24 20:31:43 2026] NVRM: _issueRpcAndWait: rpcSendMessage failed with status 0x0000000f for fn 76 sequence 163528!
+[Thu Sep 24 20:31:43 2026] NVRM: knvlinkUpdatePostRxDetectLinkMask_IMPL: Failed to update Rx Detect Link mask!
+[Thu Sep 24 20:31:43 2026] NVRM: knvlinkDiscoverPostRxDetLinks_GH100: Getting peer1's postRxDetLinkMask failed!
+[Thu Sep 24 20:31:43 2026] NVRM: _issueRpcAndWait: rpcSendMessage failed with status 0x0000000f for fn 76 sequence 163529!
+[Thu Sep 24 20:31:43 2026] NVRM: knvlinkUpdatePostRxDetectLinkMask_IMPL: Failed to update Rx Detect Link mask!
+[Thu Sep 24 20:31:43 2026] NVRM: knvlinkDiscoverPostRxDetLinks_GH100: Getting peer1's postRxDetLinkMask failed!
+[Thu Sep 24 20:31:43 2026] NVRM: _issueRpcAndWait: rpcSendMessage failed with status 0x0000000f for fn 76 sequence 163530!
+[Thu Sep 24 20:31:43 2026] NVRM: knvlinkUpdatePostRxDetectLinkMask_IMPL: Failed to update Rx Detect Link mask!
+[Thu Sep 24 20:31:43 2026] NVRM: knvlinkDiscoverPostRxDetLinks_GH100: Getting peer1's postRxDetLinkMask failed!
+[Thu Sep 24 20:31:43 2026] NVRM: _issueRpcAndWait: rpcSendMessage failed with status 0x0000000f for fn 76 sequence 163531!
+[Thu Sep 24 20:31:43 2026] NVRM: knvlinkUpdatePostRxDetectLinkMask_IMPL: Failed to update Rx Detect Link mask!
+[Thu Sep 24 20:31:43 2026] NVRM: knvlinkDiscoverPostRxDetLinks_GH100: Getting peer1's postRxDetLinkMask failed!
+[Thu Sep 24 20:31:43 2026] NVRM: _issueRpcAndWait: rpcSendMessage failed with status 0x0000000f for fn 76 sequence 163532!
+[Thu Sep 24 20:31:43 2026] NVRM: knvlinkUpdatePostRxDetectLinkMask_IMPL: Failed to update Rx Detect Link mask!
+[Thu Sep 24 20:31:43 2026] NVRM: knvlinkDiscoverPostRxDetLinks_GH100: Getting peer1's postRxDetLinkMask failed!
+[Thu Sep 24 20:31:43 2026] NVRM: _issueRpcAndWait: rpcSendMessage failed with status 0x0000000f for fn 76 sequence 163533!
+[Thu Sep 24 20:31:43 2026] NVRM: knvlinkUpdatePostRxDetectLinkMask_IMPL: Failed to update Rx Detect Link mask!
+[Thu Sep 24 20:31:43 2026] NVRM: knvlinkDiscoverPostRxDetLinks_GH100: Getting peer1's postRxDetLinkMask failed!
+[Thu Sep 24 20:31:43 2026] NVRM: _issueRpcAndWait: rpcSendMessage failed with status 0x0000000f for fn 76 sequence 163534!
+[Thu Sep 24 20:31:43 2026] NVRM: knvlinkUpdatePostRxDetectLinkMask_IMPL: Failed to update Rx Detect Link mask!
+[Thu Sep 24 20:31:43 2026] NVRM: knvlinkDiscoverPostRxDetLinks_GH100: Getting peer1's postRxDetLinkMask failed!
+--- nvidia-smi (20 s timeout) ---
+Unable to determine the device handle for GPU7: 0000:CC:00.0: Unknown Error
+0, 00000000:8F:00.0, 0
+1, 00000000:90:00.0, 0
+2, 00000000:96:00.0, 0
+3, 00000000:97:00.0, 0
+4, 00000000:C4:00.0, 0
+5, 00000000:C5:00.0, 0
+6, 00000000:CB:00.0, 0

@@ -1,0 +1,8 @@
+iter=1 inject=2026-08-27T17:28:46.231Z label=2026-08-27T17:30:25.588Z boot=2026-08-27T17:34:58.601Z ready=2026-08-27T17:35:34.226Z found=none
+  final={"k8s_annotation": null, "res_health": "HEALTHY", "res_ongoing": null, "res_pending": null, "upcomingMaintenance": null, "vm": "RUNNING"}
+iter=2 inject=2026-08-27T17:51:16.712Z label=2026-08-27T17:52:55.926Z boot=2026-08-27T17:56:43.307Z ready=2026-08-27T17:57:42.636Z found=none
+  final={"k8s_annotation": null, "res_health": "HEALTHY", "res_ongoing": null, "res_pending": null, "upcomingMaintenance": null, "vm": "RUNNING"}
+iter=3 inject=2026-08-27T18:13:33.067Z label=2026-08-27T18:15:12.362Z boot=2026-08-27T18:19:22.371Z ready=2026-08-27T18:19:57.848Z found=none
+  final={"k8s_annotation": null, "res_health": "HEALTHY", "res_ongoing": null, "res_pending": null, "upcomingMaintenance": null, "vm": "RUNNING"}
+iter=4 inject=2026-08-27T18:36:04.618Z label=2026-08-27T18:37:43.136Z boot=2026-08-27T18:41:56.291Z ready=2026-08-27T18:49:02.849Z found=none
+  final={"k8s_annotation": null, "res_health": "HEALTHY", "res_ongoing": null, "res_pending": null, "upcomingMaintenance": null, "vm": "RUNNING"}

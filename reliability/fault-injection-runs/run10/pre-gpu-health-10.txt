@@ -1,0 +1,30 @@
+PRE-RUN10 GPU HEALTH 2026-09-24T06:30:06.677Z
+index, pci.bus_id, driver_version, persistence_mode, ecc.errors.uncorrected.volatile.total, remapped_rows.uncorrectable, remapped_rows.pending, remapped_rows.failure
+0, 00000000:8F:00.0, 580.159.04, Enabled, 0, 0, No, No
+1, 00000000:90:00.0, 580.159.04, Enabled, 0, 0, No, No
+2, 00000000:96:00.0, 580.159.04, Enabled, 0, 0, No, No
+3, 00000000:97:00.0, 580.159.04, Enabled, 0, 0, No, No
+4, 00000000:C4:00.0, 580.159.04, Enabled, 0, 0, No, No
+5, 00000000:C5:00.0, 580.159.04, Enabled, 0, 0, No, No
+6, 00000000:CB:00.0, 580.159.04, Enabled, 0, 0, No, No
+7, 00000000:CC:00.0, 580.159.04, Enabled, 0, 0, No, No
+--- nvlink ---
+GPU 7: NVIDIA B200 (UUID: GPU-c6e97e59-a5f9-9157-1080-d0176a175dfd)
+	 Link 0: 53.125 GB/s
+	 Link 1: 53.125 GB/s
+	 Link 2: 53.125 GB/s
+	 Link 3: 53.125 GB/s
+	 Link 4: 53.125 GB/s
+	 Link 5: 53.125 GB/s
+	 Link 6: 53.125 GB/s
+	 Link 7: 53.125 GB/s
+	 Link 8: 53.125 GB/s
+	 Link 9: 53.125 GB/s
+	 Link 10: 53.125 GB/s
+	 Link 11: 53.125 GB/s
+	 Link 12: 53.125 GB/s
+	 Link 13: 53.125 GB/s
+	 Link 14: 53.125 GB/s
+	 Link 15: 53.125 GB/s
+	 Link 16: 53.125 GB/s
+	 Link 17: 53.125 GB/s

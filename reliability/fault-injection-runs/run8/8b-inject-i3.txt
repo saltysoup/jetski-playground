@@ -1,0 +1,38 @@
+    --- reinjector ---
+    reinjector_procs=5
+    --- dmon (xid, dbe_vol, dbe_agg, dbe_dev, retired, remapped) ---
+    #Entity    XIDER        EDVTL        EDATL        EDVDV                   RPDBE                   URMPS             
+    ID                                                                                                                  
+    GPU 7      48           3            0            0                       48                      0                 
+    GPU 7      48           3            3            3                       48                      12                
+    GPU 7      48           3            3            3                       48                      12                
+    --- health ---
+    +---------------------------+----------------------------------------------------------+
+    | Health Monitor Report                                                                |
+    +===========================+==========================================================+
+    | Overall Health            | Failure                                                  |
+    | GPU                       |                                                          |
+    | -> 7                      | Failure                                                  |
+    |    -> Errors              |                                                          |
+    |       -> Memory system    | Failure                                                  |
+    |                           | Detected -881565344 volatile double-bit ECC error(s) in  |
+    |                           | GPU 2818587696. Drain the GPU and reset it or reboot     |
+    |                           | the node., Detected -881565552 volatile double-bit       |
+    |                           | ECC error(s) in GPU 2818587696. Drain the GPU and        |
+    |                           | reset it or reboot the node., Detected 3 volatile        |
+    |                           | double-bit ECC error(s) in GPU 7. Drain the GPU and      |
+    |                           | reset it or reboot the node., An excess of 15 retired    |
+    |                           | pages due to DBEs have been detected and more than       |
+    |                           | one page has been retired due to DBEs in the past        |
+    |                           | week in GPU 7. Run a field diagnostic on the GPU.,       |
+    |                           | Detected -881564000 volatile double-bit ECC error(s)     |
+    |                           | in GPU 2818587648. Drain the GPU and reset it or         |
+    |                           | reboot the node., Detected -881565328 volatile           |
+    |                           | double-bit ECC error(s) in GPU 2818587648. Drain the     |
+    |                           | GPU and reset it or reboot the node., Detected           |
+    |                           | -881565376 volatile double-bit ECC error(s) in GPU       |
+    |                           | 2818587648. Drain the GPU and reset it or reboot the     |
+    |                           | node.                                                    |
+    +---------------------------+----------------------------------------------------------+
+    --- real NVML counters (proof this is cache-only) ---
+    7, 00000000:CC:00.0, 0, [N/A]

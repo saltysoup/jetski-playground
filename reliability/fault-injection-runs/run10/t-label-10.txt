@@ -1,0 +1,6 @@
+LABEL_SENT=2026-09-24T14:39:44.185Z
+LABEL_ACK=2026-09-24T14:39:48.188Z
+node=gke-ikwak-reliabilit-a4-highgpu-8g-a4-0256e2f1-34t3
+label=cloud.google.com/perform-maintenance=true
+kubectl=node/gke-ikwak-reliabilit-a4-highgpu-8g-a4-0256e2f1-34t3 labeled
+context=run 10 B7; event FAILURE_GPU_XID raised between 10:28:17Z and 10:55:01Z from Xid 79 at 06:31:04.445Z

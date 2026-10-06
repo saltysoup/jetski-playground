@@ -1,0 +1,364 @@
+apiVersion: leaderworkerset.x-k8s.io/v1
+kind: LeaderWorkerSet
+metadata:
+  annotations:
+    kubectl.kubernetes.io/last-applied-configuration: |
+      {"apiVersion":"leaderworkerset.x-k8s.io/v1","kind":"LeaderWorkerSet","metadata":{"annotations":{},"labels":{"app":"distributed-sglang-k3","llm-d.ai/guide":"optimized-baseline"},"name":"distributed-sglang-k3","namespace":"default"},"spec":{"leaderWorkerTemplate":{"leaderTemplate":{"metadata":{"annotations":{"gke-gcsfuse/volumes":"true","networking.gke.io/default-interface":"eth0","networking.gke.io/interfaces":"[\n  {\"interfaceName\":\"eth0\",\"network\":\"default\"},\n  {\"interfaceName\":\"eth1\",\"network\":\"gvnic-1\"},\n  {\"interfaceName\":\"eth2\",\"network\":\"rdma-0\"},\n  {\"interfaceName\":\"eth3\",\"network\":\"rdma-1\"},\n  {\"interfaceName\":\"eth4\",\"network\":\"rdma-2\"},\n  {\"interfaceName\":\"eth5\",\"network\":\"rdma-3\"},\n  {\"interfaceName\":\"eth6\",\"network\":\"rdma-4\"},\n  {\"interfaceName\":\"eth7\",\"network\":\"rdma-5\"},\n  {\"interfaceName\":\"eth8\",\"network\":\"rdma-6\"},\n  {\"interfaceName\":\"eth9\",\"network\":\"rdma-7\"}\n]\n","prometheus.io/path":"/metrics","prometheus.io/port":"30000","prometheus.io/scrape":"true"},"labels":{"app":"distributed-sglang-k3","llm-d.ai/guide":"optimized-baseline","role":"leader"}},"spec":{"containers":[{"args":["cat \u003c\u003c 'EOF' \u003e /tmp/shim_dev.c\nextern int ncclCommInitRank(void** comm, int nranks, void* commId, int myrank);\nint ncclDevCommCreate(void** comm, int nranks, void* commId, int myrank, int config) {\n    return ncclCommInitRank(comm, nranks, commId, myrank);\n}\nint ncclDevCommDestroy(void* comm, void* devComm) { return 0; }\nint ncclAlltoAll(const void* sendbuff, void* recvbuff, unsigned long count, int datatype, void* comm, void* stream) { return 0; }\nEOF\ngcc -shared -fPIC -o /usr/local/gib/lib64/libnccl_dev_shim.so /tmp/shim_dev.c\nfor f in $(find /usr/ /lib/ /root/ -name \"libnccl.so*\" 2\u003e/dev/null | grep -v \"/usr/local/gib\"); do\n  ln -sf /usr/local/gib/lib64/libnccl.so.2 \"$f\"\ndone\n/sbin/ldconfig || true\nexport NCCL_NET=gIB\nsource /usr/local/gib/scripts/set_nccl_env.sh\necho \"source /usr/local/gib/scripts/set_nccl_env.sh\" \u003e\u003e /root/.bashrc\nMY_IP=$(hostname -I | awk '{print $1}')\nexport SGLANG_HOST_IP=\"${MY_IP}\"\necho \"==========================================================\"\necho \"Launching SGLang Leader (Rank 0)...\"\necho \"==========================================================\"\n\nsglang serve \\\n    --trust-remote-code \\\n    --model-path /bucket/Kimi-K3 \\\n    --served-model-name moonshotai/Kimi-K3 \\\n    --load-format runai_streamer \\\n    --enable-metrics \\\n    --tp-size 16 \\\n    --nnodes 2 \\\n    --node-rank 0 \\\n    --dist-init-addr ${SGLANG_HOST_IP}:20000 \\\n    --mem-fraction-static 0.85 \\\n    --disable-flashinfer-autotune \\\n    --watchdog-timeout 3600 \\\n    --reasoning-parser kimi_k3 \\\n    --tool-call-parser kimi_k3 \\\n    --model-loader-extra-config '{\"memory_limit\": 34359738368}' \\\n    --mamba-full-memory-ratio 0.43 \\\n    --host 0.0.0.0 \\\n    --port 30000 \\\n    --speculative-algorithm DSPARK \\\n    --speculative-draft-model-path /bucket/Kimi-K3-DSpark \\\n    --speculative-dspark-block-size 7 \\\n    --enable-linear-replayssm-spec \\\n    --max-running-requests 512 \\\n    --cuda-graph-max-bs 512\n"],"command":["/bin/bash","-c"],"env":[{"name":"LD_LIBRARY_PATH","value":"/usr/local/nvidia/lib64"},{"name":"LD_PRELOAD","value":"/usr/local/gib/lib64/libnccl_dev_shim.so"},{"name":"GLOO_SOCKET_IFNAME","value":"eth0"},{"name":"NCCL_SOCKET_IFNAME","value":"eth0"},{"name":"TP_SOCKET_IFNAME","value":"eth0"},{"name":"NCCL_DEBUG","value":"WARN"},{"name":"SGLANG_REQUEST_STATE_WAIT_TIMEOUT","value":"18000"},{"name":"OMP_NUM_THREADS","value":"24"},{"name":"SGLANG_SET_CPU_AFFINITY","value":"0"},{"name":"SAFETENSORS_FAST_GPU","value":"1"},{"name":"PYTORCH_CUDA_ALLOC_CONF","value":"expandable_segments:True"},{"name":"RUNAI_STREAMER_MEMORY_LIMIT","value":"34359738368"},{"name":"RUNAI_STREAMER_CONCURRENCY","value":"16"},{"name":"SGLANG_USE_RUNAI_MODEL_STREAMER","value":"true"}],"image":"docker.io/lmsysorg/sglang:kimi-k3","imagePullPolicy":"Always","name":"sglang-container","resources":{"limits":{"cpu":"206","memory":"1500Gi","nvidia.com/gpu":"8"},"requests":{"cpu":"206","memory":"1500Gi","nvidia.com/gpu":"8"}},"volumeMounts":[{"mountPath":"/dev/shm","name":"dshm"},{"mountPath":"/root/.cache/huggingface","name":"hf-cache"},{"mountPath":"/usr/local/nvidia","name":"library-dir-host"},{"mountPath":"/usr/local/gib","name":"gib"},{"mountPath":"/bucket","name":"gcs-fuse-csi-eph"}]}],"nodeSelector":{"cloud.google.com/gke-accelerator":"nvidia-b200","cloud.google.com/gke-nodepool":"a4-highgpu-8g-a4-pool"},"serviceAccountName":"workload-identity-k8s-sa","tolerations":[{"operator":"Exists"}],"volumes":[{"hostPath":{"path":"/home/kubernetes/bin/nvidia"},"name":"library-dir-host"},{"hostPath":{"path":"/home/kubernetes/bin/gib"},"name":"gib"},{"emptyDir":{"medium":"Memory","sizeLimit":"250Gi"},"name":"dshm"},{"hostPath":{"path":"/mnt/stateful_partition/kube-ephemeral-ssd/huggingface_cache","type":"DirectoryOrCreate"},"name":"hf-cache"},{"csi":{"driver":"gcsfuse.csi.storage.gke.io","volumeAttributes":{"bucketName":"ikwak-models-gpu-launchpad-playground","gcsfuseMetadataPrefetchOnMount":"true","mountOptions":"implicit-dirs,file-mode=777,dir-mode=777,file-cache:enable-parallel-downloads:true,file-cache:cache-file-for-range-read:true,file-cache:max-size-mb:-1,write:enable-streaming-writes:true,read_ahead_kb=1024,file-system:kernel-list-cache-ttl-secs:-1"}},"name":"gcs-fuse-csi-eph"}]}},"restartPolicy":"RecreateGroupOnPodRestart","size":2,"workerTemplate":{"metadata":{"annotations":{"gke-gcsfuse/volumes":"true","networking.gke.io/default-interface":"eth0","networking.gke.io/interfaces":"[\n  {\"interfaceName\":\"eth0\",\"network\":\"default\"},\n  {\"interfaceName\":\"eth1\",\"network\":\"gvnic-1\"},\n  {\"interfaceName\":\"eth2\",\"network\":\"rdma-0\"},\n  {\"interfaceName\":\"eth3\",\"network\":\"rdma-1\"},\n  {\"interfaceName\":\"eth4\",\"network\":\"rdma-2\"},\n  {\"interfaceName\":\"eth5\",\"network\":\"rdma-3\"},\n  {\"interfaceName\":\"eth6\",\"network\":\"rdma-4\"},\n  {\"interfaceName\":\"eth7\",\"network\":\"rdma-5\"},\n  {\"interfaceName\":\"eth8\",\"network\":\"rdma-6\"},\n  {\"interfaceName\":\"eth9\",\"network\":\"rdma-7\"}\n]\n"},"labels":{"app":"distributed-sglang-k3","llm-d.ai/guide":"optimized-baseline","role":"worker"}},"spec":{"containers":[{"args":["cat \u003c\u003c 'EOF' \u003e /tmp/shim_dev.c\nextern int ncclCommInitRank(void** comm, int nranks, void* commId, int myrank);\nint ncclDevCommCreate(void** comm, int nranks, void* commId, int myrank, int config) {\n    return ncclCommInitRank(comm, nranks, commId, myrank);\n}\nint ncclDevCommDestroy(void* comm, void* devComm) { return 0; }\nint ncclAlltoAll(const void* sendbuff, void* recvbuff, unsigned long count, int datatype, void* comm, void* stream) { return 0; }\nEOF\ngcc -shared -fPIC -o /usr/local/gib/lib64/libnccl_dev_shim.so /tmp/shim_dev.c\nfor f in $(find /usr/ /lib/ /root/ -name \"libnccl.so*\" 2\u003e/dev/null | grep -v \"/usr/local/gib\"); do\n  ln -sf /usr/local/gib/lib64/libnccl.so.2 \"$f\"\ndone\n/sbin/ldconfig || true\nexport NCCL_NET=gIB\nsource /usr/local/gib/scripts/set_nccl_env.sh\necho \"source /usr/local/gib/scripts/set_nccl_env.sh\" \u003e\u003e /root/.bashrc\nMY_IP=$(hostname -I | awk '{print $1}')\nexport SGLANG_HOST_IP=\"${MY_IP}\"\necho \"==========================================================\"\necho \"Launching SGLang Worker (Rank 1)...\"\necho \"Leader Address: ${LWS_LEADER_ADDRESS}\"\necho \"==========================================================\"\n\nsglang serve \\\n    --trust-remote-code \\\n    --model-path /bucket/Kimi-K3 \\\n    --served-model-name moonshotai/Kimi-K3 \\\n    --load-format runai_streamer \\\n    --enable-metrics \\\n    --tp-size 16 \\\n    --nnodes 2 \\\n    --node-rank 1 \\\n    --dist-init-addr ${LWS_LEADER_ADDRESS}:20000 \\\n    --mem-fraction-static 0.85 \\\n    --disable-flashinfer-autotune \\\n    --watchdog-timeout 3600 \\\n    --reasoning-parser kimi_k3 \\\n    --tool-call-parser kimi_k3 \\\n    --model-loader-extra-config '{\"memory_limit\": 34359738368}' \\\n    --mamba-full-memory-ratio 0.43 \\\n    --host 0.0.0.0 \\\n    --port 30000 \\\n    --speculative-algorithm DSPARK \\\n    --speculative-draft-model-path /bucket/Kimi-K3-DSpark \\\n    --speculative-dspark-block-size 7 \\\n    --enable-linear-replayssm-spec \\\n    --max-running-requests 512 \\\n    --cuda-graph-max-bs 512\n"],"command":["/bin/bash","-c"],"env":[{"name":"LD_LIBRARY_PATH","value":"/usr/local/nvidia/lib64"},{"name":"LD_PRELOAD","value":"/usr/local/gib/lib64/libnccl_dev_shim.so"},{"name":"GLOO_SOCKET_IFNAME","value":"eth0"},{"name":"NCCL_SOCKET_IFNAME","value":"eth0"},{"name":"TP_SOCKET_IFNAME","value":"eth0"},{"name":"NCCL_DEBUG","value":"WARN"},{"name":"SGLANG_REQUEST_STATE_WAIT_TIMEOUT","value":"18000"},{"name":"OMP_NUM_THREADS","value":"24"},{"name":"SGLANG_SET_CPU_AFFINITY","value":"0"},{"name":"SAFETENSORS_FAST_GPU","value":"1"},{"name":"PYTORCH_CUDA_ALLOC_CONF","value":"expandable_segments:True"},{"name":"RUNAI_STREAMER_MEMORY_LIMIT","value":"34359738368"},{"name":"RUNAI_STREAMER_CONCURRENCY","value":"16"},{"name":"SGLANG_USE_RUNAI_MODEL_STREAMER","value":"true"}],"image":"docker.io/lmsysorg/sglang:kimi-k3","imagePullPolicy":"Always","name":"sglang-container","resources":{"limits":{"cpu":"206","memory":"1500Gi","nvidia.com/gpu":"8"},"requests":{"cpu":"206","memory":"1500Gi","nvidia.com/gpu":"8"}},"volumeMounts":[{"mountPath":"/dev/shm","name":"dshm"},{"mountPath":"/root/.cache/huggingface","name":"hf-cache"},{"mountPath":"/usr/local/nvidia","name":"library-dir-host"},{"mountPath":"/usr/local/gib","name":"gib"},{"mountPath":"/bucket","name":"gcs-fuse-csi-eph"}]}],"nodeSelector":{"cloud.google.com/gke-accelerator":"nvidia-b200","cloud.google.com/gke-nodepool":"a4-highgpu-8g-a4-pool"},"serviceAccountName":"workload-identity-k8s-sa","tolerations":[{"operator":"Exists"}],"volumes":[{"hostPath":{"path":"/home/kubernetes/bin/nvidia"},"name":"library-dir-host"},{"hostPath":{"path":"/home/kubernetes/bin/gib"},"name":"gib"},{"emptyDir":{"medium":"Memory","sizeLimit":"250Gi"},"name":"dshm"},{"hostPath":{"path":"/mnt/stateful_partition/kube-ephemeral-ssd/huggingface_cache","type":"DirectoryOrCreate"},"name":"hf-cache"},{"csi":{"driver":"gcsfuse.csi.storage.gke.io","volumeAttributes":{"bucketName":"ikwak-models-gpu-launchpad-playground","gcsfuseMetadataPrefetchOnMount":"true","mountOptions":"implicit-dirs,file-mode=777,dir-mode=777,file-cache:enable-parallel-downloads:true,file-cache:cache-file-for-range-read:true,file-cache:max-size-mb:-1,write:enable-streaming-writes:true,read_ahead_kb=1024,file-system:kernel-list-cache-ttl-secs:-1"}},"name":"gcs-fuse-csi-eph"}]}}},"replicas":1}}
+  creationTimestamp: "2026-08-01T01:52:53Z"
+  generation: 1
+  labels:
+    app: distributed-sglang-k3
+    llm-d.ai/guide: optimized-baseline
+  name: distributed-sglang-k3
+  namespace: default
+  resourceVersion: "1785549226620335005"
+  uid: ed4a25cd-ca3f-42f0-9710-33321ad06d18
+spec:
+  leaderWorkerTemplate:
+    leaderTemplate:
+      metadata:
+        annotations:
+          gke-gcsfuse/volumes: "true"
+          networking.gke.io/default-interface: eth0
+          networking.gke.io/interfaces: |
+            [
+              {"interfaceName":"eth0","network":"default"},
+              {"interfaceName":"eth1","network":"gvnic-1"},
+              {"interfaceName":"eth2","network":"rdma-0"},
+              {"interfaceName":"eth3","network":"rdma-1"},
+              {"interfaceName":"eth4","network":"rdma-2"},
+              {"interfaceName":"eth5","network":"rdma-3"},
+              {"interfaceName":"eth6","network":"rdma-4"},
+              {"interfaceName":"eth7","network":"rdma-5"},
+              {"interfaceName":"eth8","network":"rdma-6"},
+              {"interfaceName":"eth9","network":"rdma-7"}
+            ]
+          prometheus.io/path: /metrics
+          prometheus.io/port: "30000"
+          prometheus.io/scrape: "true"
+        labels:
+          app: distributed-sglang-k3
+          llm-d.ai/guide: optimized-baseline
+          role: leader
+      spec:
+        containers:
+        - args:
+          - |
+            cat << 'EOF' > /tmp/shim_dev.c
+            extern int ncclCommInitRank(void** comm, int nranks, void* commId, int myrank);
+            int ncclDevCommCreate(void** comm, int nranks, void* commId, int myrank, int config) {
+                return ncclCommInitRank(comm, nranks, commId, myrank);
+            }
+            int ncclDevCommDestroy(void* comm, void* devComm) { return 0; }
+            int ncclAlltoAll(const void* sendbuff, void* recvbuff, unsigned long count, int datatype, void* comm, void* stream) { return 0; }
+            EOF
+            gcc -shared -fPIC -o /usr/local/gib/lib64/libnccl_dev_shim.so /tmp/shim_dev.c
+            for f in $(find /usr/ /lib/ /root/ -name "libnccl.so*" 2>/dev/null | grep -v "/usr/local/gib"); do
+              ln -sf /usr/local/gib/lib64/libnccl.so.2 "$f"
+            done
+            /sbin/ldconfig || true
+            export NCCL_NET=gIB
+            source /usr/local/gib/scripts/set_nccl_env.sh
+            echo "source /usr/local/gib/scripts/set_nccl_env.sh" >> /root/.bashrc
+            MY_IP=$(hostname -I | awk '{print $1}')
+            export SGLANG_HOST_IP="${MY_IP}"
+            echo "=========================================================="
+            echo "Launching SGLang Leader (Rank 0)..."
+            echo "=========================================================="
+
+            sglang serve \
+                --trust-remote-code \
+                --model-path /bucket/Kimi-K3 \
+                --served-model-name moonshotai/Kimi-K3 \
+                --load-format runai_streamer \
+                --enable-metrics \
+                --tp-size 16 \
+                --nnodes 2 \
+                --node-rank 0 \
+                --dist-init-addr ${SGLANG_HOST_IP}:20000 \
+                --mem-fraction-static 0.85 \
+                --disable-flashinfer-autotune \
+                --watchdog-timeout 3600 \
+                --reasoning-parser kimi_k3 \
+                --tool-call-parser kimi_k3 \
+                --model-loader-extra-config '{"memory_limit": 34359738368}' \
+                --mamba-full-memory-ratio 0.43 \
+                --host 0.0.0.0 \
+                --port 30000 \
+                --speculative-algorithm DSPARK \
+                --speculative-draft-model-path /bucket/Kimi-K3-DSpark \
+                --speculative-dspark-block-size 7 \
+                --enable-linear-replayssm-spec \
+                --max-running-requests 512 \
+                --cuda-graph-max-bs 512
+          command:
+          - /bin/bash
+          - -c
+          env:
+          - name: LD_LIBRARY_PATH
+            value: /usr/local/nvidia/lib64
+          - name: LD_PRELOAD
+            value: /usr/local/gib/lib64/libnccl_dev_shim.so
+          - name: GLOO_SOCKET_IFNAME
+            value: eth0
+          - name: NCCL_SOCKET_IFNAME
+            value: eth0
+          - name: TP_SOCKET_IFNAME
+            value: eth0
+          - name: NCCL_DEBUG
+            value: WARN
+          - name: SGLANG_REQUEST_STATE_WAIT_TIMEOUT
+            value: "18000"
+          - name: OMP_NUM_THREADS
+            value: "24"
+          - name: SGLANG_SET_CPU_AFFINITY
+            value: "0"
+          - name: SAFETENSORS_FAST_GPU
+            value: "1"
+          - name: PYTORCH_CUDA_ALLOC_CONF
+            value: expandable_segments:True
+          - name: RUNAI_STREAMER_MEMORY_LIMIT
+            value: "34359738368"
+          - name: RUNAI_STREAMER_CONCURRENCY
+            value: "16"
+          - name: SGLANG_USE_RUNAI_MODEL_STREAMER
+            value: "true"
+          image: docker.io/lmsysorg/sglang:kimi-k3
+          imagePullPolicy: Always
+          name: sglang-container
+          resources:
+            limits:
+              cpu: "206"
+              memory: 1500Gi
+              nvidia.com/gpu: "8"
+            requests:
+              cpu: "206"
+              memory: 1500Gi
+              nvidia.com/gpu: "8"
+          volumeMounts:
+          - mountPath: /dev/shm
+            name: dshm
+          - mountPath: /root/.cache/huggingface
+            name: hf-cache
+          - mountPath: /usr/local/nvidia
+            name: library-dir-host
+          - mountPath: /usr/local/gib
+            name: gib
+          - mountPath: /bucket
+            name: gcs-fuse-csi-eph
+        nodeSelector:
+          cloud.google.com/gke-accelerator: nvidia-b200
+          cloud.google.com/gke-nodepool: a4-highgpu-8g-a4-pool
+        serviceAccountName: workload-identity-k8s-sa
+        tolerations:
+        - operator: Exists
+        volumes:
+        - hostPath:
+            path: /home/kubernetes/bin/nvidia
+          name: library-dir-host
+        - hostPath:
+            path: /home/kubernetes/bin/gib
+          name: gib
+        - emptyDir:
+            medium: Memory
+            sizeLimit: 250Gi
+          name: dshm
+        - hostPath:
+            path: /mnt/stateful_partition/kube-ephemeral-ssd/huggingface_cache
+            type: DirectoryOrCreate
+          name: hf-cache
+        - csi:
+            driver: gcsfuse.csi.storage.gke.io
+            volumeAttributes:
+              bucketName: ikwak-models-gpu-launchpad-playground
+              gcsfuseMetadataPrefetchOnMount: "true"
+              mountOptions: implicit-dirs,file-mode=777,dir-mode=777,file-cache:enable-parallel-downloads:true,file-cache:cache-file-for-range-read:true,file-cache:max-size-mb:-1,write:enable-streaming-writes:true,read_ahead_kb=1024,file-system:kernel-list-cache-ttl-secs:-1
+          name: gcs-fuse-csi-eph
+    restartPolicy: RecreateGroupOnPodRestart
+    size: 2
+    workerTemplate:
+      metadata:
+        annotations:
+          gke-gcsfuse/volumes: "true"
+          networking.gke.io/default-interface: eth0
+          networking.gke.io/interfaces: |
+            [
+              {"interfaceName":"eth0","network":"default"},
+              {"interfaceName":"eth1","network":"gvnic-1"},
+              {"interfaceName":"eth2","network":"rdma-0"},
+              {"interfaceName":"eth3","network":"rdma-1"},
+              {"interfaceName":"eth4","network":"rdma-2"},
+              {"interfaceName":"eth5","network":"rdma-3"},
+              {"interfaceName":"eth6","network":"rdma-4"},
+              {"interfaceName":"eth7","network":"rdma-5"},
+              {"interfaceName":"eth8","network":"rdma-6"},
+              {"interfaceName":"eth9","network":"rdma-7"}
+            ]
+        labels:
+          app: distributed-sglang-k3
+          llm-d.ai/guide: optimized-baseline
+          role: worker
+      spec:
+        containers:
+        - args:
+          - |
+            cat << 'EOF' > /tmp/shim_dev.c
+            extern int ncclCommInitRank(void** comm, int nranks, void* commId, int myrank);
+            int ncclDevCommCreate(void** comm, int nranks, void* commId, int myrank, int config) {
+                return ncclCommInitRank(comm, nranks, commId, myrank);
+            }
+            int ncclDevCommDestroy(void* comm, void* devComm) { return 0; }
+            int ncclAlltoAll(const void* sendbuff, void* recvbuff, unsigned long count, int datatype, void* comm, void* stream) { return 0; }
+            EOF
+            gcc -shared -fPIC -o /usr/local/gib/lib64/libnccl_dev_shim.so /tmp/shim_dev.c
+            for f in $(find /usr/ /lib/ /root/ -name "libnccl.so*" 2>/dev/null | grep -v "/usr/local/gib"); do
+              ln -sf /usr/local/gib/lib64/libnccl.so.2 "$f"
+            done
+            /sbin/ldconfig || true
+            export NCCL_NET=gIB
+            source /usr/local/gib/scripts/set_nccl_env.sh
+            echo "source /usr/local/gib/scripts/set_nccl_env.sh" >> /root/.bashrc
+            MY_IP=$(hostname -I | awk '{print $1}')
+            export SGLANG_HOST_IP="${MY_IP}"
+            echo "=========================================================="
+            echo "Launching SGLang Worker (Rank 1)..."
+            echo "Leader Address: ${LWS_LEADER_ADDRESS}"
+            echo "=========================================================="
+
+            sglang serve \
+                --trust-remote-code \
+                --model-path /bucket/Kimi-K3 \
+                --served-model-name moonshotai/Kimi-K3 \
+                --load-format runai_streamer \
+                --enable-metrics \
+                --tp-size 16 \
+                --nnodes 2 \
+                --node-rank 1 \
+                --dist-init-addr ${LWS_LEADER_ADDRESS}:20000 \
+                --mem-fraction-static 0.85 \
+                --disable-flashinfer-autotune \
+                --watchdog-timeout 3600 \
+                --reasoning-parser kimi_k3 \
+                --tool-call-parser kimi_k3 \
+                --model-loader-extra-config '{"memory_limit": 34359738368}' \
+                --mamba-full-memory-ratio 0.43 \
+                --host 0.0.0.0 \
+                --port 30000 \
+                --speculative-algorithm DSPARK \
+                --speculative-draft-model-path /bucket/Kimi-K3-DSpark \
+                --speculative-dspark-block-size 7 \
+                --enable-linear-replayssm-spec \
+                --max-running-requests 512 \
+                --cuda-graph-max-bs 512
+          command:
+          - /bin/bash
+          - -c
+          env:
+          - name: LD_LIBRARY_PATH
+            value: /usr/local/nvidia/lib64
+          - name: LD_PRELOAD
+            value: /usr/local/gib/lib64/libnccl_dev_shim.so
+          - name: GLOO_SOCKET_IFNAME
+            value: eth0
+          - name: NCCL_SOCKET_IFNAME
+            value: eth0
+          - name: TP_SOCKET_IFNAME
+            value: eth0
+          - name: NCCL_DEBUG
+            value: WARN
+          - name: SGLANG_REQUEST_STATE_WAIT_TIMEOUT
+            value: "18000"
+          - name: OMP_NUM_THREADS
+            value: "24"
+          - name: SGLANG_SET_CPU_AFFINITY
+            value: "0"
+          - name: SAFETENSORS_FAST_GPU
+            value: "1"
+          - name: PYTORCH_CUDA_ALLOC_CONF
+            value: expandable_segments:True
+          - name: RUNAI_STREAMER_MEMORY_LIMIT
+            value: "34359738368"
+          - name: RUNAI_STREAMER_CONCURRENCY
+            value: "16"
+          - name: SGLANG_USE_RUNAI_MODEL_STREAMER
+            value: "true"
+          image: docker.io/lmsysorg/sglang:kimi-k3
+          imagePullPolicy: Always
+          name: sglang-container
+          resources:
+            limits:
+              cpu: "206"
+              memory: 1500Gi
+              nvidia.com/gpu: "8"
+            requests:
+              cpu: "206"
+              memory: 1500Gi
+              nvidia.com/gpu: "8"
+          volumeMounts:
+          - mountPath: /dev/shm
+            name: dshm
+          - mountPath: /root/.cache/huggingface
+            name: hf-cache
+          - mountPath: /usr/local/nvidia
+            name: library-dir-host
+          - mountPath: /usr/local/gib
+            name: gib
+          - mountPath: /bucket
+            name: gcs-fuse-csi-eph
+        nodeSelector:
+          cloud.google.com/gke-accelerator: nvidia-b200
+          cloud.google.com/gke-nodepool: a4-highgpu-8g-a4-pool
+        serviceAccountName: workload-identity-k8s-sa
+        tolerations:
+        - operator: Exists
+        volumes:
+        - hostPath:
+            path: /home/kubernetes/bin/nvidia
+          name: library-dir-host
+        - hostPath:
+            path: /home/kubernetes/bin/gib
+          name: gib
+        - emptyDir:
+            medium: Memory
+            sizeLimit: 250Gi
+          name: dshm
+        - hostPath:
+            path: /mnt/stateful_partition/kube-ephemeral-ssd/huggingface_cache
+            type: DirectoryOrCreate
+          name: hf-cache
+        - csi:
+            driver: gcsfuse.csi.storage.gke.io
+            volumeAttributes:
+              bucketName: ikwak-models-gpu-launchpad-playground
+              gcsfuseMetadataPrefetchOnMount: "true"
+              mountOptions: implicit-dirs,file-mode=777,dir-mode=777,file-cache:enable-parallel-downloads:true,file-cache:cache-file-for-range-read:true,file-cache:max-size-mb:-1,write:enable-streaming-writes:true,read_ahead_kb=1024,file-system:kernel-list-cache-ttl-secs:-1
+          name: gcs-fuse-csi-eph
+  networkConfig:
+    subdomainPolicy: Shared
+  replicas: 1
+  rolloutStrategy:
+    rollingUpdateConfiguration:
+      maxSurge: 0
+      maxUnavailable: 1
+      partition: 0
+    type: RollingUpdate
+  startupPolicy: LeaderCreated
+status:
+  conditions:
+  - lastTransitionTime: "2026-08-01T01:53:46Z"
+    message: Replicas are progressing
+    observedGeneration: 1
+    reason: GroupsProgressing
+    status: "False"
+    type: Progressing
+  - lastTransitionTime: "2026-08-01T01:53:46Z"
+    message: All replicas are ready
+    observedGeneration: 1
+    reason: AllGroupsReady
+    status: "True"
+    type: Available
+  hpaPodSelector: leaderworkerset.sigs.k8s.io/name=distributed-sglang-k3,leaderworkerset.sigs.k8s.io/worker-index=0
+  observedGeneration: 1
+  readyReplicas: 1
+  replicas: 1
+  updatedReplicas: 1

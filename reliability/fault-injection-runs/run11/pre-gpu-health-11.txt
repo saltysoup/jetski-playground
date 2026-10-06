@@ -1,0 +1,27 @@
+PRE-RUN11 2026-09-24T20:30:04.433Z
+index, pci.bus_id, driver_version, persistence_mode, ecc.errors.uncorrected.volatile.total, remapped_rows.uncorrectable, remapped_rows.pending, remapped_rows.failure
+0, 00000000:8F:00.0, 580.159.04, Enabled, 0, 0, No, No
+1, 00000000:90:00.0, 580.159.04, Enabled, 0, 0, No, No
+2, 00000000:96:00.0, 580.159.04, Enabled, 0, 0, No, No
+3, 00000000:97:00.0, 580.159.04, Enabled, 0, 0, No, No
+4, 00000000:C4:00.0, 580.159.04, Enabled, 0, 0, No, No
+5, 00000000:C5:00.0, 580.159.04, Enabled, 0, 0, No, No
+6, 00000000:CB:00.0, 580.159.04, Enabled, 0, 0, No, No
+7, 00000000:CC:00.0, 580.159.04, Enabled, 0, 0, No, No
+--- nvlink link-up count per GPU ---
+GPU0 up=18
+GPU1 up=18
+GPU2 up=18
+GPU3 up=18
+GPU4 up=18
+GPU5 up=18
+GPU6 up=18
+GPU7 up=18
+--- bridge ---
+0002
+10de
+		LnkSta:	Speed 32GT/s, Width x16
+	Kernel driver in use: nvidia
+--- GPU7 compute apps ---
+108601, 00000000:CC:00.0, 4290 MiB
+118550, 00000000:CC:00.0, 64298 MiB

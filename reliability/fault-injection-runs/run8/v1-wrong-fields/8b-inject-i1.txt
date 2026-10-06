@@ -1,0 +1,41 @@
+    Successfully injected field info.
+    Successfully injected field info.
+    --- introspect ---
+     Field ID                  : ecc_dbe_volatile_device                        
+     Flags                     : 0                                              
+     Last Status               : 0                                              
+     Number of Samples         : 1                                              
+     Newest Timestamp          : Thu Aug 27 19:30:06 2026                       
+     Oldest Timestamp          : Thu Aug 27 19:30:06 2026                       
+     Monitor Interval (ms)     : 0                                              
+     Max Age (sec)             : 30                                             
+     Fetch Count               : 0                                              
+     Total Fetch Usec          : 0                                              
+     Usec Per Fetch            : 0                                              
+     Number of Watchers        : 0                                              
+    
+     Field ID                  : ecc_dbe_volatile_texture                       
+     Flags                     : 0                                              
+     Last Status               : 0                                              
+     Number of Samples         : 1                                              
+     Newest Timestamp          : Thu Aug 27 19:30:06 2026                       
+     Oldest Timestamp          : Thu Aug 27 19:30:06 2026                       
+     Monitor Interval (ms)     : 0                                              
+     Max Age (sec)             : 30                                             
+     Fetch Count               : 0                                              
+     Total Fetch Usec          : 0                                              
+     Usec Per Fetch            : 0                                              
+     Number of Watchers        : 0                                              
+    
+    --- health ---
+    +---------------------------+----------------------------------------------------------+
+    | Health Monitor Report                                                                |
+    +===========================+==========================================================+
+    | Overall Health            | Healthy                                                  |
+    +---------------------------+----------------------------------------------------------+
+    --- dmon ---
+    #Entity    EDVDV                   EDVTX                   
+    ID                                                         
+    GPU 7      1                       1                       
+    GPU 7      0                       N/A                     
+    GPU 7      0                       N/A                     

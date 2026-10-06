@@ -1,0 +1,10 @@
+8b iter=1 inject=2026-08-27T19:42:33.611Z val=1 label=skipped boot=skipped ready=skipped found=none
+  final={"k8s_annotation": null, "res_health": "HEALTHY", "res_ongoing": null, "res_pending": null, "upcomingMaintenance": null, "vm": "RUNNING"}
+8b iter=2 inject=2026-08-27T19:59:44.549Z val=2 label=skipped boot=skipped ready=skipped found=none
+  final={"k8s_annotation": null, "res_health": "HEALTHY", "res_ongoing": null, "res_pending": null, "upcomingMaintenance": null, "vm": "RUNNING"}
+8b iter=3 inject=2026-08-27T20:16:50.586Z val=3 label=skipped boot=skipped ready=skipped found=none
+  final={"k8s_annotation": null, "res_health": "HEALTHY", "res_ongoing": null, "res_pending": null, "upcomingMaintenance": null, "vm": "RUNNING"}
+8b iter=4 inject=2026-08-27T20:35:08.906Z val=4 label=skipped boot=skipped ready=skipped found=none
+  final={"k8s_annotation": null, "res_health": "HEALTHY", "res_ongoing": null, "res_pending": null, "upcomingMaintenance": null, "vm": "RUNNING"}
+8b iter=5 inject=2026-08-27T20:53:33.029Z val=5 label=skipped boot=skipped ready=skipped found=none
+  final={"k8s_annotation": null, "res_health": "HEALTHY", "res_ongoing": null, "res_pending": null, "upcomingMaintenance": null, "vm": "RUNNING"}

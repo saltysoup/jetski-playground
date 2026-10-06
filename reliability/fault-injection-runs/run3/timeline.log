@@ -1,0 +1,4 @@
+00:45:24 | T+    13.0s | START          | T0=2026-08-19T00:45:12+00:00 watching gke-ikwak-reliabilit-a4-highgpu-8g-a4-0256e2f1-34t3 (8713135250882265303)
+00:45:12 | T+     0.2s | M1-LOG         | FIRST XID IN CLOUD LOGGING at 2026-08-19T00:45:12.176226+00:00 :: [ 9456.903376] NVRM: Xid (PCI:0000:cc:00): 79, pid=0, name=CLAUDE-SIM-RUN3, GPU has fallen off the bus.\r\n
+00:45:29 | T+    17.5s | CHANGE-CLOUD   | res={'health': 'DEGRADED', 'pending': None, 'ongoing': None} block={'health': 'DEGRADED', 'healthy': None, 'degraded': None} inst={'status': 'RUNNING', 'maint': 'CLEAR', 'reasons': None, 'canResched': None, 'winStart': None}
+00:45:32 | T+    20.7s | CHANGE-NODE    | ready=True gpu=8 taints=['gpu'] annot=no

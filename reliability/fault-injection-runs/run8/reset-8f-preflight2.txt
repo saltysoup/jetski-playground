@@ -1,0 +1,34 @@
+--- holders of /dev/nvidia7 BEFORE ---
+3451759:nvidia-gpu-devi
+3451765:dcgm-exporter
+3466037:nvidia-persiste
+35648:ray::DashboardA
+--- stopping nvidia-persistenced (service + path trigger) ---
+Persistence mode is already Disabled for GPU 00000000:CC:00.0.
+All done.
+--- inducing kubelet restart backoff on container holders ---
+  kill sweep 1 done
+  kill sweep 2 done
+  kill sweep 3 done
+--- final kill + immediate reset (no scan in between) ---
+--- attempting reset of GPU 7 ---
+GPU 00000000:CC:00.0 was successfully reset.
+All done.
+RESET_RC=0
+--- nvidia-smi verification: all GPUs ---
+index, pci.bus_id, name, persistence_mode, ecc.errors.uncorrected.volatile.total, remapped_rows.uncorrectable, remapped_rows.pending, remapped_rows.failure
+0, 00000000:8F:00.0, NVIDIA B200, Disabled, 0, 0, No, No
+1, 00000000:90:00.0, NVIDIA B200, Disabled, 0, 0, No, No
+2, 00000000:96:00.0, NVIDIA B200, Disabled, 0, 0, No, No
+3, 00000000:97:00.0, NVIDIA B200, Disabled, 0, 0, No, No
+4, 00000000:C4:00.0, NVIDIA B200, Disabled, 0, 0, No, No
+5, 00000000:C5:00.0, NVIDIA B200, Disabled, 0, 0, No, No
+6, 00000000:CB:00.0, NVIDIA B200, Disabled, 0, 0, No, No
+7, 00000000:CC:00.0, NVIDIA B200, Disabled, 0, 0, No, No
+GPU_COUNT=8
+--- restoring persistenced + persistence mode ---
+Persistence mode is already Enabled for GPU 00000000:CC:00.0.
+All done.
+--- holders AFTER restore ---
+3478532:nvidia-gpu-devi
+3478588:nvidia-persiste

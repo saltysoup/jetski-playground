@@ -13,6 +13,7 @@ jetski-playground/
 │   └── unitree-r1/           # Offline multimodal voice/vision pipeline on Unitree R1 (Jetson Orin)
 ├── reliability/              # Multi-node Reinforcement Learning (NeMo-RL / Kuberay) & Reliability Engineering
 │   ├── README.md             # Comprehensive AIME 2024 empirical report & RL training instructions
+│   ├── fault-injection-runs/ # Xid fault injection & GCE maintenance/repair timing, runs 1-11 (HANDOFF.md)
 │   └── gemma3-27b-it/        # Helm charts, DAPO/GRPO recipes, & workstation orchestrators for Gemma 3 27B IT
 ├── inference/                # LLM Inference Workloads & Serving Benchmarks
 │   └── README.md             # Overview of inference workloads and recipes

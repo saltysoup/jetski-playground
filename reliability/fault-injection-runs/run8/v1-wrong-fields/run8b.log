@@ -1,0 +1,52 @@
+daemonset.apps/dcgm-inject-run8 created
+[2026-08-27T19:29:14Z] waiting for the DCGM pod
+[2026-08-27T19:29:42Z] DCGM pod = dcgm-inject-run8-mnmnp
+[2026-08-27T19:29:42Z] ################ 8b ITERATION 1 / 5 ################
+    Health monitor systems set successfully.
+[2026-08-27T19:29:58Z] injecting DBE=1 on gpu 7 (fields 319, 323) at 2026-08-27T19:29:58.830Z
+    Successfully injected field info.
+    Successfully injected field info.
+    --- introspect ---
+     Field ID                  : ecc_dbe_volatile_device                        
+     Flags                     : 0                                              
+     Last Status               : 0                                              
+     Number of Samples         : 1                                              
+     Newest Timestamp          : Thu Aug 27 19:30:06 2026                       
+     Oldest Timestamp          : Thu Aug 27 19:30:06 2026                       
+     Monitor Interval (ms)     : 0                                              
+     Max Age (sec)             : 30                                             
+     Fetch Count               : 0                                              
+     Total Fetch Usec          : 0                                              
+     Usec Per Fetch            : 0                                              
+     Number of Watchers        : 0                                              
+    
+     Field ID                  : ecc_dbe_volatile_texture                       
+     Flags                     : 0                                              
+     Last Status               : 0                                              
+     Number of Samples         : 1                                              
+     Newest Timestamp          : Thu Aug 27 19:30:06 2026                       
+     Oldest Timestamp          : Thu Aug 27 19:30:06 2026                       
+     Monitor Interval (ms)     : 0                                              
+     Max Age (sec)             : 30                                             
+     Fetch Count               : 0                                              
+     Total Fetch Usec          : 0                                              
+     Usec Per Fetch            : 0                                              
+     Number of Watchers        : 0                                              
+    
+    --- health ---
+    +---------------------------+----------------------------------------------------------+
+    | Health Monitor Report                                                                |
+    +===========================+==========================================================+
+    | Overall Health            | Healthy                                                  |
+    +---------------------------+----------------------------------------------------------+
+    --- dmon ---
+    #Entity    EDVDV                   EDVTX                   
+    ID                                                         
+    GPU 7      1                       1                       
+    GPU 7      0                       N/A                     
+    GPU 7      0                       N/A                     
+[2026-08-27T19:31:07Z] dcgm-exporter's own view of GPU 7 (GKE's embedded DCGM, not ours):
+[2026-08-27T19:31:14Z] Cloud Logging scan since 2026-08-27T19:29:58.830Z:
+    LOGSCAN_COUNT 0 since=2026-08-27T19:29:58.830Z
+[2026-08-27T19:31:20Z] observing upcomingMaintenance for 900s
+[2026-08-27T19:31:32Z]   probe {"k8s_annotation": null, "res_health": "HEALTHY", "res_ongoing": null, "res_pending": null, "upcomingMaintenance": null, "vm": "RUNNING"}

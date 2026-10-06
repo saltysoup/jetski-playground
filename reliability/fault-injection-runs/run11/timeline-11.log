@@ -1,0 +1,117 @@
+# SUPERVISOR START 2026-09-24T20:30:49Z pid=156379 deadline=08:30:49Z
+# RESTART pid=156412 every=5.0s budget=3600s at 2026-09-24T20:30:49.343988+00:00
+20:30:49.344 | T      +0.0s | BASELINE | {"34t3_gpus": "8", "34t3_laststart": "2026-09-24T08:12:19.474-07:00", "34t3_maint": "CLEAR", "34t3_reasons": null, "34t3_resched": null, "34t3_type": null, "34t3_vm": "RUNNING", "34t3_win": null, "34t3_winend": null, "6df3_gpus": "8", "6df3_maint": "CLEAR", "6df3_reasons": null, "6df3_resched": null, "6df3_type": null, "6df3_vm": "RUNNING", "6df3_win": null, "6df3_winend": null, "block_degraded": null, "block_health": "HEALTHY", "block_ongoing": null, "block_pending": null, "block_reasons": null, "cluster_gpus": 16, "node_gpus": "8", "node_pm_label": null, "node_ready": "True", "node_taints": null, "ongoing": null, "pending": null, "res_health": "HEALTHY"}
+20:31:06.715 | T     +17.4s | heartbeat | res=HEALTHY block=HEALTHY 34t3=CLEAR vm=RUNNING ready=True gpus=8
+20:32:07.466 | T     +78.1s | CHANGE   | {"block_health": ["HEALTHY", "DEGRADED"], "res_health": ["HEALTHY", "DEGRADED"]}
+20:36:14.050 | T    +324.7s | heartbeat | res=DEGRADED block=DEGRADED 34t3=CLEAR vm=RUNNING ready=True gpus=8
+20:41:22.115 | T    +632.8s | heartbeat | res=DEGRADED block=DEGRADED 34t3=CLEAR vm=RUNNING ready=True gpus=8
+20:46:32.210 | T    +942.9s | heartbeat | res=DEGRADED block=DEGRADED 34t3=CLEAR vm=RUNNING ready=True gpus=8
+20:51:46.913 | T   +1257.6s | heartbeat | res=DEGRADED block=DEGRADED 34t3=CLEAR vm=RUNNING ready=True gpus=8
+20:57:03.145 | T   +1573.8s | heartbeat | res=DEGRADED block=DEGRADED 34t3=CLEAR vm=RUNNING ready=True gpus=8
+20:57:18.783 | T   +1589.4s | CHANGE   | {"block_ongoing": [null, 0], "block_pending": [null, 1], "ongoing": [null, 0], "pending": [null, 1]}
+20:57:49.444 | T   +1620.1s | CHANGE   | {"34t3_maint": ["CLEAR", "PENDING"], "34t3_reasons": [null, ["FAILURE_GPU_XID", "FAILURE_GPU"]], "34t3_resched": [null, true], "34t3_type": [null, "UNSCHEDULED"], "34t3_win": [null, "2026-10-02T00:00:00Z"], "34t3_winend": [null, "2026-10-02T04:00:00Z"]}
+20:58:20.188 | T   +1650.8s | CHANGE   | {"node_taints": [null, "cloud.google.com/maintenance-window-started=PreferNoSchedule"]}
+20:58:50.568 | T   +1681.2s | CHANGE   | {"34t3_maint": ["PENDING", "ONGOING"], "34t3_resched": [true, false], "34t3_win": ["2026-10-02T00:00:00Z", "2026-09-24T20:58:11Z"], "34t3_winend": ["2026-10-02T04:00:00Z", "2026-09-25T00:58:01Z"], "block_ongoing": [0, 1], "block_pending": [1, 0], "ongoing": [0, 1], "pending": [1, 0]}
+21:02:15.609 | T   +1886.3s | heartbeat | res=DEGRADED block=DEGRADED 34t3=ONGOING vm=RUNNING ready=True gpus=8
+21:07:28.468 | T   +2199.1s | heartbeat | res=DEGRADED block=DEGRADED 34t3=ONGOING vm=RUNNING ready=True gpus=8
+21:12:22.597 | T   +2493.3s | CHANGE   | {"node_ready": ["True", "False"], "node_taints": ["cloud.google.com/maintenance-window-started=PreferNoSchedule", "cloud.google.com/maintenance-window-started=PreferNoSchedule,node.kubernetes.io/not-ready=NoExecute,node.kubernetes.io/not-ready=NoSchedule"]}
+21:12:40.763 | T   +2511.4s | CHANGE   | {"34t3_gpus": ["8", "0"], "cluster_gpus": [16, 8], "node_gpus": ["8", "0"]}
+21:12:58.174 | T   +2528.8s | heartbeat | res=DEGRADED block=DEGRADED 34t3=ONGOING vm=RUNNING ready=False gpus=0
+21:13:33.398 | T   +2564.1s | CHANGE   | {"node_ready": ["False", "Unknown"], "node_taints": ["cloud.google.com/maintenance-window-started=PreferNoSchedule,node.kubernetes.io/not-ready=NoExecute,node.kubernetes.io/not-ready=NoSchedule", "cloud.google.com/maintenance-window-started=PreferNoSchedule,node.kubernetes.io/unreachable=NoExecute,node.kubernetes.io/unreachable=NoSchedule"]}
+21:15:06.114 | T   +2656.8s | CHANGE   | {"34t3_vm": ["RUNNING", "REPAIRING"]}
+21:17:59.675 | T   +2830.3s | heartbeat | res=DEGRADED block=DEGRADED 34t3=ONGOING vm=REPAIRING ready=Unknown gpus=0
+21:23:03.816 | T   +3134.5s | heartbeat | res=DEGRADED block=DEGRADED 34t3=ONGOING vm=REPAIRING ready=Unknown gpus=0
+21:25:57.265 | T   +3307.9s | CHANGE   | {"block_health": ["DEGRADED", "HEALTHY"], "res_health": ["DEGRADED", "HEALTHY"]}
+21:28:16.659 | T   +3447.3s | heartbeat | res=HEALTHY block=HEALTHY 34t3=ONGOING vm=REPAIRING ready=Unknown gpus=0
+# budget 3600s exhausted
+# child exited rc=0 at 2026-09-24T21:30:58Z; restarting in 5s
+# RESTART pid=208144 every=5.0s budget=3600s at 2026-09-24T21:31:03.520890+00:00
+21:31:03.520 | T      +0.0s | BASELINE | {"34t3_gpus": "0", "34t3_laststart": "2026-09-24T08:12:19.474-07:00", "34t3_maint": "ONGOING", "34t3_reasons": ["FAILURE_GPU_XID", "FAILURE_GPU"], "34t3_resched": false, "34t3_type": "UNSCHEDULED", "34t3_vm": "REPAIRING", "34t3_win": "2026-09-24T20:58:11Z", "34t3_winend": "2026-09-25T00:58:01Z", "6df3_gpus": "8", "6df3_maint": "CLEAR", "6df3_reasons": null, "6df3_resched": null, "6df3_type": null, "6df3_vm": "RUNNING", "6df3_win": null, "6df3_winend": null, "block_degraded": null, "block_health": "HEALTHY", "block_ongoing": 1, "block_pending": 0, "block_reasons": null, "cluster_gpus": 8, "node_gpus": "0", "node_pm_label": null, "node_ready": "Unknown", "node_taints": "cloud.google.com/maintenance-window-started=PreferNoSchedule,node.kubernetes.io/unreachable=NoExecute,node.kubernetes.io/unreachable=NoSchedule", "ongoing": 1, "pending": 0, "res_health": "HEALTHY"}
+21:31:21.746 | T     +18.2s | heartbeat | res=HEALTHY block=HEALTHY 34t3=ONGOING vm=REPAIRING ready=Unknown gpus=0
+21:31:38.748 | T     +35.2s | CHANGE   | {"34t3_laststart": ["2026-09-24T08:12:19.474-07:00", "2026-09-24T14:31:26.374-07:00"], "34t3_vm": ["REPAIRING", "RUNNING"]}
+21:33:14.915 | T    +131.4s | CHANGE   | {"34t3_gpus": ["0", "8"], "cluster_gpus": [8, 16]}
+21:33:30.626 | T    +147.1s | CHANGE   | {"node_gpus": ["0", "8"], "node_ready": ["Unknown", "True"], "node_taints": ["cloud.google.com/maintenance-window-started=PreferNoSchedule,node.kubernetes.io/unreachable=NoExecute,node.kubernetes.io/unreachable=NoSchedule", "cloud.google.com/maintenance-window-started=PreferNoSchedule"]}
+21:34:02.450 | T    +178.9s | CHANGE   | {"node_taints": ["cloud.google.com/maintenance-window-started=PreferNoSchedule", null]}
+21:36:26.770 | T    +323.2s | heartbeat | res=HEALTHY block=HEALTHY 34t3=ONGOING vm=RUNNING ready=True gpus=8
+21:41:29.048 | T    +625.5s | heartbeat | res=HEALTHY block=HEALTHY 34t3=ONGOING vm=RUNNING ready=True gpus=8
+21:46:40.205 | T    +936.7s | heartbeat | res=HEALTHY block=HEALTHY 34t3=ONGOING vm=RUNNING ready=True gpus=8
+21:51:45.533 | T   +1242.0s | heartbeat | res=HEALTHY block=HEALTHY 34t3=ONGOING vm=RUNNING ready=True gpus=8
+21:56:47.295 | T   +1543.8s | heartbeat | res=HEALTHY block=HEALTHY 34t3=ONGOING vm=RUNNING ready=True gpus=8
+22:02:01.362 | T   +1857.8s | heartbeat | res=HEALTHY block=HEALTHY 34t3=ONGOING vm=RUNNING ready=True gpus=8
+22:07:02.813 | T   +2159.3s | heartbeat | res=HEALTHY block=HEALTHY 34t3=ONGOING vm=RUNNING ready=True gpus=8
+22:12:12.778 | T   +2469.3s | heartbeat | res=HEALTHY block=HEALTHY 34t3=ONGOING vm=RUNNING ready=True gpus=8
+22:17:22.064 | T   +2778.5s | heartbeat | res=HEALTHY block=HEALTHY 34t3=ONGOING vm=RUNNING ready=True gpus=8
+22:22:29.553 | T   +3086.0s | heartbeat | res=HEALTHY block=HEALTHY 34t3=ONGOING vm=RUNNING ready=True gpus=8
+22:27:36.016 | T   +3392.5s | heartbeat | res=HEALTHY block=HEALTHY 34t3=ONGOING vm=RUNNING ready=True gpus=8
+# budget 3600s exhausted
+# child exited rc=0 at 2026-09-24T22:31:12Z; restarting in 5s
+# RESTART pid=241608 every=5.0s budget=3600s at 2026-09-24T22:31:17.811851+00:00
+22:31:17.811 | T      +0.0s | BASELINE | {"34t3_gpus": "8", "34t3_laststart": "2026-09-24T14:31:26.374-07:00", "34t3_maint": "ONGOING", "34t3_reasons": ["FAILURE_GPU_XID", "FAILURE_GPU"], "34t3_resched": false, "34t3_type": "UNSCHEDULED", "34t3_vm": "RUNNING", "34t3_win": "2026-09-24T20:58:11Z", "34t3_winend": "2026-09-25T00:58:01Z", "6df3_gpus": "8", "6df3_maint": "CLEAR", "6df3_reasons": null, "6df3_resched": null, "6df3_type": null, "6df3_vm": "RUNNING", "6df3_win": null, "6df3_winend": null, "block_degraded": null, "block_health": "HEALTHY", "block_ongoing": 1, "block_pending": 0, "block_reasons": null, "cluster_gpus": 16, "node_gpus": "8", "node_pm_label": null, "node_ready": "True", "node_taints": null, "ongoing": 1, "pending": 0, "res_health": "HEALTHY"}
+22:31:37.055 | T     +19.2s | heartbeat | res=HEALTHY block=HEALTHY 34t3=ONGOING vm=RUNNING ready=True gpus=8
+22:36:47.409 | T    +329.6s | heartbeat | res=HEALTHY block=HEALTHY 34t3=ONGOING vm=RUNNING ready=True gpus=8
+22:41:49.034 | T    +631.2s | heartbeat | res=HEALTHY block=HEALTHY 34t3=ONGOING vm=RUNNING ready=True gpus=8
+22:47:00.444 | T    +942.6s | heartbeat | res=HEALTHY block=HEALTHY 34t3=ONGOING vm=RUNNING ready=True gpus=8
+22:52:05.059 | T   +1247.2s | heartbeat | res=HEALTHY block=HEALTHY 34t3=ONGOING vm=RUNNING ready=True gpus=8
+22:57:16.306 | T   +1558.5s | heartbeat | res=HEALTHY block=HEALTHY 34t3=ONGOING vm=RUNNING ready=True gpus=8
+23:02:26.134 | T   +1868.3s | heartbeat | res=HEALTHY block=HEALTHY 34t3=ONGOING vm=RUNNING ready=True gpus=8
+23:07:35.933 | T   +2178.1s | heartbeat | res=HEALTHY block=HEALTHY 34t3=ONGOING vm=RUNNING ready=True gpus=8
+23:12:36.253 | T   +2478.4s | heartbeat | res=HEALTHY block=HEALTHY 34t3=ONGOING vm=RUNNING ready=True gpus=8
+23:17:46.284 | T   +2788.5s | heartbeat | res=HEALTHY block=HEALTHY 34t3=ONGOING vm=RUNNING ready=True gpus=8
+23:22:50.540 | T   +3092.7s | heartbeat | res=HEALTHY block=HEALTHY 34t3=ONGOING vm=RUNNING ready=True gpus=8
+23:27:55.230 | T   +3397.4s | heartbeat | res=HEALTHY block=HEALTHY 34t3=ONGOING vm=RUNNING ready=True gpus=8
+# budget 3600s exhausted
+# child exited rc=0 at 2026-09-24T23:31:18Z; restarting in 5s
+# RESTART pid=270640 every=5.0s budget=3600s at 2026-09-24T23:31:23.437496+00:00
+23:31:23.437 | T      +0.0s | BASELINE | {"34t3_gpus": "8", "34t3_laststart": "2026-09-24T14:31:26.374-07:00", "34t3_maint": "ONGOING", "34t3_reasons": ["FAILURE_GPU_XID", "FAILURE_GPU"], "34t3_resched": false, "34t3_type": "UNSCHEDULED", "34t3_vm": "RUNNING", "34t3_win": "2026-09-24T20:58:11Z", "34t3_winend": "2026-09-25T00:58:01Z", "6df3_gpus": "8", "6df3_maint": "CLEAR", "6df3_reasons": null, "6df3_resched": null, "6df3_type": null, "6df3_vm": "RUNNING", "6df3_win": null, "6df3_winend": null, "block_degraded": null, "block_health": "HEALTHY", "block_ongoing": 1, "block_pending": 0, "block_reasons": null, "cluster_gpus": 16, "node_gpus": "8", "node_pm_label": null, "node_ready": "True", "node_taints": null, "ongoing": 1, "pending": 0, "res_health": "HEALTHY"}
+23:31:43.207 | T     +19.8s | heartbeat | res=HEALTHY block=HEALTHY 34t3=ONGOING vm=RUNNING ready=True gpus=8
+23:36:46.465 | T    +323.0s | heartbeat | res=HEALTHY block=HEALTHY 34t3=ONGOING vm=RUNNING ready=True gpus=8
+23:41:56.201 | T    +632.8s | heartbeat | res=HEALTHY block=HEALTHY 34t3=ONGOING vm=RUNNING ready=True gpus=8
+23:46:58.268 | T    +934.8s | heartbeat | res=HEALTHY block=HEALTHY 34t3=ONGOING vm=RUNNING ready=True gpus=8
+23:52:07.549 | T   +1244.1s | heartbeat | res=HEALTHY block=HEALTHY 34t3=ONGOING vm=RUNNING ready=True gpus=8
+23:57:12.940 | T   +1549.5s | heartbeat | res=HEALTHY block=HEALTHY 34t3=ONGOING vm=RUNNING ready=True gpus=8
+00:02:24.429 | T   +1861.0s | heartbeat | res=HEALTHY block=HEALTHY 34t3=ONGOING vm=RUNNING ready=True gpus=8
+00:07:29.301 | T   +2165.9s | heartbeat | res=HEALTHY block=HEALTHY 34t3=ONGOING vm=RUNNING ready=True gpus=8
+00:12:33.426 | T   +2470.0s | heartbeat | res=HEALTHY block=HEALTHY 34t3=ONGOING vm=RUNNING ready=True gpus=8
+00:17:33.931 | T   +2770.5s | heartbeat | res=HEALTHY block=HEALTHY 34t3=ONGOING vm=RUNNING ready=True gpus=8
+00:22:36.047 | T   +3072.6s | heartbeat | res=HEALTHY block=HEALTHY 34t3=ONGOING vm=RUNNING ready=True gpus=8
+00:27:45.947 | T   +3382.5s | heartbeat | res=HEALTHY block=HEALTHY 34t3=ONGOING vm=RUNNING ready=True gpus=8
+# budget 3600s exhausted
+# child exited rc=0 at 2026-09-25T00:31:24Z; restarting in 5s
+# RESTART pid=298321 every=5.0s budget=3600s at 2026-09-25T00:31:29.346959+00:00
+00:31:29.347 | T      +0.0s | BASELINE | {"34t3_gpus": "8", "34t3_laststart": "2026-09-24T14:31:26.374-07:00", "34t3_maint": "ONGOING", "34t3_reasons": ["FAILURE_GPU_XID", "FAILURE_GPU"], "34t3_resched": false, "34t3_type": "UNSCHEDULED", "34t3_vm": "RUNNING", "34t3_win": "2026-09-24T20:58:11Z", "34t3_winend": "2026-09-25T00:58:01Z", "6df3_gpus": "8", "6df3_maint": "CLEAR", "6df3_reasons": null, "6df3_resched": null, "6df3_type": null, "6df3_vm": "RUNNING", "6df3_win": null, "6df3_winend": null, "block_degraded": null, "block_health": "HEALTHY", "block_ongoing": 1, "block_pending": 0, "block_reasons": null, "cluster_gpus": 16, "node_gpus": "8", "node_pm_label": null, "node_ready": "True", "node_taints": null, "ongoing": 1, "pending": 0, "res_health": "HEALTHY"}
+00:31:49.018 | T     +19.7s | heartbeat | res=HEALTHY block=HEALTHY 34t3=ONGOING vm=RUNNING ready=True gpus=8
+00:37:00.620 | T    +331.3s | heartbeat | res=HEALTHY block=HEALTHY 34t3=ONGOING vm=RUNNING ready=True gpus=8
+00:42:15.502 | T    +646.2s | heartbeat | res=HEALTHY block=HEALTHY 34t3=ONGOING vm=RUNNING ready=True gpus=8
+00:47:17.322 | T    +948.0s | heartbeat | res=HEALTHY block=HEALTHY 34t3=ONGOING vm=RUNNING ready=True gpus=8
+00:52:25.994 | T   +1256.6s | heartbeat | res=HEALTHY block=HEALTHY 34t3=ONGOING vm=RUNNING ready=True gpus=8
+00:57:35.065 | T   +1565.7s | heartbeat | res=HEALTHY block=HEALTHY 34t3=ONGOING vm=RUNNING ready=True gpus=8
+00:58:07.127 | T   +1597.8s | CHANGE   | {"34t3_maint": ["ONGOING", "CLEAR"], "34t3_reasons": [["FAILURE_GPU_XID", "FAILURE_GPU"], null], "34t3_resched": [false, null], "34t3_type": ["UNSCHEDULED", null], "34t3_win": ["2026-09-24T20:58:11Z", null], "34t3_winend": ["2026-09-25T00:58:01Z", null]}
+00:59:12.228 | T   +1662.9s | CHANGE   | {"block_ongoing": [1, null], "block_pending": [0, null], "ongoing": [1, null], "pending": [0, null]}
+01:02:45.981 | T   +1876.6s | heartbeat | res=HEALTHY block=HEALTHY 34t3=CLEAR vm=RUNNING ready=True gpus=8
+01:07:56.507 | T   +2187.2s | heartbeat | res=HEALTHY block=HEALTHY 34t3=CLEAR vm=RUNNING ready=True gpus=8
+01:13:07.514 | T   +2498.2s | heartbeat | res=HEALTHY block=HEALTHY 34t3=CLEAR vm=RUNNING ready=True gpus=8
+01:18:19.350 | T   +2810.0s | heartbeat | res=HEALTHY block=HEALTHY 34t3=CLEAR vm=RUNNING ready=True gpus=8
+01:23:22.985 | T   +3113.6s | heartbeat | res=HEALTHY block=HEALTHY 34t3=CLEAR vm=RUNNING ready=True gpus=8
+01:28:37.265 | T   +3427.9s | heartbeat | res=HEALTHY block=HEALTHY 34t3=CLEAR vm=RUNNING ready=True gpus=8
+# budget 3600s exhausted
+# child exited rc=0 at 2026-09-25T01:31:33Z; restarting in 5s
+# RESTART pid=325772 every=5.0s budget=3600s at 2026-09-25T01:31:38.783418+00:00
+01:31:38.783 | T      +0.0s | BASELINE | {"34t3_gpus": "8", "34t3_laststart": "2026-09-24T14:31:26.374-07:00", "34t3_maint": "CLEAR", "34t3_reasons": null, "34t3_resched": null, "34t3_type": null, "34t3_vm": "RUNNING", "34t3_win": null, "34t3_winend": null, "6df3_gpus": "8", "6df3_maint": "CLEAR", "6df3_reasons": null, "6df3_resched": null, "6df3_type": null, "6df3_vm": "RUNNING", "6df3_win": null, "6df3_winend": null, "block_degraded": null, "block_health": "HEALTHY", "block_ongoing": null, "block_pending": null, "block_reasons": null, "cluster_gpus": 16, "node_gpus": "8", "node_pm_label": null, "node_ready": "True", "node_taints": null, "ongoing": null, "pending": null, "res_health": "HEALTHY"}
+01:31:56.736 | T     +18.0s | heartbeat | res=HEALTHY block=HEALTHY 34t3=CLEAR vm=RUNNING ready=True gpus=8
+01:37:08.410 | T    +329.6s | heartbeat | res=HEALTHY block=HEALTHY 34t3=CLEAR vm=RUNNING ready=True gpus=8
+01:42:08.941 | T    +630.2s | heartbeat | res=HEALTHY block=HEALTHY 34t3=CLEAR vm=RUNNING ready=True gpus=8
+01:47:19.421 | T    +940.6s | heartbeat | res=HEALTHY block=HEALTHY 34t3=CLEAR vm=RUNNING ready=True gpus=8
+01:52:22.878 | T   +1244.1s | heartbeat | res=HEALTHY block=HEALTHY 34t3=CLEAR vm=RUNNING ready=True gpus=8
+01:57:32.168 | T   +1553.4s | heartbeat | res=HEALTHY block=HEALTHY 34t3=CLEAR vm=RUNNING ready=True gpus=8
+02:02:33.818 | T   +1855.0s | heartbeat | res=HEALTHY block=HEALTHY 34t3=CLEAR vm=RUNNING ready=True gpus=8
+02:07:39.122 | T   +2160.3s | heartbeat | res=HEALTHY block=HEALTHY 34t3=CLEAR vm=RUNNING ready=True gpus=8
+02:12:45.107 | T   +2466.3s | heartbeat | res=HEALTHY block=HEALTHY 34t3=CLEAR vm=RUNNING ready=True gpus=8
+02:17:51.932 | T   +2773.1s | heartbeat | res=HEALTHY block=HEALTHY 34t3=CLEAR vm=RUNNING ready=True gpus=8
+02:22:52.407 | T   +3073.6s | heartbeat | res=HEALTHY block=HEALTHY 34t3=CLEAR vm=RUNNING ready=True gpus=8
+02:27:55.326 | T   +3376.5s | heartbeat | res=HEALTHY block=HEALTHY 34t3=CLEAR vm=RUNNING ready=True gpus=8
+# budget 3600s exhausted
+# child exited rc=0 at 2026-09-25T02:31:49Z; restarting in 5s
+# RESTART pid=354277 every=5.0s budget=3600s at 2026-09-25T02:31:55.117440+00:00
+02:31:55.117 | T      +0.0s | BASELINE | {"34t3_gpus": "8", "34t3_laststart": "2026-09-24T14:31:26.374-07:00", "34t3_maint": "CLEAR", "34t3_reasons": null, "34t3_resched": null, "34t3_type": null, "34t3_vm": "RUNNING", "34t3_win": null, "34t3_winend": null, "6df3_gpus": "8", "6df3_maint": "CLEAR", "6df3_reasons": null, "6df3_resched": null, "6df3_type": null, "6df3_vm": "RUNNING", "6df3_win": null, "6df3_winend": null, "block_degraded": null, "block_health": "HEALTHY", "block_ongoing": null, "block_pending": null, "block_reasons": null, "cluster_gpus": 16, "node_gpus": "8", "node_pm_label": null, "node_ready": "True", "node_taints": null, "ongoing": null, "pending": null, "res_health": "HEALTHY"}
+02:32:12.742 | T     +17.6s | heartbeat | res=HEALTHY block=HEALTHY 34t3=CLEAR vm=RUNNING ready=True gpus=8
+02:37:21.912 | T    +326.8s | heartbeat | res=HEALTHY block=HEALTHY 34t3=CLEAR vm=RUNNING ready=True gpus=8

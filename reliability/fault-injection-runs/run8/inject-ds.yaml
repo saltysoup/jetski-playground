@@ -1,0 +1,48 @@
+# Privileged host-access pod for run 8, pinned to the target node.
+#
+# Difference from run 6/7: this is a DaemonSet, not a bare Pod. Run 8 reboots the node
+# five times, and a `restartPolicy: Never` Pod does not come back from a guest OS reboot
+# -- run 7's xid-inject-run7 is sitting in Error right now for exactly that reason. The
+# DaemonSet controller re-places the pod after every reboot, so iteration N+1 has an
+# injector waiting for it without any manual step.
+#
+# Scope needed is the same as before: write to the host kernel ring buffer via
+# nsenter -t 1, which is what the serial console exports and therefore what Cloud
+# Logging, the log-based alert and GKE's health signals all read. hostPID is what makes
+# nsenter into PID 1 possible.
+#
+# It only sleeps. Nothing happens until `inject48.sh` execs into it.
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: xid-inject-run8
+  labels:
+    app: xid-inject-run8
+spec:
+  selector:
+    matchLabels:
+      app: xid-inject-run8
+  template:
+    metadata:
+      labels:
+        app: xid-inject-run8
+    spec:
+      nodeSelector:
+        kubernetes.io/hostname: gke-ikwak-reliabilit-a4-highgpu-8g-a4-0256e2f1-34t3
+      hostPID: true
+      tolerations:
+        - operator: Exists          # nvidia GPU taint, plus any maintenance/reboot taints
+                                    # the node picks up during the run
+      containers:
+        - name: inject
+          image: busybox
+          command: ["sleep", "infinity"]
+          securityContext:
+            privileged: true
+          volumeMounts:
+            - name: dev
+              mountPath: /hostdev
+      volumes:
+        - name: dev
+          hostPath:
+            path: /dev

@@ -1,0 +1,10 @@
+01:33:23 ray-cluster-kuberay-head-ccp9h=0/2/ContainerCreating ray-cluster-kuberay-worker-grp-0-worker-jzhhn=0/2/Init:1/2 ray-cluster-kuberay-worker-grp-0-worker-mz6nf=0/2/Init:1/2 
+01:33:59 ray-cluster-kuberay-head-ccp9h=0/2/ContainerCreating ray-cluster-kuberay-worker-grp-0-worker-jzhhn=0/2/Init:1/2 ray-cluster-kuberay-worker-grp-0-worker-mz6nf=0/2/Init:1/2 
+01:34:36 ray-cluster-kuberay-head-ccp9h=0/2/ContainerCreating ray-cluster-kuberay-worker-grp-0-worker-jzhhn=0/2/Init:1/2 ray-cluster-kuberay-worker-grp-0-worker-mz6nf=0/2/Init:1/2 
+01:35:13 ray-cluster-kuberay-head-ccp9h=2/2/Running ray-cluster-kuberay-worker-grp-0-worker-jzhhn=0/2/Init:1/2 ray-cluster-kuberay-worker-grp-0-worker-mz6nf=0/2/Init:1/2 
+01:35:49 ray-cluster-kuberay-head-ccp9h=2/2/Running ray-cluster-kuberay-worker-grp-0-worker-jzhhn=0/2/Init:1/2 ray-cluster-kuberay-worker-grp-0-worker-mz6nf=0/2/Init:1/2 
+01:36:26 ray-cluster-kuberay-head-ccp9h=2/2/Running ray-cluster-kuberay-worker-grp-0-worker-jzhhn=0/2/Init:1/2 ray-cluster-kuberay-worker-grp-0-worker-mz6nf=0/2/Init:1/2 
+01:37:02 ray-cluster-kuberay-head-ccp9h=2/2/Running ray-cluster-kuberay-worker-grp-0-worker-jzhhn=0/2/Init:1/2 ray-cluster-kuberay-worker-grp-0-worker-mz6nf=0/2/Init:1/2 
+01:37:39 ray-cluster-kuberay-head-ccp9h=2/2/Running ray-cluster-kuberay-worker-grp-0-worker-jzhhn=0/2/PodInitializing ray-cluster-kuberay-worker-grp-0-worker-mz6nf=0/2/Init:1/2 
+01:38:15 ray-cluster-kuberay-head-ccp9h=2/2/Running ray-cluster-kuberay-worker-grp-0-worker-jzhhn=2/2/Running ray-cluster-kuberay-worker-grp-0-worker-mz6nf=2/2/Running 
+01:38:15 ALL 3 PODS READY

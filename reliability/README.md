@@ -46,11 +46,17 @@ Across our experiments on `DAPOMath17K` (17,000 diverse math reasoning problems)
 
 ```text
 ├── README.md                           # This documentation and usage guide
+├── fault-injection-runs/               # Xid fault-injection + maintenance timing runs 1-11 (start at HANDOFF.md)
 └── gemma3-27b-it/
     ├── values.yaml                     # Kuberay Helm chart (1500Gi RAM, 500Gi /dev/shm, nemo-rl:v0.6.0, RDMA gIB)
     ├── dapo-gemma3-27b-it-2n8g-fsdp2-automodel.yaml  # 2D Tensor/FSDP2 recipe for Gemma 3 27B IT
     └── submit_gemma3-27b-it.sh         # Automated workstation submission orchestrator
 ```
+
+Reliability / goodput measurements (Xid injection, GCE maintenance and repair timing, end-to-end
+recovery) live in [`fault-injection-runs/`](./fault-injection-runs/HANDOFF.md). Latest: a genuine
+Xid 79 (PCIe secondary bus reset) went from fault to training stepping again in **1 h 18 m 18 s**;
+host repair from label to node Ready took **35 m 25 s**.
 
 ---
 
