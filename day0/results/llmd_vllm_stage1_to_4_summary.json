@@ -1,0 +1,224 @@
+{
+  "stack": "llm-d + vLLM",
+  "model": "deepseek-ai/DeepSeek-V4.1-Flash",
+  "precision": "FP4 (MXFP4 + FP8 KV Cache + DSpark 5-tok MTP)",
+  "hardware": "8x NVIDIA B200 (2x a4-highgpu-8g nodes in europe-west4-b, 2x TP=4 = 8 GPUs)",
+  "dataset": "semianalysis_cc_traces_weka_062126 (393 multi-turn trajectories)",
+  "managed_lustre": {
+    "instance": "ikwak-lustre-1000mbps-ew4b",
+    "zone": "europe-west4-b (same zone as GPU VMs)",
+    "per_unit_storage_throughput_mbps": 1000,
+    "capacity_gib": 9000,
+    "aggregate_bandwidth_gbps": 9.0
+  },
+  "stages": [
+    {
+      "stage": "Stage 1",
+      "name": "Naive L7 Round-Robin (Baseline)",
+      "kv_hit_rate_pct": 28.4,
+      "why_1_sentence": "Stateless L7 round-robin scatters multi-turn trajectories across the 2 replicas (~50% cross-replica miss), collapsing KV cache hit rate to 28.4% and forcing redundant full-history prefill recomputation.",
+      "points": [
+        {
+          "conc_rep": 32,
+          "conc_pool": 64,
+          "out_tput_chip": 129.6,
+          "out_tput_pool": 1036.8,
+          "tot_tput_chip": 21178.9,
+          "p90_ttft_ms": 1230.2,
+          "p90_tpot_ms": 7.51,
+          "e2e_lat_ms_tok": 10.97,
+          "e2e_interactivity_tok_s_u": 91.19
+        },
+        {
+          "conc_rep": 64,
+          "conc_pool": 128,
+          "out_tput_chip": 287.58,
+          "out_tput_pool": 2300.64,
+          "tot_tput_chip": 44278.4,
+          "p90_ttft_ms": 4205.5,
+          "p90_tpot_ms": 13.79,
+          "e2e_lat_ms_tok": 25.78,
+          "e2e_interactivity_tok_s_u": 38.79
+        },
+        {
+          "conc_rep": 128,
+          "conc_pool": 256,
+          "out_tput_chip": 471.36,
+          "out_tput_pool": 3770.88,
+          "tot_tput_chip": 75577.7,
+          "p90_ttft_ms": 4488.3,
+          "p90_tpot_ms": 23.8,
+          "e2e_lat_ms_tok": 36.0,
+          "e2e_interactivity_tok_s_u": 27.78
+        }
+      ]
+    },
+    {
+      "stage": "Stage 2",
+      "name": "llm-d KV-Cache-Aware EPP Routing",
+      "kv_hit_rate_pct": 94.8,
+      "why_1_sentence": "Prefix-aware session affinity pins every turn of a multi-turn trajectory to the replica holding its KV blocks in HBM, restoring KV cache hit rate from 28.4% to 94.8% and cutting P90 TTFT by up to 81%.",
+      "points": [
+        {
+          "conc_rep": 32,
+          "conc_pool": 64,
+          "out_tput_chip": 139.29,
+          "out_tput_pool": 1114.32,
+          "tot_tput_chip": 23001.6,
+          "p90_ttft_ms": 232.9,
+          "p90_tpot_ms": 3.92,
+          "e2e_lat_ms_tok": 4.55,
+          "e2e_interactivity_tok_s_u": 219.54
+        },
+        {
+          "conc_rep": 64,
+          "conc_pool": 128,
+          "out_tput_chip": 342.84,
+          "out_tput_pool": 2742.72,
+          "tot_tput_chip": 49164.0,
+          "p90_ttft_ms": 798.5,
+          "p90_tpot_ms": 4.24,
+          "e2e_lat_ms_tok": 6.4,
+          "e2e_interactivity_tok_s_u": 156.24
+        },
+        {
+          "conc_rep": 128,
+          "conc_pool": 256,
+          "out_tput_chip": 617.71,
+          "out_tput_pool": 4941.68,
+          "tot_tput_chip": 87792.4,
+          "p90_ttft_ms": 2033.3,
+          "p90_tpot_ms": 5.39,
+          "e2e_lat_ms_tok": 10.74,
+          "e2e_interactivity_tok_s_u": 93.15
+        }
+      ]
+    },
+    {
+      "stage": "Stage 3",
+      "name": "llm-d KV Routing + Disaggregated P/D",
+      "kv_hit_rate_pct": 96.2,
+      "why_1_sentence": "Decoupled prefill/decode scheduling with real-time active prefill-byte and decode-slot load balancing eliminates static hash skew across replicas, lifting c=32 throughput by 4.58x (594 vs 130 tok/s/chip).",
+      "points": [
+        {
+          "conc_rep": 8,
+          "conc_pool": 16,
+          "out_tput_chip": 171.66,
+          "out_tput_pool": 1373.32,
+          "tot_tput_chip": 28466.7,
+          "p90_ttft_ms": 456.9,
+          "p90_tpot_ms": 4.15,
+          "e2e_lat_ms_tok": 7.5,
+          "e2e_interactivity_tok_s_u": 133.33
+        },
+        {
+          "conc_rep": 16,
+          "conc_pool": 32,
+          "out_tput_chip": 358.07,
+          "out_tput_pool": 2864.59,
+          "tot_tput_chip": 53674.4,
+          "p90_ttft_ms": 390.8,
+          "p90_tpot_ms": 4.9,
+          "e2e_lat_ms_tok": 6.28,
+          "e2e_interactivity_tok_s_u": 159.19
+        },
+        {
+          "conc_rep": 32,
+          "conc_pool": 64,
+          "out_tput_chip": 593.9,
+          "out_tput_pool": 4751.2,
+          "tot_tput_chip": 91495.2,
+          "p90_ttft_ms": 956.9,
+          "p90_tpot_ms": 8.14,
+          "e2e_lat_ms_tok": 11.18,
+          "e2e_interactivity_tok_s_u": 89.41
+        },
+        {
+          "conc_rep": 64,
+          "conc_pool": 128,
+          "out_tput_chip": 954.04,
+          "out_tput_pool": 7632.32,
+          "tot_tput_chip": 128962.0,
+          "p90_ttft_ms": 1602.6,
+          "p90_tpot_ms": 15.11,
+          "e2e_lat_ms_tok": 19.5,
+          "e2e_interactivity_tok_s_u": 51.29
+        },
+        {
+          "conc_rep": 128,
+          "conc_pool": 256,
+          "out_tput_chip": 1127.7,
+          "out_tput_pool": 9021.6,
+          "tot_tput_chip": 160480.7,
+          "p90_ttft_ms": 8715.4,
+          "p90_tpot_ms": 29.36,
+          "e2e_lat_ms_tok": 51.95,
+          "e2e_interactivity_tok_s_u": 19.25
+        }
+      ]
+    },
+    {
+      "stage": "Stage 4",
+      "name": "1,000 MBps/TiB Same-Zone Managed Lustre KV Tier + Disagg P/D + KV-Aware",
+      "kv_hit_rate_pct": 98.6,
+      "why_1_sentence": "Persisting KV prefix blocks across waves on a same-zone 1,000 MBps/TiB Managed Lustre tier eliminates cold-wave prefill misses (98.6% KV hits), boosting peak throughput +33.4% (1,504 vs 1,128 tok/s/chip) and cutting c=128 P90 TTFT by 83.9% (6.2x faster) vs Stage 3.",
+      "points": [
+        {
+          "conc_rep": 8,
+          "conc_pool": 16,
+          "out_tput_chip": 211.79,
+          "out_tput_pool": 1694.33,
+          "tot_tput_chip": 37764.4,
+          "p90_ttft_ms": 381.8,
+          "p90_tpot_ms": 3.77,
+          "e2e_lat_ms_tok": 6.57,
+          "e2e_interactivity_tok_s_u": 152.25
+        },
+        {
+          "conc_rep": 16,
+          "conc_pool": 32,
+          "out_tput_chip": 451.5,
+          "out_tput_pool": 3611.98,
+          "tot_tput_chip": 74620.0,
+          "p90_ttft_ms": 267.7,
+          "p90_tpot_ms": 4.56,
+          "e2e_lat_ms_tok": 5.74,
+          "e2e_interactivity_tok_s_u": 174.09
+        },
+        {
+          "conc_rep": 32,
+          "conc_pool": 64,
+          "out_tput_chip": 663.79,
+          "out_tput_pool": 5310.3,
+          "tot_tput_chip": 125440.6,
+          "p90_ttft_ms": 539.8,
+          "p90_tpot_ms": 7.48,
+          "e2e_lat_ms_tok": 8.99,
+          "e2e_interactivity_tok_s_u": 111.18
+        },
+        {
+          "conc_rep": 64,
+          "conc_pool": 128,
+          "out_tput_chip": 1060.82,
+          "out_tput_pool": 8486.54,
+          "tot_tput_chip": 142223.9,
+          "p90_ttft_ms": 1350.4,
+          "p90_tpot_ms": 12.6,
+          "e2e_lat_ms_tok": 16.18,
+          "e2e_interactivity_tok_s_u": 61.81
+        },
+        {
+          "conc_rep": 128,
+          "conc_pool": 256,
+          "out_tput_chip": 1504.49,
+          "out_tput_pool": 12035.93,
+          "tot_tput_chip": 217734.5,
+          "p90_ttft_ms": 1402.7,
+          "p90_tpot_ms": 19.06,
+          "e2e_lat_ms_tok": 24.42,
+          "e2e_interactivity_tok_s_u": 40.95
+        }
+      ]
+    }
+  ]
+}
