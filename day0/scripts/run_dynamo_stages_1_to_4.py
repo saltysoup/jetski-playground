@@ -126,10 +126,13 @@ def run_aiperf(tag, stage, conc, duration=30):
 def main():
     wait_for_backends()
 
-    # Stage 4 c=16 on the warm RadixCache (c=32, 64, 128 warm runs are already saved)
-    run_aiperf("dynamo_stage4_1000mbps_c16", stage=4, conc=16, duration=30)
-    for c in [32, 64, 128]:
-        summarize_result(f"dynamo_stage4_1000mbps_c{c}", f"/aiperf-env/results/dynamo_stage4_1000mbps_c{c}")
+    # Incremental hydration so both w1 and w2 have all 128 trajectory lanes warm in RadixCache
+    run_aiperf("dynamo_hydrate_c64", stage=4, conc=64, duration=10)
+    run_aiperf("dynamo_hydrate_c128", stage=4, conc=128, duration=15)
+
+    # Stage 4: 1,000 MBps/TiB Same-Zone Managed Lustre KV Tier + Disagg P/D + KV-Aware
+    for c in [16, 32, 64, 128]:
+        run_aiperf(f"dynamo_stage4_1000mbps_c{c}", stage=4, conc=c, duration=30)
 
     # Stage 3: NVIDIA Dynamo Disaggregated P/D + Real-Time Active-Load Balancing (HBM-only per-wave)
     for c in [16, 32, 64, 128]:
@@ -143,7 +146,7 @@ def main():
     for c in [32, 64, 128]:
         run_aiperf(f"dynamo_stage1_naive_rr_c{c}", stage=1, conc=c, duration=30)
 
-    print("\nALL DYNAMO + SGLANG STAGES 1 TO 4 COMPLETED SUCCESSFULLY!", flush=True)
+    print("\nALL UPGRADED DYNAMO + SGLANG STAGES 1 TO 4 COMPLETED SUCCESSFULLY!", flush=True)
 
 
 if __name__ == "__main__":

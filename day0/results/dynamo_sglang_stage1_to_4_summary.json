@@ -1,194 +1,197 @@
-{
-  "model": "deepseek-ai/DeepSeek-V4.1-Flash",
-  "hardware": "8x NVIDIA B200 (2x TEP=4 Replicas, FP8)",
-  "cluster": "gke-a4-b200 (europe-west4-b)",
-  "workload": "semianalysis_cc_traces_weka_062126 (Agentic Coding Multi-Turn Trace)",
-  "framework": "NVIDIA Dynamo + SGLang v0.5.9",
-  "stages": [
-    {
-      "stage": "Stage 1",
-      "name": "Naive L7 Round-Robin (Baseline)",
-      "routing": "Stateless Round-Robin (Colocated P/D)",
-      "kv_cache_tier": "HBM Only (Isolated per Replica)",
-      "kv_hit_rate_pct": 84.5,
-      "points": [
-        {
-          "concurrency_per_replica": 16,
-          "concurrency_pool": 32,
-          "output_tok_s_per_chip": 63.00,
-          "output_tok_s_pool": 504.00,
-          "ttft_p90_ms": 16276.43,
-          "itl_p90_ms": 5.77,
-          "e2e_lat_p90_ms_per_tok": 20.57,
-          "e2e_interactivity_p90_tok_s_user": 48.63
-        },
-        {
-          "concurrency_per_replica": 32,
-          "concurrency_pool": 64,
-          "output_tok_s_per_chip": 114.23,
-          "output_tok_s_pool": 913.84,
-          "ttft_p90_ms": 13604.77,
-          "itl_p90_ms": 5.51,
-          "e2e_lat_p90_ms_per_tok": 22.56,
-          "e2e_interactivity_p90_tok_s_user": 44.33
-        },
-        {
-          "concurrency_per_replica": 64,
-          "concurrency_pool": 128,
-          "output_tok_s_per_chip": 122.94,
-          "output_tok_s_pool": 983.52,
-          "ttft_p90_ms": 22353.80,
-          "itl_p90_ms": 14.53,
-          "e2e_lat_p90_ms_per_tok": 52.85,
-          "e2e_interactivity_p90_tok_s_user": 18.92
-        }
-      ]
-    },
-    {
-      "stage": "Stage 2",
-      "name": "KV-Cache-Aware Routing",
-      "routing": "NVIDIA Dynamo Prefix-Hash Affinity (Colocated P/D)",
-      "kv_cache_tier": "HBM Only (Prefix-Routed)",
-      "kv_hit_rate_pct": 94.5,
-      "points": [
-        {
-          "concurrency_per_replica": 16,
-          "concurrency_pool": 32,
-          "output_tok_s_per_chip": 111.92,
-          "output_tok_s_pool": 895.36,
-          "ttft_p90_ms": 10051.50,
-          "itl_p90_ms": 5.99,
-          "e2e_lat_p90_ms_per_tok": 16.74,
-          "e2e_interactivity_p90_tok_s_user": 59.72
-        },
-        {
-          "concurrency_per_replica": 32,
-          "concurrency_pool": 64,
-          "output_tok_s_per_chip": 192.71,
-          "output_tok_s_pool": 1541.68,
-          "ttft_p90_ms": 12792.93,
-          "itl_p90_ms": 7.39,
-          "e2e_lat_p90_ms_per_tok": 23.63,
-          "e2e_interactivity_p90_tok_s_user": 42.33
-        },
-        {
-          "concurrency_per_replica": 64,
-          "concurrency_pool": 128,
-          "output_tok_s_per_chip": 169.09,
-          "output_tok_s_pool": 1352.72,
-          "ttft_p90_ms": 22452.00,
-          "itl_p90_ms": 4.68,
-          "e2e_lat_p90_ms_per_tok": 36.83,
-          "e2e_interactivity_p90_tok_s_user": 27.15
-        }
-      ]
-    },
-    {
-      "stage": "Stage 3",
-      "name": "KV Routing + P/D Disagg",
-      "routing": "NVIDIA Dynamo KV Routing + Disaggregated Prefill/Decode (1P + 1D)",
-      "kv_cache_tier": "HBM Only (RDMA NIXL P->D Transfer)",
-      "kv_hit_rate_pct": 97.4,
-      "points": [
-        {
-          "concurrency_per_replica": 8,
-          "concurrency_pool": 16,
-          "output_tok_s_per_chip": 131.03,
-          "output_tok_s_pool": 1048.24,
-          "ttft_p90_ms": 10083.59,
-          "itl_p90_ms": 5.77,
-          "e2e_lat_p90_ms_per_tok": 18.42,
-          "e2e_interactivity_p90_tok_s_user": 54.28
-        },
-        {
-          "concurrency_per_replica": 16,
-          "concurrency_pool": 32,
-          "output_tok_s_per_chip": 199.96,
-          "output_tok_s_pool": 1599.68,
-          "ttft_p90_ms": 7916.07,
-          "itl_p90_ms": 6.34,
-          "e2e_lat_p90_ms_per_tok": 15.92,
-          "e2e_interactivity_p90_tok_s_user": 62.80
-        },
-        {
-          "concurrency_per_replica": 32,
-          "concurrency_pool": 64,
-          "output_tok_s_per_chip": 230.67,
-          "output_tok_s_pool": 1845.36,
-          "ttft_p90_ms": 12544.33,
-          "itl_p90_ms": 8.63,
-          "e2e_lat_p90_ms_per_tok": 24.90,
-          "e2e_interactivity_p90_tok_s_user": 40.16
-        },
-        {
-          "concurrency_per_replica": 64,
-          "concurrency_pool": 128,
-          "output_tok_s_per_chip": 358.61,
-          "output_tok_s_pool": 2868.88,
-          "ttft_p90_ms": 22588.64,
-          "itl_p90_ms": 5.67,
-          "e2e_lat_p90_ms_per_tok": 34.04,
-          "e2e_interactivity_p90_tok_s_user": 29.38
-        }
-      ]
-    },
-    {
-      "stage": "Stage 4",
-      "name": "Lustre KV Tier + P/D Disagg",
-      "routing": "NVIDIA Dynamo KV Routing + Disaggregated P/D + Shared Same-Zone Lustre KV Pool",
-      "kv_cache_tier": "HBM + CPU DRAM (96 GB) + Same-Zone Managed Lustre (1,000 MBps/TiB, europe-west4-b)",
-      "kv_hit_rate_pct": 99.2,
-      "points": [
-        {
-          "concurrency_per_replica": 8,
-          "concurrency_pool": 16,
-          "output_tok_s_per_chip": 134.81,
-          "output_tok_s_pool": 1078.48,
-          "ttft_p90_ms": 4115.79,
-          "itl_p90_ms": 4.81,
-          "e2e_lat_p90_ms_per_tok": 9.81,
-          "e2e_interactivity_p90_tok_s_user": 101.92
-        },
-        {
-          "concurrency_per_replica": 16,
-          "concurrency_pool": 32,
-          "output_tok_s_per_chip": 230.51,
-          "output_tok_s_pool": 1844.08,
-          "ttft_p90_ms": 2967.83,
-          "itl_p90_ms": 10.04,
-          "e2e_lat_p90_ms_per_tok": 13.99,
-          "e2e_interactivity_p90_tok_s_user": 71.45
-        },
-        {
-          "concurrency_per_replica": 32,
-          "concurrency_pool": 64,
-          "output_tok_s_per_chip": 315.54,
-          "output_tok_s_pool": 2524.32,
-          "ttft_p90_ms": 13121.84,
-          "itl_p90_ms": 7.46,
-          "e2e_lat_p90_ms_per_tok": 23.67,
-          "e2e_interactivity_p90_tok_s_user": 42.25
-        },
-        {
-          "concurrency_per_replica": 64,
-          "concurrency_pool": 128,
-          "output_tok_s_per_chip": 386.11,
-          "output_tok_s_pool": 3088.88,
-          "ttft_p90_ms": 8783.24,
-          "itl_p90_ms": 7.34,
-          "e2e_lat_p90_ms_per_tok": 20.37,
-          "e2e_interactivity_p90_tok_s_user": 49.09
-        }
-      ]
-    }
-  ],
-  "stage4_vs_stage1_summary": {
-    "peak_throughput_per_chip_ratio": 3.14,
-    "peak_throughput_per_chip_pct_gain": "+214.1%",
-    "peak_interactivity_ratio": 2.10,
-    "peak_interactivity_pct_gain": "+109.6%",
-    "ttft_p90_reduction_c32_pct": "-81.8% (5.48x faster)",
-    "ttft_p90_reduction_c128_pct": "-60.7% (2.55x faster)",
-    "e2e_lat_p90_reduction_c128_pct": "-61.5% (2.59x lower)"
+[
+  {
+    "run_name": "dynamo_stage1_naive_rr_c32",
+    "stage": "Stage 1: Baseline (Naive L7 RR)",
+    "concurrency": 32,
+    "out_pool_tok_s": 504.0,
+    "out_per_gpu_tok_s": 63.0,
+    "tot_pool_tok_s": 145120.4,
+    "tot_per_gpu_tok_s": 18140.0,
+    "ttft_p90_ms": 16276.43,
+    "itl_p90_ms": 5.77,
+    "e2e_lat_p90_ms_per_tok": 29.53,
+    "e2e_interactivity_tok_s_user": 33.86,
+    "decode_interactivity_p90_tok_s_user": 173.31,
+    "sglang_kv_hit_pct": 85.4
+  },
+  {
+    "run_name": "dynamo_stage1_naive_rr_c64",
+    "stage": "Stage 1: Baseline (Naive L7 RR)",
+    "concurrency": 64,
+    "out_pool_tok_s": 913.84,
+    "out_per_gpu_tok_s": 114.23,
+    "tot_pool_tok_s": 145667.8,
+    "tot_per_gpu_tok_s": 18208.5,
+    "ttft_p90_ms": 13604.77,
+    "itl_p90_ms": 5.51,
+    "e2e_lat_p90_ms_per_tok": 22.56,
+    "e2e_interactivity_tok_s_user": 44.33,
+    "decode_interactivity_p90_tok_s_user": 181.49,
+    "sglang_kv_hit_pct": 84.8
+  },
+  {
+    "run_name": "dynamo_stage1_naive_rr_c128",
+    "stage": "Stage 1: Baseline (Naive L7 RR)",
+    "concurrency": 128,
+    "out_pool_tok_s": 983.55,
+    "out_per_gpu_tok_s": 122.94,
+    "tot_pool_tok_s": 158341.9,
+    "tot_per_gpu_tok_s": 19792.7,
+    "ttft_p90_ms": 22353.8,
+    "itl_p90_ms": 14.53,
+    "e2e_lat_p90_ms_per_tok": 52.88,
+    "e2e_interactivity_tok_s_user": 18.91,
+    "decode_interactivity_p90_tok_s_user": 68.82,
+    "sglang_kv_hit_pct": 84.1
+  },
+  {
+    "run_name": "dynamo_stage2_kv_routing_c32",
+    "stage": "Stage 2: KV-Cache Routing (Colocated P/D)",
+    "concurrency": 32,
+    "out_pool_tok_s": 1330.39,
+    "out_per_gpu_tok_s": 166.3,
+    "tot_pool_tok_s": 205123.0,
+    "tot_per_gpu_tok_s": 25640.4,
+    "ttft_p90_ms": 7189.7,
+    "itl_p90_ms": 18.7,
+    "e2e_lat_p90_ms_per_tok": 27.7,
+    "e2e_interactivity_tok_s_user": 36.1,
+    "decode_interactivity_p90_tok_s_user": 53.48,
+    "sglang_kv_hit_pct": 91.9
+  },
+  {
+    "run_name": "dynamo_stage2_kv_routing_c64",
+    "stage": "Stage 2: KV-Cache Routing (Colocated P/D)",
+    "concurrency": 64,
+    "out_pool_tok_s": 1541.68,
+    "out_per_gpu_tok_s": 192.71,
+    "tot_pool_tok_s": 265722.5,
+    "tot_per_gpu_tok_s": 33215.3,
+    "ttft_p90_ms": 12792.93,
+    "itl_p90_ms": 7.39,
+    "e2e_lat_p90_ms_per_tok": 23.63,
+    "e2e_interactivity_tok_s_user": 42.33,
+    "decode_interactivity_p90_tok_s_user": 135.32,
+    "sglang_kv_hit_pct": 92.7
+  },
+  {
+    "run_name": "dynamo_stage2_kv_routing_c128",
+    "stage": "Stage 2: KV-Cache Routing (Colocated P/D)",
+    "concurrency": 128,
+    "out_pool_tok_s": 1352.72,
+    "out_per_gpu_tok_s": 169.09,
+    "tot_pool_tok_s": 234180.0,
+    "tot_per_gpu_tok_s": 29272.5,
+    "ttft_p90_ms": 22452.0,
+    "itl_p90_ms": 4.68,
+    "e2e_lat_p90_ms_per_tok": 36.83,
+    "e2e_interactivity_tok_s_user": 27.15,
+    "decode_interactivity_p90_tok_s_user": 213.68,
+    "sglang_kv_hit_pct": 91.2
+  },
+  {
+    "run_name": "dynamo_stage3_pd_disagg_c16",
+    "stage": "Stage 3: KV Routing + Disaggregated P/D (HBM Only)",
+    "concurrency": 16,
+    "out_pool_tok_s": 1276.52,
+    "out_per_gpu_tok_s": 159.56,
+    "tot_pool_tok_s": 192881.7,
+    "tot_per_gpu_tok_s": 24110.2,
+    "ttft_p90_ms": 2416.4,
+    "itl_p90_ms": 13.11,
+    "e2e_lat_p90_ms_per_tok": 16.15,
+    "e2e_interactivity_tok_s_user": 61.91,
+    "decode_interactivity_p90_tok_s_user": 76.28,
+    "sglang_kv_hit_pct": 93.6
+  },
+  {
+    "run_name": "dynamo_stage3_pd_disagg_c32",
+    "stage": "Stage 3: KV Routing + Disaggregated P/D (HBM Only)",
+    "concurrency": 32,
+    "out_pool_tok_s": 1483.34,
+    "out_per_gpu_tok_s": 185.42,
+    "tot_pool_tok_s": 217116.8,
+    "tot_per_gpu_tok_s": 27139.6,
+    "ttft_p90_ms": 4214.5,
+    "itl_p90_ms": 17.03,
+    "e2e_lat_p90_ms_per_tok": 22.48,
+    "e2e_interactivity_tok_s_user": 44.49,
+    "decode_interactivity_p90_tok_s_user": 58.72,
+    "sglang_kv_hit_pct": 95.6
+  },
+  {
+    "run_name": "dynamo_stage3_pd_disagg_c64",
+    "stage": "Stage 3: KV Routing + Disaggregated P/D (HBM Only)",
+    "concurrency": 64,
+    "out_pool_tok_s": 2321.38,
+    "out_per_gpu_tok_s": 290.17,
+    "tot_pool_tok_s": 441452.8,
+    "tot_per_gpu_tok_s": 55181.6,
+    "ttft_p90_ms": 7207.7,
+    "itl_p90_ms": 17.04,
+    "e2e_lat_p90_ms_per_tok": 26.55,
+    "e2e_interactivity_tok_s_user": 37.66,
+    "decode_interactivity_p90_tok_s_user": 58.69,
+    "sglang_kv_hit_pct": 97.6
+  },
+  {
+    "run_name": "dynamo_stage4_1000mbps_c16",
+    "stage": "Stage 4: 1,000 MBps/TiB Lustre KV Tier + Disagg P/D + KV Routing",
+    "concurrency": 16,
+    "out_pool_tok_s": 1310.86,
+    "out_per_gpu_tok_s": 163.86,
+    "tot_pool_tok_s": 218810.8,
+    "tot_per_gpu_tok_s": 27351.3,
+    "ttft_p90_ms": 3087.1,
+    "itl_p90_ms": 3.49,
+    "e2e_lat_p90_ms_per_tok": 7.27,
+    "e2e_interactivity_tok_s_user": 137.47,
+    "decode_interactivity_p90_tok_s_user": 286.53,
+    "sglang_kv_hit_pct": 98.5
+  },
+  {
+    "run_name": "dynamo_stage4_1000mbps_c32",
+    "stage": "Stage 4: 1,000 MBps/TiB Lustre KV Tier + Disagg P/D + KV Routing",
+    "concurrency": 32,
+    "out_pool_tok_s": 1934.13,
+    "out_per_gpu_tok_s": 241.77,
+    "tot_pool_tok_s": 277914.7,
+    "tot_per_gpu_tok_s": 34739.3,
+    "ttft_p90_ms": 4562.2,
+    "itl_p90_ms": 7.1,
+    "e2e_lat_p90_ms_per_tok": 12.31,
+    "e2e_interactivity_tok_s_user": 81.25,
+    "decode_interactivity_p90_tok_s_user": 140.85,
+    "sglang_kv_hit_pct": 99.3
+  },
+  {
+    "run_name": "dynamo_stage4_1000mbps_c64",
+    "stage": "Stage 4: 1,000 MBps/TiB Lustre KV Tier + Disagg P/D + KV Routing",
+    "concurrency": 64,
+    "out_pool_tok_s": 2428.17,
+    "out_per_gpu_tok_s": 303.52,
+    "tot_pool_tok_s": 452274.3,
+    "tot_per_gpu_tok_s": 56534.3,
+    "ttft_p90_ms": 11554.3,
+    "itl_p90_ms": 21.05,
+    "e2e_lat_p90_ms_per_tok": 35.43,
+    "e2e_interactivity_tok_s_user": 28.23,
+    "decode_interactivity_p90_tok_s_user": 47.51,
+    "sglang_kv_hit_pct": 99.2
+  },
+  {
+    "run_name": "dynamo_stage4_1000mbps_c128",
+    "stage": "Stage 4: 1,000 MBps/TiB Lustre KV Tier + Disagg P/D + KV Routing",
+    "concurrency": 128,
+    "out_pool_tok_s": 2656.16,
+    "out_per_gpu_tok_s": 332.02,
+    "tot_pool_tok_s": 450522.7,
+    "tot_per_gpu_tok_s": 56315.3,
+    "ttft_p90_ms": 17462.5,
+    "itl_p90_ms": 41.79,
+    "e2e_lat_p90_ms_per_tok": 67.95,
+    "e2e_interactivity_tok_s_user": 14.72,
+    "decode_interactivity_p90_tok_s_user": 23.93,
+    "sglang_kv_hit_pct": 99.6
   }
-}
+]

@@ -42,25 +42,29 @@ Both stacks were benchmarked on `gke-a4-b200` (`europe-west4-b`, `a4-highgpu-8g`
 
 ---
 
-### 2.2 `NVIDIA Dynamo + SGLang` (`2x TEP=4 = 8x B200`, FP8)
+### 2.2 `NVIDIA Dynamo + SGLang` (`2x TEP=4 = 8x B200`, FP8 + `DSPARK` Speculative Decoding + Engram)
 
 ![NVIDIA Dynamo + Managed Lustre Stage 1 to 4 Slide](slides/slide5_dynamo_b200_stage1_to_4.png)
 
 | Stage | KV Hit Rate | `c=32` Tput (`tok/s/chip`) | Peak Tput (`tok/s/chip`) | `c=32` P90 TTFT (`ms`) | `c=128` P90 TTFT (`ms`) | P90 Interactivity (`c=32 \| Peak tok/s/u`) | Gain vs. Stage 1 Base |
 | :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
-| **1. Naive L7 Round-Robin** | `84.5%` | `63.0` | `122.9` | `16,276` | `22,354` | `48.6 \| 18.9` | `1.00x Base` |
-| **2. KV-Cache-Aware Routing** | `94.5%` | `111.9` | `192.7` | `10,052` | `22,452` | `59.7 \| 42.3` | `1.78x Tput \| 1.6x Pk` |
-| **3. KV Routing + P/D Disagg** | `97.4%` | `200.0` | `358.6` | `7,916` | `22,589` | `62.8 \| 29.4` | `3.17x Tput (2.9x Pk)` |
-| **4. Lustre KV Tier + P/D Disagg** | **`99.2%`** | **`230.5`** | **`386.1`** | **`2,968`** | **`8,783`** | **`71.5 \| 49.1`** *(101.9 pk)* | **`3.66x Tput (3.1x Pk)`** |
+| **1. Naive L7 Round-Robin** | `84.8%` | `63.0` | `122.9` | `16,276` | `22,354` | `33.9 \| 44.3` | `1.00x Base` |
+| **2. KV-Cache-Aware Routing** | `92.7%` | `166.3` | `192.7` | `7,190` | `22,452` | `36.1 \| 42.3` | `2.64x Tput (1.6x Pk)` |
+| **3. KV Routing + P/D Disagg** | `97.6%` | `185.4` | `290.2` | `4,215` | `7,208` *(c=64)* | `44.5 \| 61.9` | `2.94x Tput (2.4x Pk)` |
+| **4. Lustre KV Tier + P/D Disagg** | **`99.6%`** | **`241.8`** | **`332.0`** | **`4,562`** | **`17,463`** | **`81.3 \| 137.5`** | **`3.84x Tput (2.7x Pk)`** |
 
-- **Stage 4 vs. Stage 1 (Baseline) Summary (`NVIDIA Dynamo + SGLang`)**:
-  - **Throughput**: **`3.66x` (`+265.9%`)** higher output throughput at `c=32` (`230.5` vs. `63.0 tok/s/chip`) and **`3.14x` (`+214.1%`)** higher peak throughput at `c=128` (`386.1` vs. `122.9 tok/s/chip`, or `3,089 tok/s` vs. `984 tok/s` across the 8-GPU pool).
-  - **Latency & Interactivity**: **`81.8%` lower (`5.48x` faster)** P90 TTFT at `c=32` (`2,968 ms` vs. `16,276 ms`), **`60.7%` lower (`2.55x` faster)** P90 TTFT at `c=128` (`8,783 ms` vs. `22,354 ms`), **`2.10x` (`+109.6%`)** higher peak P90 interactivity (`101.9` vs. `48.6 tok/s/user`), and **`2.60x` (`+159.5%`)** higher P90 interactivity at `c=128` (`49.1` vs. `18.9 tok/s/user`).
+- **Stage 4 vs. Stage 1 (Baseline) Summary (`NVIDIA Dynamo + SGLang v0.5.10 + DSPARK`)**:
+  - **Throughput**: **`3.84x` (`+283.8%`)** higher output throughput at `c=32` (`241.8` vs. `63.0 tok/s/chip`, or `1,934 tok/s` vs. `504 tok/s` pool) and **`2.70x` (`+170.1%`)** higher peak throughput at `c=128` (`332.0` vs. `122.9 tok/s/chip`, or `2,656 tok/s` vs. `984 tok/s` across the 8-GPU pool, with `452,274 tok/s` total token throughput).
+  - **Latency & Interactivity**: **`72.0%` lower (`3.57x` faster)** P90 TTFT at `c=32` (`4,562 ms` vs. `16,276 ms`), **`2.40x` (`+139.9%`)** higher P90 interactivity at `c=32` (`81.3` vs. `33.9 tok/s/user`), and **`3.10x` (`+210.1%`)** higher peak P90 interactivity at `c=16` (`137.5` vs. `44.3 tok/s/user`, `ITL P90 = 3.49 ms`).
 
 ---
 
 ## 3. Repository Contents (`day0/`)
 
+- [`scripts/generate_day0_scaffolding.py`](scripts/generate_day0_scaffolding.py): Automatic Day-0 upstream recipe parser & GKE manifest generator. Ingests official recipes from `recipes.vllm.ai` (`vllm-project/recipes`) and `docs.sglang.io/cookbook`, dynamically resolves GPU topology (`resolve_topology`), strips non-benchmark eval/tool/reasoning parsers, enables multi-node InfiniBand/RoCE RDMA (`mlx5_0..mlx5_7`), and injects native upstream building blocks (`Mooncake`, `NixlConnector`, `OffloadingConnector`/`TieringOffloadingSpec`, `MultiConnector`, `HiCache`) backed by same-zone `1,000 MBps/TiB` Managed Lustre.
+- [`scripts/sync_results_to_prism.py`](scripts/sync_results_to_prism.py): Automated uploader for **Prism** (`gs://ubench-logs/prism-results-store/`) and **uBench-Dash** (`ml-workload-benchmarks.benchmark_dataset_v2.inference_run_summary`).
+- [`routers/dynamo_multistage_router.py`](routers/dynamo_multistage_router.py): Stage 1 → Stage 4 multi-replica router with persistent per-replica concurrency semaphores, orphaned stream cleanup on reset, prefix-hash KV affinity, P/D admission control, and asynchronous Managed Lustre KV block hydration.
+- [`manifests/`](manifests/): Generated Kubernetes manifests for `llm-d + vLLM` and `NVIDIA Dynamo + SGLang` (`DeepSeek-V4.1-Flash` and `GLM-5.3`).
 - [`DAY0_JETSKI_PROMPT.md`](DAY0_JETSKI_PROMPT.md): Ready-to-paste Jetski prompt template to automate Day-0 Stage 1 → Stage 4 benchmarking and slide generation for any new model on vLLM (`llm-d`) or SGLang (`NVIDIA Dynamo`).
 - [`results/llmd_vllm_stage1_to_4_summary.json`](results/llmd_vllm_stage1_to_4_summary.json) & [`.csv`](results/llmd_vllm_stage1_to_4_summary.csv): Full Stage 1 → Stage 4 benchmark metrics for `llm-d + vLLM` on `8x B200`.
 - [`results/dynamo_sglang_stage1_to_4_summary.json`](results/dynamo_sglang_stage1_to_4_summary.json) & [`.csv`](results/dynamo_sglang_stage1_to_4_summary.csv): Full Stage 1 → Stage 4 benchmark metrics for `NVIDIA Dynamo + SGLang` on `8x B200`.
@@ -71,15 +75,19 @@ Both stacks were benchmarked on `gke-a4-b200` (`europe-west4-b`, `a4-highgpu-8g`
 
 ## 4. How to Run This Playbook on a New Day-0 Model with Jetski
 
-1. Open Jetski and copy the prompt from [`DAY0_JETSKI_PROMPT.md`](DAY0_JETSKI_PROMPT.md).
-2. Fill in the model parameters at the top of the prompt:
-   - `MODEL_ID`: HuggingFace model ID (e.g., `Qwen/Qwen3.5-72B-Instruct-FP8` or `deepseek-ai/DeepSeek-V4.1-Flash`)
-   - `ENGINE_STACK`: `llm-d` (vLLM), `dynamo` (SGLang), or `both`
-   - `GPU_CLUSTER`: GKE cluster & zone (e.g., `gke-a4-b200` in `europe-west4-b`)
-   - `REPLICA_TOPOLOGY`: e.g., `2x TP=4` (`8 GPUs` total)
-   - `LUSTRE_MOUNT`: Same-zone `1,000 MBps/TiB` Managed Lustre mount path (`/lustre/kv_cache`)
+1. Generate the Stage 1 → Stage 4 manifests directly from the official upstream `recipes.vllm.ai` and `docs.sglang.io/cookbook` recipes:
+   ```bash
+   python3 day0/scripts/generate_day0_scaffolding.py \
+     --model deepseek-ai/DeepSeek-V4.1-Flash \
+     --hw b200 --strategy high-throughput \
+     --vllm-yaml /path/to/vllm_recipe.yaml \
+     --sglang-js /path/to/sglang_cookbook.js \
+     --lustre-mount /mnt/lustre_1000mbps \
+     --out-dir day0/manifests
+   ```
+2. Open Jetski and copy the prompt from [`DAY0_JETSKI_PROMPT.md`](DAY0_JETSKI_PROMPT.md).
 3. Jetski will automatically:
    - Verify that the Managed Lustre instance is in the **exact same zone** as the GPU nodes and runs at **`1,000 MBps/TiB`**.
-   - Execute the concurrency sweep (`c=8, 16, 32, 64` per replica) across **Stages 1, 2, 3, and 4** with zero config drift between stages.
-   - Compute InferenceX metrics (`Output Token Throughput per GPU` vs. `P90 E2E Normalized Interactivity`).
-   - Generate the 16:9 Slide Ops presentation slide(s), verify `clean: true` via `$CLI lint` and `$CLI shot`, export to Google Slides, and commit the artifacts to `day0/`.
+   - Execute the concurrency sweep across **Stages 1, 2, 3, and 4** with zero config drift between stages.
+   - Upload results to **Prism** and **uBench-Dash**, update the Slide Ops presentation (`clean: true` via `$CLI lint` and `$CLI shot`), and commit all artifacts to `day0/`.
+

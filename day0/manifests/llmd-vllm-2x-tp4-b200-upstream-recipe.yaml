@@ -1,0 +1,251 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: llmd-vllm-w1
+  namespace: ubench-llmd
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: llmd-vllm-worker
+      replica: w1
+  template:
+    metadata:
+      annotations:
+        gke-gcsfuse/cpu-limit: "32"
+        gke-gcsfuse/ephemeral-storage-limit: 600Gi
+        gke-gcsfuse/memory-limit: 64Gi
+        gke-gcsfuse/volumes: "true"
+      labels:
+        app: llmd-vllm-worker
+        replica: w1
+    spec:
+      nodeSelector:
+        kubernetes.io/hostname: gke-ikwak-reliabilit-a4-highgpu-8g-a4-0256e2f1-34t3
+      serviceAccountName: workload-identity-k8s-sa
+      tolerations:
+      - operator: Exists
+      containers:
+      - name: vllm
+        image: vllm/vllm-openai:nightly-dev-x86_64-cu130-ac9126e58aa7
+        imagePullPolicy: IfNotPresent
+        securityContext:
+          capabilities:
+            add: ["IPC_LOCK", "SYS_RESOURCE"]
+        command: ["/bin/bash", "-c"]
+        env:
+        - name: NCCL_NET_PLUGIN
+          value: "none"
+        - name: NCCL_TUNER_PLUGIN
+          value: "none"
+        - name: NCCL_PROFILER_PLUGIN
+          value: "none"
+        - name: PYTHONHASHSEED
+          value: "0"
+        - name: UCX_NET_DEVICES
+          value: "all"
+        - name: NCCL_CUMEM_ENABLE
+          value: "1"
+        - name: VLLM_ENGINE_READY_TIMEOUT_S
+          value: "3600"
+        args:
+        - |
+          set -euo pipefail
+          ulimit -l unlimited || true
+          export VLLM_USE_V2_MODEL_RUNNER=1
+          export VLLM_USE_RUST_FRONTEND=1
+          export PYTHONUNBUFFERED=1
+          mkdir -p /mnt/lustre_1000mbps/vllm_kv_cache
+          echo "Starting Upgraded Upstream Recipe vLLM Worker w1 (TP=4, RDMA enabled)..."
+          exec vllm serve /gcs/deepseek-ai/DeepSeek-V4.1-Flash \
+            --served-model-name deepseek-ai/DeepSeek-V4.1-Flash \
+            --host 0.0.0.0 \
+            --port 8000 \
+            --tensor-parallel-size 4 \
+            --tokenizer-mode deepseek_v41 \
+            --attention-config '{"backend":"FLASHINFER_MLA_SPARSE_DSV41","indexer_kv_dtype":"mxfp4","indexer_sparse_logits":true}' \
+            --kv-cache-dtype fp8 \
+            --max-num-seqs 128 \
+            --engram-config '{"cpu_offload":true}' \
+            --language-model-only \
+            --speculative-config '{"method":"dspark","num_speculative_tokens":5,"draft_sample_method":"probabilistic","rejection_sample_method":"block","enable_adaptive_verification":true}'
+        ports:
+        - containerPort: 8000
+          name: http
+        resources:
+          limits:
+            nvidia.com/gpu: "4"
+          requests:
+            cpu: "64"
+            memory: 700Gi
+            nvidia.com/gpu: "4"
+        volumeMounts:
+        - mountPath: /gcs
+          name: gcs-model
+          readOnly: true
+        - mountPath: /mnt/lustre_1000mbps
+          name: lustre-tier
+        - mountPath: /dev/infiniband
+          name: dev-infiniband
+        - mountPath: /dev/shm
+          name: dshm
+      volumes:
+      - name: gcs-model
+        csi:
+          driver: gcsfuse.csi.storage.gke.io
+          volumeAttributes:
+            bucketName: ikwak-eu-stuff
+            mountOptions: implicit-dirs,max-conns-per-host=0,file-cache:max-size-mb:-1,file-cache:cache-file-for-range-read:true,file-cache:enable-parallel-downloads:true,file-cache:max-parallel-downloads:32,file-cache:download-chunk-size-mb:64
+      - name: lustre-tier
+        persistentVolumeClaim:
+          claimName: lustre-1000mbps-pvc
+      - name: dev-infiniband
+        hostPath:
+          path: /dev/infiniband
+          type: Directory
+      - name: dshm
+        emptyDir:
+          medium: Memory
+          sizeLimit: 256Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: llmd-vllm-w1
+  namespace: ubench-llmd
+spec:
+  selector:
+    app: llmd-vllm-worker
+    replica: w1
+  ports:
+  - name: http
+    port: 8000
+    targetPort: 8000
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: llmd-vllm-w2
+  namespace: ubench-llmd
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: llmd-vllm-worker
+      replica: w2
+  template:
+    metadata:
+      annotations:
+        gke-gcsfuse/cpu-limit: "32"
+        gke-gcsfuse/ephemeral-storage-limit: 600Gi
+        gke-gcsfuse/memory-limit: 64Gi
+        gke-gcsfuse/volumes: "true"
+      labels:
+        app: llmd-vllm-worker
+        replica: w2
+    spec:
+      nodeSelector:
+        kubernetes.io/hostname: gke-ikwak-reliabilit-a4-highgpu-8g-a4-0256e2f1-6df3
+      serviceAccountName: workload-identity-k8s-sa
+      tolerations:
+      - operator: Exists
+      containers:
+      - name: vllm
+        image: vllm/vllm-openai:nightly-dev-x86_64-cu130-ac9126e58aa7
+        imagePullPolicy: IfNotPresent
+        securityContext:
+          capabilities:
+            add: ["IPC_LOCK", "SYS_RESOURCE"]
+        command: ["/bin/bash", "-c"]
+        env:
+        - name: NCCL_NET_PLUGIN
+          value: "none"
+        - name: NCCL_TUNER_PLUGIN
+          value: "none"
+        - name: NCCL_PROFILER_PLUGIN
+          value: "none"
+        - name: PYTHONHASHSEED
+          value: "0"
+        - name: UCX_NET_DEVICES
+          value: "all"
+        - name: NCCL_CUMEM_ENABLE
+          value: "1"
+        - name: VLLM_ENGINE_READY_TIMEOUT_S
+          value: "3600"
+        args:
+        - |
+          set -euo pipefail
+          ulimit -l unlimited || true
+          export VLLM_USE_V2_MODEL_RUNNER=1
+          export VLLM_USE_RUST_FRONTEND=1
+          export PYTHONUNBUFFERED=1
+          mkdir -p /mnt/lustre_1000mbps/vllm_kv_cache
+          echo "Starting Upgraded Upstream Recipe vLLM Worker w2 (TP=4, RDMA enabled)..."
+          exec vllm serve /gcs/deepseek-ai/DeepSeek-V4.1-Flash \
+            --served-model-name deepseek-ai/DeepSeek-V4.1-Flash \
+            --host 0.0.0.0 \
+            --port 8000 \
+            --tensor-parallel-size 4 \
+            --tokenizer-mode deepseek_v41 \
+            --attention-config '{"backend":"FLASHINFER_MLA_SPARSE_DSV41","indexer_kv_dtype":"mxfp4","indexer_sparse_logits":true}' \
+            --kv-cache-dtype fp8 \
+            --max-num-seqs 128 \
+            --engram-config '{"cpu_offload":true}' \
+            --language-model-only \
+            --speculative-config '{"method":"dspark","num_speculative_tokens":5,"draft_sample_method":"probabilistic","rejection_sample_method":"block","enable_adaptive_verification":true}'
+        ports:
+        - containerPort: 8000
+          name: http
+        resources:
+          limits:
+            nvidia.com/gpu: "4"
+          requests:
+            cpu: "64"
+            memory: 700Gi
+            nvidia.com/gpu: "4"
+        volumeMounts:
+        - mountPath: /gcs
+          name: gcs-model
+          readOnly: true
+        - mountPath: /mnt/lustre_1000mbps
+          name: lustre-tier
+        - mountPath: /dev/infiniband
+          name: dev-infiniband
+        - mountPath: /dev/shm
+          name: dshm
+      volumes:
+      - name: gcs-model
+        csi:
+          driver: gcsfuse.csi.storage.gke.io
+          volumeAttributes:
+            bucketName: ikwak-eu-stuff
+            mountOptions: implicit-dirs,max-conns-per-host=0,file-cache:max-size-mb:-1,file-cache:cache-file-for-range-read:true,file-cache:enable-parallel-downloads:true,file-cache:max-parallel-downloads:32,file-cache:download-chunk-size-mb:64
+      - name: lustre-tier
+        persistentVolumeClaim:
+          claimName: lustre-1000mbps-pvc
+      - name: dev-infiniband
+        hostPath:
+          path: /dev/infiniband
+          type: Directory
+      - name: dshm
+        emptyDir:
+          medium: Memory
+          sizeLimit: 256Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: llmd-vllm-w2
+  namespace: ubench-llmd
+spec:
+  selector:
+    app: llmd-vllm-worker
+    replica: w2
+  ports:
+  - name: http
+    port: 8000
+    targetPort: 8000

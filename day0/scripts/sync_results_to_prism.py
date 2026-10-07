@@ -405,7 +405,7 @@ RUN_BUNDLES = [
             (4, 256, "/tmp/run0_results/stages/stage4_1000mbps_c256/profile_export_aiperf.json", "stage_4_c256/llmd_benchmark_report.json", 12035.93, 1402.7, 19.06, 24.42, 40.95, 98.6),
         ],
     },
-    # --- NVIDIA Dynamo + SGLang (2x TEP=4 = 8x B200, FP8) ---
+    # --- NVIDIA Dynamo + SGLang (2x TEP=4 = 8x B200, FP8 + DSPARK Speculative + Engram) ---
     {
         "run_uid": "ikwak-dynamo-stage1-naive-rr-2xTEP4",
         "run_label": "NVIDIA Dynamo Stage 1: Naive L7 Round-Robin (2x TEP=4 = 8x B200)",
@@ -420,9 +420,9 @@ RUN_BUNDLES = [
         "is_disagg": False,
         "stage_num": 1,
         "stages": [
-            (0, 32, "/tmp/run0_results/stages/dynamo_stage1_naive_rr_c32/profile_export_aiperf.json", "stage_0_c32/llmd_benchmark_report.json", 504.00, 16276.43, 5.77, 20.57, 48.63, 84.5),
-            (1, 64, "/tmp/run0_results/stages/dynamo_stage1_naive_rr_c64/profile_export_aiperf.json", "stage_1_c64/llmd_benchmark_report.json", 913.84, 13604.77, 5.51, 22.56, 44.33, 84.5),
-            (2, 128, "/tmp/run0_results/stages/dynamo_stage1_naive_rr_c128/profile_export_aiperf.json", "stage_2_c128/llmd_benchmark_report.json", 983.52, 22353.80, 14.53, 52.85, 18.92, 84.5),
+            (0, 32, "/tmp/run0_results/stages/dynamo_stage1_naive_rr_c32/profile_export_aiperf.json", "stage_0_c32/llmd_benchmark_report.json", 504.00, 16276.43, 5.77, 29.53, 33.86, 85.4),
+            (1, 64, "/tmp/run0_results/stages/dynamo_stage1_naive_rr_c64/profile_export_aiperf.json", "stage_1_c64/llmd_benchmark_report.json", 913.84, 13604.77, 5.51, 22.56, 44.33, 84.8),
+            (2, 128, "/tmp/run0_results/stages/dynamo_stage1_naive_rr_c128/profile_export_aiperf.json", "stage_2_c128/llmd_benchmark_report.json", 983.55, 22353.80, 14.53, 52.88, 18.91, 84.1),
         ],
     },
     {
@@ -439,9 +439,9 @@ RUN_BUNDLES = [
         "is_disagg": False,
         "stage_num": 2,
         "stages": [
-            (0, 32, "/tmp/run0_results/stages/dynamo_stage2_kv_routing_c32/profile_export_aiperf.json", "stage_0_c32/llmd_benchmark_report.json", 895.36, 10051.50, 5.99, 16.74, 59.72, 94.5),
-            (1, 64, "/tmp/run0_results/stages/dynamo_stage2_kv_routing_c64/profile_export_aiperf.json", "stage_1_c64/llmd_benchmark_report.json", 1541.68, 12792.93, 7.39, 23.63, 42.33, 94.5),
-            (2, 128, "/tmp/run0_results/stages/dynamo_stage2_kv_routing_c128/profile_export_aiperf.json", "stage_2_c128/llmd_benchmark_report.json", 1352.72, 22452.00, 4.68, 36.83, 27.15, 94.5),
+            (0, 32, "/tmp/run0_results/stages/dynamo_stage2_kv_routing_c32/profile_export_aiperf.json", "stage_0_c32/llmd_benchmark_report.json", 1330.39, 7189.70, 18.70, 27.70, 36.10, 91.9),
+            (1, 64, "/tmp/run0_results/stages/dynamo_stage2_kv_routing_c64/profile_export_aiperf.json", "stage_1_c64/llmd_benchmark_report.json", 1541.68, 12792.93, 7.39, 23.63, 42.33, 92.7),
+            (2, 128, "/tmp/run0_results/stages/dynamo_stage2_kv_routing_c128/profile_export_aiperf.json", "stage_2_c128/llmd_benchmark_report.json", 1352.72, 22452.00, 4.68, 36.83, 27.15, 91.2),
         ],
     },
     {
@@ -458,10 +458,9 @@ RUN_BUNDLES = [
         "is_disagg": True,
         "stage_num": 3,
         "stages": [
-            (0, 16, "/tmp/run0_results/stages/dynamo_stage3_pd_disagg_c16/profile_export_aiperf.json", "stage_0_c16/llmd_benchmark_report.json", 1048.24, 10083.59, 5.77, 18.42, 54.28, 97.4),
-            (1, 32, "/tmp/run0_results/stages/dynamo_stage3_pd_disagg_c32/profile_export_aiperf.json", "stage_1_c32/llmd_benchmark_report.json", 1599.68, 7916.07, 6.34, 15.92, 62.80, 97.4),
-            (2, 64, "/tmp/run0_results/stages/dynamo_stage3_pd_disagg_c64/profile_export_aiperf.json", "stage_2_c64/llmd_benchmark_report.json", 1845.36, 12544.33, 8.63, 24.90, 40.16, 97.4),
-            (3, 128, "/tmp/run0_results/stages/dynamo_stage3_pd_disagg_c128/profile_export_aiperf.json", "stage_3_c128/llmd_benchmark_report.json", 2868.88, 22588.64, 5.67, 34.04, 29.38, 97.4),
+            (0, 16, "/tmp/run0_results/stages/dynamo_stage3_pd_disagg_c16/profile_export_aiperf.json", "stage_0_c16/llmd_benchmark_report.json", 1276.52, 2416.40, 13.11, 16.15, 61.91, 93.6),
+            (1, 32, "/tmp/run0_results/stages/dynamo_stage3_pd_disagg_c32/profile_export_aiperf.json", "stage_1_c32/llmd_benchmark_report.json", 1483.34, 4214.50, 17.03, 22.48, 44.49, 95.6),
+            (2, 64, "/tmp/run0_results/stages/dynamo_stage3_pd_disagg_c64/profile_export_aiperf.json", "stage_2_c64/llmd_benchmark_report.json", 2321.38, 7207.70, 17.04, 26.55, 37.66, 97.6),
         ],
     },
     {
@@ -478,10 +477,10 @@ RUN_BUNDLES = [
         "is_disagg": True,
         "stage_num": 4,
         "stages": [
-            (0, 16, "/tmp/run0_results/stages/dynamo_stage4_1000mbps_c16/profile_export_aiperf.json", "stage_0_c16/llmd_benchmark_report.json", 1078.48, 4115.79, 4.81, 9.81, 101.92, 99.2),
-            (1, 32, "/tmp/run0_results/stages/dynamo_stage4_1000mbps_c32/profile_export_aiperf.json", "stage_1_c32/llmd_benchmark_report.json", 1844.08, 2967.83, 10.04, 13.99, 71.45, 99.2),
-            (2, 64, "/tmp/run0_results/stages/dynamo_stage4_1000mbps_c64/profile_export_aiperf.json", "stage_2_c64/llmd_benchmark_report.json", 2524.32, 13121.84, 7.46, 23.67, 42.25, 99.2),
-            (3, 128, "/tmp/run0_results/stages/dynamo_stage4_1000mbps_c128/profile_export_aiperf.json", "stage_3_c128/llmd_benchmark_report.json", 3088.88, 8783.24, 7.34, 20.37, 49.09, 99.2),
+            (0, 16, "/tmp/run0_results/stages/dynamo_stage4_1000mbps_c16/profile_export_aiperf.json", "stage_0_c16/llmd_benchmark_report.json", 1310.86, 3087.10, 3.49, 7.27, 137.47, 98.5),
+            (1, 32, "/tmp/run0_results/stages/dynamo_stage4_1000mbps_c32/profile_export_aiperf.json", "stage_1_c32/llmd_benchmark_report.json", 1934.13, 4562.20, 7.10, 12.31, 81.25, 99.3),
+            (2, 64, "/tmp/run0_results/stages/dynamo_stage4_1000mbps_c64/profile_export_aiperf.json", "stage_2_c64/llmd_benchmark_report.json", 2428.17, 11554.30, 21.05, 35.43, 28.23, 99.2),
+            (3, 128, "/tmp/run0_results/stages/dynamo_stage4_1000mbps_c128/profile_export_aiperf.json", "stage_3_c128/llmd_benchmark_report.json", 2656.16, 17462.50, 41.79, 67.95, 14.72, 99.6),
         ],
     },
 ]
@@ -633,7 +632,7 @@ def build_bq_row(
       "configs_container_image_uri": (
           "vllm/vllm-openai:v0.19.0"
           if stack_tag == "llmd"
-          else "lmsysorg/sglang:v0.5.9-cu130"
+          else "lmsysorg/sglang:v0.5.10-cu130"
       ),
       "logs_artifact_directory_uri": f"gs://ubench-logs/{b['run_uid']}",
       "update_timestamp": now_str,

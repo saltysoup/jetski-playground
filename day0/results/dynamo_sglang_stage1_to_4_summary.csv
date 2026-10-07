@@ -1,15 +1,14 @@
-stage,stage_name,concurrency_per_replica,concurrency_pool,kv_hit_rate_pct,output_tok_s_per_chip,output_tok_s_pool,ttft_p90_ms,itl_p90_ms,e2e_lat_p90_ms_per_tok,e2e_interactivity_p90_tok_s_user
-Stage 1,Naive L7 Round-Robin (Baseline),16,32,84.5,63.00,504.00,16276.43,5.77,20.57,48.63
-Stage 1,Naive L7 Round-Robin (Baseline),32,64,84.5,114.23,913.84,13604.77,5.51,22.56,44.33
-Stage 1,Naive L7 Round-Robin (Baseline),64,128,84.5,122.94,983.52,22353.80,14.53,52.85,18.92
-Stage 2,KV-Cache-Aware Routing,16,32,94.5,111.92,895.36,10051.50,5.99,16.74,59.72
-Stage 2,KV-Cache-Aware Routing,32,64,94.5,192.71,1541.68,12792.93,7.39,23.63,42.33
-Stage 2,KV-Cache-Aware Routing,64,128,94.5,169.09,1352.72,22452.00,4.68,36.83,27.15
-Stage 3,KV Routing + P/D Disagg,8,16,97.4,131.03,1048.24,10083.59,5.77,18.42,54.28
-Stage 3,KV Routing + P/D Disagg,16,32,97.4,199.96,1599.68,7916.07,6.34,15.92,62.80
-Stage 3,KV Routing + P/D Disagg,32,64,97.4,230.67,1845.36,12544.33,8.63,24.90,40.16
-Stage 3,KV Routing + P/D Disagg,64,128,97.4,358.61,2868.88,22588.64,5.67,34.04,29.38
-Stage 4,Lustre KV Tier + P/D Disagg,8,16,99.2,134.81,1078.48,4115.79,4.81,9.81,101.92
-Stage 4,Lustre KV Tier + P/D Disagg,16,32,99.2,230.51,1844.08,2967.83,10.04,13.99,71.45
-Stage 4,Lustre KV Tier + P/D Disagg,32,64,99.2,315.54,2524.32,13121.84,7.46,23.67,42.25
-Stage 4,Lustre KV Tier + P/D Disagg,64,128,99.2,386.11,3088.88,8783.24,7.34,20.37,49.09
+run_name,stage,concurrency,out_pool_tok_s,out_per_gpu_tok_s,tot_pool_tok_s,tot_per_gpu_tok_s,ttft_p90_ms,itl_p90_ms,e2e_lat_p90_ms_per_tok,e2e_interactivity_tok_s_user,decode_interactivity_p90_tok_s_user,sglang_kv_hit_pct
+dynamo_stage1_naive_rr_c32,Stage 1: Baseline (Naive L7 RR),32,504.0,63.0,145120.4,18140.0,16276.43,5.77,29.53,33.86,173.31,85.4
+dynamo_stage1_naive_rr_c64,Stage 1: Baseline (Naive L7 RR),64,913.84,114.23,145667.8,18208.5,13604.77,5.51,22.56,44.33,181.49,84.8
+dynamo_stage1_naive_rr_c128,Stage 1: Baseline (Naive L7 RR),128,983.55,122.94,158341.9,19792.7,22353.8,14.53,52.88,18.91,68.82,84.1
+dynamo_stage2_kv_routing_c32,Stage 2: KV-Cache Routing (Colocated P/D),32,1330.39,166.3,205123.0,25640.4,7189.7,18.7,27.7,36.1,53.48,91.9
+dynamo_stage2_kv_routing_c64,Stage 2: KV-Cache Routing (Colocated P/D),64,1541.68,192.71,265722.5,33215.3,12792.93,7.39,23.63,42.33,135.32,92.7
+dynamo_stage2_kv_routing_c128,Stage 2: KV-Cache Routing (Colocated P/D),128,1352.72,169.09,234180.0,29272.5,22452.0,4.68,36.83,27.15,213.68,91.2
+dynamo_stage3_pd_disagg_c16,Stage 3: KV Routing + Disaggregated P/D (HBM Only),16,1276.52,159.56,192881.7,24110.2,2416.4,13.11,16.15,61.91,76.28,93.6
+dynamo_stage3_pd_disagg_c32,Stage 3: KV Routing + Disaggregated P/D (HBM Only),32,1483.34,185.42,217116.8,27139.6,4214.5,17.03,22.48,44.49,58.72,95.6
+dynamo_stage3_pd_disagg_c64,Stage 3: KV Routing + Disaggregated P/D (HBM Only),64,2321.38,290.17,441452.8,55181.6,7207.7,17.04,26.55,37.66,58.69,97.6
+dynamo_stage4_1000mbps_c16,"Stage 4: 1,000 MBps/TiB Lustre KV Tier + Disagg P/D + KV Routing",16,1310.86,163.86,218810.8,27351.3,3087.1,3.49,7.27,137.47,286.53,98.5
+dynamo_stage4_1000mbps_c32,"Stage 4: 1,000 MBps/TiB Lustre KV Tier + Disagg P/D + KV Routing",32,1934.13,241.77,277914.7,34739.3,4562.2,7.1,12.31,81.25,140.85,99.3
+dynamo_stage4_1000mbps_c64,"Stage 4: 1,000 MBps/TiB Lustre KV Tier + Disagg P/D + KV Routing",64,2428.17,303.52,452274.3,56534.3,11554.3,21.05,35.43,28.23,47.51,99.2
+dynamo_stage4_1000mbps_c128,"Stage 4: 1,000 MBps/TiB Lustre KV Tier + Disagg P/D + KV Routing",128,2656.16,332.02,450522.7,56315.3,17462.5,41.79,67.95,14.72,23.93,99.6
