@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    width: 1280px;
+    height: 720px;
+    font-family: 'Google Sans', Arial, sans-serif;
+    color: #202124;
+    background: #ffffff;
+  }
+</style>
+</head>
+<body>
+<div class="slide" style="position:relative;width:1280px;height:720px;background:#ffffff;font-family:'Google Sans',Arial,sans-serif;color:#202124;">
+
+  <!-- Title (Header Zone: y=12..86, single-line assertion matching Slide 4) -->
+  <div data-role="title" style="position:absolute;left:48px;top:12px;width:1184px;height:74px;font-size:20pt;font-weight:400;color:#202124;display:flex;align-items:flex-end;line-height:1.05;">
+    Dynamo + Lustre delivers up to 3.7x higher throughput vs baseline recipe
+  </div>
+
+  <!-- Top Section: AgentX Pareto Frontier Graph (Stage 1 -> Stage 4, InferenceX Axes) (y=96..384, h=288) -->
+  <svg style="position:absolute;left:48px;top:96px;width:1184px;height:288px;" viewBox="0 0 1184 288" xmlns="http://www.w3.org/2000/svg">
+    <rect x="0" y="0" width="1184" height="288" rx="8" fill="#ffffff" stroke="#dadce0" stroke-width="1" />
+
+    <!-- Graph Header Title -->
+    <text x="622" y="21" text-anchor="middle" fill="#202124" font-family="Google Sans, Arial, sans-serif" font-size="9.5pt" font-weight="700">
+      NVIDIA Dynamo + Managed Lustre on Cloud GPU — 8x NVIDIA B200 (DeepSeek-V4.1-Flash-FP8, SGLang, 2x TEP=4, AgentX Multi-Turn)
+    </text>
+
+    <!-- Plot Area: X = 96 to 1148 (width 1052), Y = 34 to 246 (height 212) -->
+    <!-- Y-Axis Scale: 0 to 400 tok/s/chip (4 intervals of 100 = 53.0px each) -->
+    <!-- X-Axis Scale: 0 to 120 tok/s/user (6 intervals of 20 = 175.33px each) -->
+
+    <!-- Full-Width Horizontal Gridlines -->
+    <g stroke="#e2e8f0" stroke-width="1">
+      <line x1="96" y1="246.0" x2="1148" y2="246.0" />
+      <line x1="96" y1="193.0" x2="1148" y2="193.0" stroke-dasharray="4,4" />
+      <line x1="96" y1="140.0" x2="1148" y2="140.0" stroke-dasharray="4,4" />
+      <line x1="96" y1="87.0"  x2="1148" y2="87.0"  stroke-dasharray="4,4" />
+      <line x1="96" y1="34.0"  x2="1148" y2="34.0"  stroke-dasharray="4,4" />
+    </g>
+
+    <!-- Full-Height Vertical Gridlines -->
+    <g stroke="#e2e8f0" stroke-width="1" stroke-dasharray="4,4">
+      <line x1="271.3"  y1="34" x2="271.3"  y2="246" />
+      <line x1="446.7"  y1="34" x2="446.7"  y2="246" />
+      <line x1="622.0"  y1="34" x2="622.0"  y2="246" />
+      <line x1="797.3"  y1="34" x2="797.3"  y2="246" />
+      <line x1="972.7"  y1="34" x2="972.7"  y2="246" />
+      <line x1="1148.0" y1="34" x2="1148.0" y2="246" />
+    </g>
+
+    <!-- Axes -->
+    <line x1="96" y1="34" x2="96" y2="246" stroke="#5f6368" stroke-width="1.5" />
+    <line x1="96" y1="246" x2="1148" y2="246" stroke="#5f6368" stroke-width="1.5" />
+
+    <!-- Y-Axis Ticks (0 to 400 tok/s/chip) -->
+    <g fill="#5f6368" font-family="Google Sans, Arial, sans-serif" font-size="8.5pt" text-anchor="end">
+      <text x="86" y="250">0</text>
+      <text x="86" y="197">100</text>
+      <text x="86" y="144">200</text>
+      <text x="86" y="91">300</text>
+      <text x="86" y="38">400</text>
+    </g>
+
+    <!-- X-Axis Ticks (0 to 120 tok/s/user) -->
+    <g fill="#5f6368" font-family="Google Sans, Arial, sans-serif" font-size="8.5pt" text-anchor="middle">
+      <text x="96.0"   y="264">0</text>
+      <text x="271.3"  y="264">20</text>
+      <text x="446.7"  y="264">40</text>
+      <text x="622.0"  y="264">60</text>
+      <text x="797.3"  y="264">80</text>
+      <text x="972.7"  y="264">100</text>
+      <text x="1148.0" y="264">120</text>
+    </g>
+
+    <!-- Axis Titles (InferenceX Standard Axes) -->
+    <text x="24" y="140" transform="rotate(-90 24 140)" text-anchor="middle" fill="#202124" font-family="Google Sans, Arial, sans-serif" font-weight="700" font-size="8.5pt">
+      Output Throughput (tok/s/chip)
+    </text>
+    <text x="622" y="281" text-anchor="middle" fill="#202124" font-family="Google Sans, Arial, sans-serif" font-weight="700" font-size="9pt">
+      P90 E2E Normalized Interactivity (tok/s/user)
+    </text>
+
+    <!-- Stage 1: Multi-Replica Naive Load Balancing (2x TEP=4, L7 Round-Robin) — SOLID RED (#ef4444) -->
+    <polyline fill="none" stroke="#ef4444" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"
+      points="522.3,212.6 484.6,185.5 261.9,180.8" />
+    <g fill="#ef4444" stroke="#ffffff" stroke-width="1.5">
+      <circle cx="522.3" cy="212.6" r="4.5" />
+      <circle cx="484.6" cy="185.5" r="4.5" />
+      <circle cx="261.9" cy="180.8" r="5.5" />
+    </g>
+
+    <!-- Stage 2: NVIDIA Dynamo KV-Cache-Aware Routing (2x TEP=4) — SOLID AMBER (#f59e0b) -->
+    <polyline fill="none" stroke="#f59e0b" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"
+      points="619.5,186.7 467.1,143.9 334.0,156.4" />
+    <g fill="#f59e0b" stroke="#ffffff" stroke-width="1.5">
+      <circle cx="619.5" cy="186.7" r="4.5" />
+      <circle cx="467.1" cy="143.9" r="4.5" />
+      <circle cx="334.0" cy="156.4" r="5.5" />
+    </g>
+
+    <!-- Stage 3: NVIDIA Dynamo KV Routing + Disaggregated P/D (2x TEP=4) — SOLID BLUE (#2563eb) -->
+    <polyline fill="none" stroke="#2563eb" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"
+      points="571.9,176.6 646.5,140.0 448.1,123.7 353.6,55.9" />
+    <g fill="#2563eb" stroke="#ffffff" stroke-width="1.5">
+      <circle cx="571.9" cy="176.6" r="4.5" />
+      <circle cx="646.5" cy="140.0" r="4.5" />
+      <circle cx="448.1" cy="123.7" r="5.0" />
+      <circle cx="353.6" cy="55.9"  r="5.5" />
+    </g>
+
+    <!-- Stage 4: 1,000 MBps/TiB Managed Lustre KV Tier + Disagg P/D + KV-Aware (2x TEP=4) — SOLID TEAL (#0d9488) -->
+    <polyline fill="none" stroke="#0d9488" stroke-width="3.6" stroke-linecap="round" stroke-linejoin="round"
+      points="989.5,174.6 722.4,123.8 466.4,78.8 526.4,41.4" />
+    <g fill="#0d9488" stroke="#ffffff" stroke-width="1.5">
+      <circle cx="989.5" cy="174.6" r="4.5" />
+      <circle cx="722.4" cy="123.8" r="4.5" />
+      <circle cx="466.4" cy="78.8"  r="5.0" />
+      <circle cx="526.4" cy="41.4"  r="6.0" />
+    </g>
+  </svg>
+
+  <!-- Full-Width Single-Line 5-Row Table with Merged Color Legends (y=396..544, h=148) -->
+  <table style="position:absolute;left:48px;top:396px;width:1184px;height:148px;border-collapse:collapse;font-family:'Google Sans',Arial,sans-serif;font-size:8.5pt;">
+    <thead>
+      <tr style="background:#f1f5f9;border-bottom:1.5px solid #cbd5e1;">
+        <th style="width:80px;padding:4px 6px;text-align:center;font-size:8.5pt;font-weight:700;color:#202124;">Legend</th>
+        <th style="width:560px;padding:4px 8px;text-align:left;font-size:8.5pt;font-weight:700;color:#202124;">Stage &amp; Optimization Configuration (2x TEP=4 = 8x B200)</th>
+        <th style="width:68px;padding:4px 6px;text-align:right;font-size:8.5pt;font-weight:700;color:#202124;">KV Hit</th>
+        <th style="width:152px;padding:4px 8px;text-align:right;font-size:8.5pt;font-weight:700;color:#202124;">c=32 | Peak Tput</th>
+        <th style="width:166px;padding:4px 8px;text-align:right;font-size:8.5pt;font-weight:700;color:#202124;">P90 Interactivity</th>
+        <th style="width:158px;padding:4px 8px;text-align:right;font-size:8.5pt;font-weight:700;color:#202124;">vs. Stage 1 Base</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr style="border-bottom:1px solid #e2e8f0;">
+        <td style="padding:4px 6px;font-size:8.5pt;text-align:center;font-weight:700;color:#ef4444;">━━●━━</td>
+        <td style="padding:4px 8px;font-size:8.5pt;color:#202124;"><strong style="color:#ef4444;">1. Naive L7 Round-Robin</strong> (Baseline — Stateless L7 scatters multi-turn sessions)</td>
+        <td style="padding:4px 6px;font-size:8.5pt;text-align:right;color:#ef4444;font-weight:700;">84.5%</td>
+        <td style="padding:4px 8px;font-size:8.5pt;text-align:right;color:#202124;">63 | 123</td>
+        <td style="padding:4px 8px;font-size:8.5pt;text-align:right;color:#202124;">48.6 | 18.9 tok/s/u</td>
+        <td style="padding:4px 8px;font-size:8.5pt;text-align:right;font-weight:700;color:#202124;">1.00x Base</td>
+      </tr>
+      <tr style="border-bottom:1px solid #e2e8f0;">
+        <td style="padding:4px 6px;font-size:8.5pt;text-align:center;font-weight:700;color:#f59e0b;">━━●━━</td>
+        <td style="padding:4px 8px;font-size:8.5pt;color:#202124;"><strong style="color:#d97706;">2. KV-Cache-Aware Routing</strong> (Dynamo prefix affinity restores 94.5% KV hits)</td>
+        <td style="padding:4px 6px;font-size:8.5pt;text-align:right;color:#202124;">94.5%</td>
+        <td style="padding:4px 8px;font-size:8.5pt;text-align:right;color:#202124;">112 | 193</td>
+        <td style="padding:4px 8px;font-size:8.5pt;text-align:right;color:#202124;">59.7 | 42.3 tok/s/u</td>
+        <td style="padding:4px 8px;font-size:8.5pt;text-align:right;font-weight:700;color:#d97706;">1.78x Tput | 1.6x Pk</td>
+      </tr>
+      <tr style="border-bottom:1px solid #e2e8f0;">
+        <td style="padding:4px 6px;font-size:8.5pt;text-align:center;font-weight:700;color:#2563eb;">━━●━━</td>
+        <td style="padding:4px 8px;font-size:8.5pt;color:#202124;"><strong style="color:#2563eb;">3. KV Routing + P/D Disagg</strong> (Dynamo high-throughput decoupled P/D)</td>
+        <td style="padding:4px 6px;font-size:8.5pt;text-align:right;color:#202124;">97.4%</td>
+        <td style="padding:4px 8px;font-size:8.5pt;text-align:right;color:#2563eb;font-weight:700;">200 | 359*</td>
+        <td style="padding:4px 8px;font-size:8.5pt;text-align:right;color:#202124;">62.8 | 29.4 tok/s/u</td>
+        <td style="padding:4px 8px;font-size:8.5pt;text-align:right;font-weight:700;color:#2563eb;">3.17x Tput (2.9x Pk)</td>
+      </tr>
+      <tr>
+        <td style="padding:4px 6px;font-size:8.5pt;text-align:center;font-weight:700;color:#0d9488;">━━●━━</td>
+        <td style="padding:4px 8px;font-size:8.5pt;color:#202124;"><strong style="color:#0d9488;">4. Lustre KV Tier + P/D Disagg</strong> (Same-zone 1,000 MBps/TiB Lustre KV tier)</td>
+        <td style="padding:4px 6px;font-size:8.5pt;text-align:right;color:#0d9488;font-weight:700;">99.2%</td>
+        <td style="padding:4px 8px;font-size:8.5pt;text-align:right;color:#0d9488;font-weight:700;">231 | 386*</td>
+        <td style="padding:4px 8px;font-size:8.5pt;text-align:right;color:#0d9488;font-weight:700;">71.5 | 49.1 tok/s/u</td>
+        <td style="padding:4px 8px;font-size:8.5pt;text-align:right;font-weight:700;color:#0d9488;">3.66x Tput (3.1x Pk)</td>
+      </tr>
+    </tbody>
+  </table>
+
+</div>
+</body>
+</html>

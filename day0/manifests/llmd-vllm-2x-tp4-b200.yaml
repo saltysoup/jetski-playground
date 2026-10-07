@@ -1,0 +1,139 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  annotations:
+    deployment.kubernetes.io/revision: "1"
+    kubectl.kubernetes.io/last-applied-configuration: |
+      {"apiVersion":"apps/v1","kind":"Deployment","metadata":{"annotations":{},"name":"llmd-vllm-run0","namespace":"ubench-llmd"},"spec":{"replicas":1,"selector":{"matchLabels":{"app":"llmd-vllm-worker"}},"template":{"metadata":{"annotations":{"gke-gcsfuse/cpu-limit":"32","gke-gcsfuse/ephemeral-storage-limit":"600Gi","gke-gcsfuse/memory-limit":"64Gi","gke-gcsfuse/volumes":"true"},"labels":{"app":"llmd-vllm-worker"}},"spec":{"containers":[{"args":["set -euo pipefail\nexport VLLM_USE_V2_MODEL_RUNNER=1\nexport VLLM_USE_RUST_FRONTEND=1\nexport PYTHONUNBUFFERED=1\nexport VLLM_ENGINE_READY_TIMEOUT_S=7200\necho \"Starting vLLM Run 0 (TP=4, EP=4, FP4, DSpark 5-tok, FlashInfer MLA Sparse DSV41) from gs://ikwak-eu-stuff Rapid Cache...\"\nexec vllm serve /gcs/deepseek-ai/DeepSeek-V4.1-Flash \\\n  --host 0.0.0.0 \\\n  --port 8000 \\\n  --served-model-name deepseek-ai/DeepSeek-V4.1-Flash \\\n  --language-model-only \\\n  --tokenizer-mode deepseek_v41 \\\n  --tool-call-parser deepseek_v41 \\\n  --enable-auto-tool-choice \\\n  --reasoning-parser deepseek_v41 \\\n  --tensor-parallel-size 4 \\\n  --enable-expert-parallel \\\n  --engram-config '{\"cpu_offload\":true,\"use_thp\":true}' \\\n  --kernel-config '{\"enable_flashinfer_autotune\":true}' \\\n  --attention-config '{\"backend\":\"FLASHINFER_MLA_SPARSE_DSV41\",\"indexer_kv_dtype\":\"mxfp4\",\"indexer_sparse_logits\":true}' \\\n  --kv-cache-dtype fp8 \\\n  --speculative-config '{\"method\":\"dspark\",\"num_speculative_tokens\":5,\"draft_sample_method\":\"probabilistic\",\"rejection_sample_method\":\"synthetic\",\"synthetic_acceptance_length\":3.51,\"enable_adaptive_verification\":false}' \\\n  --max-model-len 1048576 \\\n  --compilation-config '{\"mode\":\"VLLM_COMPILE\",\"cudagraph_mode\":\"FULL_AND_PIECEWISE\",\"cudagraph_capture_sizes\":[6,12,18,24,30,36,48,60,72,96,120,144,192,240,288,384,480,576,768,1020,1536,2046,3072,4092,6144,8190],\"decoder_replay_cudagraph_capture_sizes\":[6,12,18,24,30,36,48,60,72,96,120,144,192,240,288,384,480,576,768,1020,1536,2048,2304,2560,2816,3072,3328,3584,3840,4096]}' \\\n  --max-cudagraph-capture-size 8190 \\\n  --max-num-batched-tokens 8192 \\\n  --max-num-seqs 256 \\\n  --gpu-memory-utilization 0.97 \\\n  --enable-prompt-tokens-details \\\n  --disable-uvicorn-access-log \\\n  --trust-remote-code\n"],"command":["/bin/bash","-c"],"image":"vllm/vllm-openai:nightly-dev-x86_64-cu130-ac9126e58aa7","name":"vllm","ports":[{"containerPort":8000,"name":"http"}],"resources":{"limits":{"nvidia.com/gpu":"4"},"requests":{"cpu":"64","memory":"700Gi","nvidia.com/gpu":"4"}},"volumeMounts":[{"mountPath":"/gcs","name":"gcs-model","readOnly":true},{"mountPath":"/dev/shm","name":"dshm"}]}],"nodeSelector":{"kubernetes.io/hostname":"gke-ikwak-reliabilit-a4-highgpu-8g-a4-0256e2f1-34t3"},"serviceAccountName":"workload-identity-k8s-sa","tolerations":[{"operator":"Exists"}],"volumes":[{"csi":{"driver":"gcsfuse.csi.storage.gke.io","volumeAttributes":{"bucketName":"ikwak-eu-stuff","mountOptions":"implicit-dirs,max-conns-per-host=0,file-cache:max-size-mb:-1,file-cache:cache-file-for-range-read:true,file-cache:enable-parallel-downloads:true,file-cache:max-parallel-downloads:32,file-cache:download-chunk-size-mb:64"}},"name":"gcs-model"},{"hostPath":{"path":"/mnt/stateful_partition/kube-ephemeral-ssd/gcsfuse-cache-llmd","type":"DirectoryOrCreate"},"name":"gke-gcsfuse-cache"},{"emptyDir":{"medium":"Memory","sizeLimit":"256Gi"},"name":"dshm"}]}}}}
+  creationTimestamp: "2026-10-05T21:41:50Z"
+  generation: 1
+  name: llmd-vllm-run0
+  namespace: ubench-llmd
+  resourceVersion: "1791236511118095008"
+  uid: d133dc7a-2026-41c4-99d6-85c780c02f61
+spec:
+  progressDeadlineSeconds: 600
+  replicas: 1
+  revisionHistoryLimit: 10
+  selector:
+    matchLabels:
+      app: llmd-vllm-worker
+  strategy:
+    rollingUpdate:
+      maxSurge: 25%
+      maxUnavailable: 25%
+    type: RollingUpdate
+  template:
+    metadata:
+      annotations:
+        gke-gcsfuse/cpu-limit: "32"
+        gke-gcsfuse/ephemeral-storage-limit: 600Gi
+        gke-gcsfuse/memory-limit: 64Gi
+        gke-gcsfuse/volumes: "true"
+      labels:
+        app: llmd-vllm-worker
+    spec:
+      containers:
+      - args:
+        - |
+          set -euo pipefail
+          export VLLM_USE_V2_MODEL_RUNNER=1
+          export VLLM_USE_RUST_FRONTEND=1
+          export PYTHONUNBUFFERED=1
+          export VLLM_ENGINE_READY_TIMEOUT_S=7200
+          echo "Starting vLLM Run 0 (TP=4, EP=4, FP4, DSpark 5-tok, FlashInfer MLA Sparse DSV41) from gs://ikwak-eu-stuff Rapid Cache..."
+          exec vllm serve /gcs/deepseek-ai/DeepSeek-V4.1-Flash \
+            --host 0.0.0.0 \
+            --port 8000 \
+            --served-model-name deepseek-ai/DeepSeek-V4.1-Flash \
+            --language-model-only \
+            --tokenizer-mode deepseek_v41 \
+            --tool-call-parser deepseek_v41 \
+            --enable-auto-tool-choice \
+            --reasoning-parser deepseek_v41 \
+            --tensor-parallel-size 4 \
+            --enable-expert-parallel \
+            --engram-config '{"cpu_offload":true,"use_thp":true}' \
+            --kernel-config '{"enable_flashinfer_autotune":true}' \
+            --attention-config '{"backend":"FLASHINFER_MLA_SPARSE_DSV41","indexer_kv_dtype":"mxfp4","indexer_sparse_logits":true}' \
+            --kv-cache-dtype fp8 \
+            --speculative-config '{"method":"dspark","num_speculative_tokens":5,"draft_sample_method":"probabilistic","rejection_sample_method":"synthetic","synthetic_acceptance_length":3.51,"enable_adaptive_verification":false}' \
+            --max-model-len 1048576 \
+            --compilation-config '{"mode":"VLLM_COMPILE","cudagraph_mode":"FULL_AND_PIECEWISE","cudagraph_capture_sizes":[6,12,18,24,30,36,48,60,72,96,120,144,192,240,288,384,480,576,768,1020,1536,2046,3072,4092,6144,8190],"decoder_replay_cudagraph_capture_sizes":[6,12,18,24,30,36,48,60,72,96,120,144,192,240,288,384,480,576,768,1020,1536,2048,2304,2560,2816,3072,3328,3584,3840,4096]}' \
+            --max-cudagraph-capture-size 8190 \
+            --max-num-batched-tokens 8192 \
+            --max-num-seqs 256 \
+            --gpu-memory-utilization 0.97 \
+            --enable-prompt-tokens-details \
+            --disable-uvicorn-access-log \
+            --trust-remote-code
+        command:
+        - /bin/bash
+        - -c
+        image: vllm/vllm-openai:nightly-dev-x86_64-cu130-ac9126e58aa7
+        imagePullPolicy: IfNotPresent
+        name: vllm
+        ports:
+        - containerPort: 8000
+          name: http
+          protocol: TCP
+        resources:
+          limits:
+            nvidia.com/gpu: "4"
+          requests:
+            cpu: "64"
+            memory: 700Gi
+            nvidia.com/gpu: "4"
+        terminationMessagePath: /dev/termination-log
+        terminationMessagePolicy: File
+        volumeMounts:
+        - mountPath: /gcs
+          name: gcs-model
+          readOnly: true
+        - mountPath: /dev/shm
+          name: dshm
+      dnsPolicy: ClusterFirst
+      nodeSelector:
+        kubernetes.io/hostname: gke-ikwak-reliabilit-a4-highgpu-8g-a4-0256e2f1-34t3
+      restartPolicy: Always
+      schedulerName: default-scheduler
+      securityContext: {}
+      serviceAccount: workload-identity-k8s-sa
+      serviceAccountName: workload-identity-k8s-sa
+      terminationGracePeriodSeconds: 30
+      tolerations:
+      - operator: Exists
+      volumes:
+      - csi:
+          driver: gcsfuse.csi.storage.gke.io
+          volumeAttributes:
+            bucketName: ikwak-eu-stuff
+            mountOptions: implicit-dirs,max-conns-per-host=0,file-cache:max-size-mb:-1,file-cache:cache-file-for-range-read:true,file-cache:enable-parallel-downloads:true,file-cache:max-parallel-downloads:32,file-cache:download-chunk-size-mb:64
+        name: gcs-model
+      - hostPath:
+          path: /mnt/stateful_partition/kube-ephemeral-ssd/gcsfuse-cache-llmd
+          type: DirectoryOrCreate
+        name: gke-gcsfuse-cache
+      - emptyDir:
+          medium: Memory
+          sizeLimit: 256Gi
+        name: dshm
+status:
+  conditions:
+  - lastTransitionTime: "2026-10-05T21:41:50Z"
+    lastUpdateTime: "2026-10-05T21:41:50Z"
+    message: Deployment does not have minimum availability.
+    reason: MinimumReplicasUnavailable
+    status: "False"
+    type: Available
+  - lastTransitionTime: "2026-10-05T21:41:50Z"
+    lastUpdateTime: "2026-10-05T21:41:51Z"
+    message: ReplicaSet "llmd-vllm-run0-656c78488c" is progressing.
+    reason: ReplicaSetUpdated
+    status: "True"
+    type: Progressing
+  observedGeneration: 1
+  replicas: 1
+  terminatingReplicas: 0
+  unavailableReplicas: 1
+  updatedReplicas: 1

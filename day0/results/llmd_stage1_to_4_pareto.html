@@ -1,0 +1,601 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>llm-d Multi-Node Optimization (Stage 1 to 4, 2×TP4 = 8× B200): Throughput vs. Latency / Interactivity</title>
+  <script src="https://www.gstatic.com/antigravity/web/dev/tailwindcss.min.js"></script>
+  <style>
+    .tooltip-card {
+      pointer-events: none;
+      transition: opacity 0.12s ease;
+      z-index: 50;
+    }
+  </style>
+</head>
+<body class="bg-transparent text-[var(--foreground)] antialiased p-3">
+  <div class="bg-[var(--card)] text-[var(--foreground)] border border-[var(--border)] rounded-xl p-4 shadow-sm">
+    <!-- Top Header & Axis Selectors -->
+    <div class="flex flex-wrap items-center justify-between gap-2 pb-2.5 border-b border-[var(--border)]">
+      <div>
+        <h2 id="chartMainTitle" class="text-sm font-semibold text-[var(--foreground)]">
+          llm-d Multi-Replica GPU Optimization (Stage 1 → 4, 2×TP4 = 8× B200): Throughput (Y) vs. Latency (X)
+        </h2>
+        <p id="chartSubTitle" class="text-xs text-[var(--muted-foreground)]">
+          DeepSeek-V4.1-Flash (2× TP=4 Replicas on 8× B200 GPUs, Single-Node Stage 0 Removed) — Higher Y &amp; Lower X (10ms units) = Better (↖)
+        </p>
+      </div>
+
+      <div class="flex flex-wrap items-center gap-2 text-xs">
+        <div class="flex items-center gap-1">
+          <span class="text-[var(--muted-foreground)] font-medium">Stage 3 Mode:</span>
+          <select id="s3ModeSel" class="bg-[var(--background)] text-[var(--foreground)] rounded border border-[var(--border)] px-2 py-1 text-xs font-medium">
+            <option value="both" selected>Show Both Stage 3a &amp; 3b</option>
+            <option value="3b_only">Stage 3b Only (Recommended for Slides)</option>
+            <option value="3a_only">Stage 3a Only (Low-Latency Pacing)</option>
+          </select>
+        </div>
+
+        <div class="flex items-center gap-1">
+          <span class="text-[var(--muted-foreground)] font-medium">X-Axis:</span>
+          <select id="xAxisSel" class="bg-[var(--background)] text-[var(--foreground)] rounded border border-[var(--border)] px-2 py-1 text-xs">
+            <option value="e2e_lat_ms_tok" selected>P90 E2E Latency / Token (ms/tok — 10ms units)</option>
+            <option value="dec_tpot_ms">P90 Decode TPOT / ITL (ms/tok — 10ms units)</option>
+            <option value="p90_ttft_ms">P90 TTFT Latency (ms)</option>
+            <option value="e2e_int">P90 E2E Interactivity — InferenceX X-Axis (tok/s/user)</option>
+          </select>
+        </div>
+
+        <div class="flex items-center gap-1">
+          <span class="text-[var(--muted-foreground)] font-medium">Y-Axis:</span>
+          <select id="yAxisSel" class="bg-[var(--background)] text-[var(--foreground)] border border-[var(--border)] rounded px-2 py-1 text-xs">
+            <option value="out_tput_chip" selected>Output Throughput / Chip (tok/s/chip)</option>
+            <option value="out_tput_pool">Pool Output Throughput (tok/s — 8× B200)</option>
+            <option value="tot_tput_chip">Total Throughput / Chip (tok/s/chip)</option>
+            <option value="tot_tput_pool">Pool Total Throughput — Prefill+Decode (tok/s)</option>
+          </select>
+        </div>
+      </div>
+    </div>
+
+    <!-- Interactive Legend Pills -->
+    <div id="legendBar" class="flex flex-wrap items-center justify-between gap-2 py-2"></div>
+
+    <!-- Plot Area -->
+    <div class="relative bg-[var(--background)] border border-[var(--border)] rounded-lg p-2">
+      <svg id="plotSvg" viewBox="0 0 740 320" class="w-full h-auto overflow-visible select-none"></svg>
+      <div id="tooltip" class="tooltip-card hidden absolute bg-[var(--card)] text-[var(--foreground)] border border-[var(--border)] rounded-lg p-2.5 shadow-lg text-xs max-w-xs"></div>
+    </div>
+  </div>
+
+  <script>
+    const STAGES = [
+      {
+        id: "stage1",
+        name: "Stage 1: Naive Round-Robin (c=32, 64, 128/rep)",
+        color: "#f43f5e",
+        dashed: true,
+        visible: true,
+        points: [
+          {
+            conc_rep: 32, conc_pool: 64, label: "c=32/rep (Pool 64)", tag: "S1 c=32",
+            out_tput_chip: 129.66, out_tput_pool: 1037.28,
+            tot_tput_chip: 23317.93, tot_tput_pool: 186543.44,
+            p90_ttft_ms: 1232.0,
+            e2e_lat_ms_tok: 1000.0 / 91.15,   // 10.97 ms/tok
+            dec_tpot_ms: 1000.0 / 239.82,     // 4.17 ms/tok
+            e2e_int: 91.15, dec_int: 239.82, kv_hit: "36.3%",
+            note: "50% cross-replica cache miss rate; prefill queue builds immediately"
+          },
+          {
+            conc_rep: 64, conc_pool: 128, label: "c=64/rep (Pool 128)", tag: "S1 c=64",
+            out_tput_chip: 287.58, out_tput_pool: 2300.64,
+            tot_tput_chip: 37449.24, tot_tput_pool: 299593.92,
+            p90_ttft_ms: 4193.1,
+            e2e_lat_ms_tok: 1000.0 / 38.77,   // 25.79 ms/tok
+            dec_tpot_ms: 1000.0 / 73.68,      // 13.57 ms/tok
+            e2e_int: 38.77, dec_int: 73.68, kv_hit: "28.4%",
+            note: "Severe prefill queue (Waiting=26); TTFT spikes to 4,193ms"
+          },
+          {
+            conc_rep: 128, conc_pool: 256, label: "c=128/rep (Pool 256)", tag: "S1 c=128",
+            out_tput_chip: 471.43, out_tput_pool: 3771.44,
+            tot_tput_chip: 62880.53, tot_tput_pool: 503044.24,
+            p90_ttft_ms: 4492.2,
+            e2e_lat_ms_tok: 1000.0 / 27.76,   // 36.02 ms/tok
+            dec_tpot_ms: 1000.0 / 39.49,      // 25.32 ms/tok
+            e2e_int: 27.76, dec_int: 39.49, kv_hit: "18.3%",
+            note: "Prefill thrashing caps pool output throughput at 3,771 tok/s (471.4/chip)"
+          }
+        ]
+      },
+      {
+        id: "stage2",
+        name: "Stage 2: llm-d KV-Aware EPP (c=32, 64, 128/rep)",
+        color: "#10b981",
+        dashed: false,
+        visible: true,
+        points: [
+          {
+            conc_rep: 32, conc_pool: 64, label: "c=32/rep (Pool 64)", tag: "S2 c=32",
+            out_tput_chip: 139.31, out_tput_pool: 1114.48,
+            tot_tput_chip: 24728.49, tot_tput_pool: 197827.92,
+            p90_ttft_ms: 278.7,
+            e2e_lat_ms_tok: 1000.0 / 219.54,  // 4.55 ms/tok
+            dec_tpot_ms: 1000.0 / 315.83,     // 3.17 ms/tok
+            e2e_int: 219.54, dec_int: 315.83, kv_hit: "97.1%",
+            note: "Restores 97.1% GPU prefix cache hit; 4.4× lower TTFT & 2.4× lower E2E latency vs Stage 1"
+          },
+          {
+            conc_rep: 64, conc_pool: 128, label: "c=64/rep (Pool 128)", tag: "S2 c=64",
+            out_tput_chip: 342.87, out_tput_pool: 2742.96,
+            tot_tput_chip: 44745.00, tot_tput_pool: 357960.00,
+            p90_ttft_ms: 337.4,
+            e2e_lat_ms_tok: 1000.0 / 156.23,  // 6.40 ms/tok
+            dec_tpot_ms: 1000.0 / 213.74,     // 4.68 ms/tok
+            e2e_int: 156.23, dec_int: 213.74, kv_hit: "94.8%",
+            note: "12.4× lower TTFT (337ms vs 4,193ms) & 4.0× lower E2E latency/tok vs Stage 1"
+          },
+          {
+            conc_rep: 128, conc_pool: 256, label: "c=128/rep (Pool 256)", tag: "S2 c=128",
+            out_tput_chip: 617.72, out_tput_pool: 4941.76,
+            tot_tput_chip: 80489.75, tot_tput_pool: 643918.00,
+            p90_ttft_ms: 687.9,
+            e2e_lat_ms_tok: 1000.0 / 93.15,   // 10.74 ms/tok
+            dec_tpot_ms: 1000.0 / 129.06,     // 7.75 ms/tok
+            e2e_int: 93.15, dec_int: 129.06, kv_hit: "94.2%",
+            note: "6.5× lower TTFT & +31.0% higher token throughput vs Stage 1"
+          }
+        ]
+      },
+      {
+        id: "stage3a",
+        name: "Stage 3a (Low-Latency): First-Token P/D Pacing (c=32, 64/rep)",
+        color: "#a855f7",
+        dashed: true,
+        visible: true,
+        points: [
+          {
+            conc_rep: 32, conc_pool: 64, label: "c=32/rep (Pool 64, Stage 3a Low-Lat)", tag: "S3a c=32",
+            out_tput_chip: 139.84, out_tput_pool: 1118.72,
+            tot_tput_chip: 24795.06, tot_tput_pool: 198360.48,
+            p90_ttft_ms: 253.2,
+            e2e_lat_ms_tok: 1000.0 / 231.65,  // 4.32 ms/tok
+            dec_tpot_ms: 1000.0 / 336.84,     // 2.97 ms/tok
+            e2e_int: 231.65, dec_int: 336.84, kv_hit: "97.3%",
+            note: "Stage 3a Low-Latency P/D Pacing (idle-cap=300s): 253.2ms P90 TTFT (-9.1% vs Stage 2) & 231.7 tok/s/user E2E interactivity (+5.5% vs Stage 2)"
+          },
+          {
+            conc_rep: 64, conc_pool: 128, label: "c=64/rep (Pool 128, Stage 3a Low-Lat)", tag: "S3a c=64",
+            out_tput_chip: 343.72, out_tput_pool: 2749.76,
+            tot_tput_chip: 44873.72, tot_tput_pool: 358989.76,
+            p90_ttft_ms: 328.1,
+            e2e_lat_ms_tok: 1000.0 / 160.48,  // 6.23 ms/tok
+            dec_tpot_ms: 1000.0 / 213.05,     // 4.69 ms/tok
+            e2e_int: 160.48, dec_int: 213.05, kv_hit: "96.8%",
+            note: "Stage 3a Low-Latency P/D Pacing (idle-cap=300s): 328.1ms P90 TTFT (-2.8% vs Stage 2) & 160.5 tok/s/user E2E interactivity (+2.7% vs Stage 2)"
+          }
+        ]
+      },
+      {
+        id: "stage3b",
+        name: "Stage 3b (High-Throughput): Disagg P/D + Real-Time KV (c=8..128/rep)",
+        color: "#f59e0b",
+        dashed: false,
+        visible: true,
+        points: [
+          {
+            conc_rep: 8, conc_pool: 16, label: "c=8/rep (Pool 16, Stage 3b)", tag: "S3b c=8",
+            out_tput_chip: 171.66, out_tput_pool: 1373.32,
+            tot_tput_chip: 28466.73, tot_tput_pool: 227733.82,
+            p90_ttft_ms: 456.9,
+            e2e_lat_ms_tok: 1000.0 / 133.33,  // 7.50 ms/tok
+            dec_tpot_ms: 1000.0 / 241.03,     // 4.15 ms/tok
+            e2e_int: 133.33, dec_int: 241.03, kv_hit: "96.2%",
+            note: "Stage 3b at c=8/rep (Pool 16): achieves 1,373 tok/s (171.7/chip) — 23% higher tput than Stage 2 c=32/rep with 4× fewer lanes!"
+          },
+          {
+            conc_rep: 16, conc_pool: 32, label: "c=16/rep (Pool 32, Stage 3b)", tag: "S3b c=16",
+            out_tput_chip: 358.07, out_tput_pool: 2864.59,
+            tot_tput_chip: 53674.43, tot_tput_pool: 429395.43,
+            p90_ttft_ms: 390.8,
+            e2e_lat_ms_tok: 1000.0 / 159.19,  // 6.28 ms/tok
+            dec_tpot_ms: 1000.0 / 204.24,     // 4.90 ms/tok
+            e2e_int: 159.19, dec_int: 204.24, kv_hit: "96.5%",
+            note: "Stage 3b at c=16/rep (Pool 32): 2,865 tok/s (358.1/chip) at 6.28 ms/tok — beats Stage 2 c=64/rep with 4× fewer sessions!"
+          },
+          {
+            conc_rep: 32, conc_pool: 64, label: "c=32/rep (Pool 64, Stage 3b)", tag: "S3b c=32",
+            out_tput_chip: 593.90, out_tput_pool: 4751.20,
+            tot_tput_chip: 91495.20, tot_tput_pool: 731961.60,
+            p90_ttft_ms: 956.9,
+            e2e_lat_ms_tok: 1000.0 / 89.41,   // 11.18 ms/tok
+            dec_tpot_ms: 1000.0 / 122.85,     // 8.14 ms/tok
+            e2e_int: 89.41, dec_int: 122.85, kv_hit: "96.6%",
+            note: "Stage 3b at c=32/rep: 52 vs 52 active request lock delivers 4,751 tok/s (593.9/chip, 4.26× Stage 2 c=32/rep!)"
+          },
+          {
+            conc_rep: 64, conc_pool: 128, label: "c=64/rep (Pool 128, Stage 3b)", tag: "S3b c=64",
+            out_tput_chip: 954.04, out_tput_pool: 7632.32,
+            tot_tput_chip: 128962.00, tot_tput_pool: 1031696.00,
+            p90_ttft_ms: 1602.6,
+            e2e_lat_ms_tok: 1000.0 / 51.29,   // 19.50 ms/tok
+            dec_tpot_ms: 1000.0 / 66.16,      // 15.11 ms/tok
+            e2e_int: 51.29, dec_int: 66.16, kv_hit: "96.2%",
+            note: "Stage 3b at c=64/rep: 75 vs 76 active request lock delivers 7,632 tok/s pool output (954.0/chip, +178% vs Stage 2 c=64/rep!)"
+          },
+          {
+            conc_rep: 128, conc_pool: 256, label: "c=128/rep (Pool 256, Stage 3b)", tag: "S3b c=128",
+            out_tput_chip: 1127.70, out_tput_pool: 9021.60,
+            tot_tput_chip: 160480.73, tot_tput_pool: 1283845.84,
+            p90_ttft_ms: 8715.4,
+            e2e_lat_ms_tok: 1000.0 / 19.25,   // 51.95 ms/tok
+            dec_tpot_ms: 1000.0 / 34.06,      // 29.36 ms/tok
+            e2e_int: 19.25, dec_int: 34.06, kv_hit: "95.5%",
+            note: "Stage 3b at c=128/rep: Peak 9,021.6 tok/s output (1,127.7/chip) & 1.284M tok/s total (+83% vs Stage 2, +139% vs Stage 1)"
+          }
+        ]
+      },
+      {
+        id: "stage4",
+        name: "Stage 4: 1,000 MBps/TiB Lustre KV Tier + Disagg P/D + KV-Aware (c=8..128/rep)",
+        color: "#06b6d4",
+        dashed: false,
+        visible: true,
+        points: [
+          {
+            conc_rep: 8, conc_pool: 16, label: "c=8/rep (Pool 16, Stage 4 1,000 MBps/TiB Lustre KV Tier)", tag: "S4 c=8",
+            out_tput_chip: 211.79, out_tput_pool: 1694.33,
+            tot_tput_chip: 37764.38, tot_tput_pool: 302115.03,
+            p90_ttft_ms: 381.8,
+            e2e_lat_ms_tok: 1000.0 / 152.25,  // 6.57 ms/tok
+            dec_tpot_ms: 1000.0 / 265.35,     // 3.77 ms/tok
+            e2e_int: 152.25, dec_int: 265.35, kv_hit: "92.5% (Lustre+HBM)",
+            note: "Stage 4 (1,000 MBps/TiB Lustre KV Tier + P/D + KV-Aware) at c=8/rep: 211.8 tok/s/chip (+23.4% vs Stage 3b), 381.8ms P90 TTFT (-16.4%), & 6.57 ms/tok E2E latency (-12.4%)!"
+          },
+          {
+            conc_rep: 16, conc_pool: 32, label: "c=16/rep (Pool 32, Stage 4 1,000 MBps/TiB Lustre KV Tier)", tag: "S4 c=16",
+            out_tput_chip: 451.50, out_tput_pool: 3611.98,
+            tot_tput_chip: 74620.03, tot_tput_pool: 596960.22,
+            p90_ttft_ms: 267.7,
+            e2e_lat_ms_tok: 1000.0 / 174.09,  // 5.74 ms/tok
+            dec_tpot_ms: 1000.0 / 219.13,     // 4.56 ms/tok
+            e2e_int: 174.09, dec_int: 219.13, kv_hit: "98.7% (Lustre+HBM)",
+            note: "Stage 4 (1,000 MBps/TiB Lustre KV Tier + P/D + KV-Aware) at c=16/rep: 451.5 tok/s/chip (+26.1% vs Stage 3b), 267.7ms P90 TTFT (-31.5%), & 5.74 ms/tok E2E latency (-8.6%)!"
+          },
+          {
+            conc_rep: 32, conc_pool: 64, label: "c=32/rep (Pool 64, Stage 4 1,000 MBps/TiB Lustre KV Tier)", tag: "S4 c=32",
+            out_tput_chip: 663.79, out_tput_pool: 5310.30,
+            tot_tput_chip: 125440.60, tot_tput_pool: 1003524.81,
+            p90_ttft_ms: 539.8,
+            e2e_lat_ms_tok: 1000.0 / 111.18,  // 8.99 ms/tok
+            dec_tpot_ms: 1000.0 / 133.75,     // 7.48 ms/tok
+            e2e_int: 111.18, dec_int: 133.75, kv_hit: "97.6% (Lustre+HBM)",
+            note: "Stage 4 (1,000 MBps/TiB Lustre KV Tier + P/D + KV-Aware) at c=32/rep: 663.8 tok/s/chip (+11.8% vs Stage 3b), 539.8ms P90 TTFT (-43.6%), & 8.99 ms/tok E2E latency (-19.6%)!"
+          },
+          {
+            conc_rep: 64, conc_pool: 128, label: "c=64/rep (Pool 128, Stage 4 1,000 MBps/TiB Lustre KV Tier)", tag: "S4 c=64",
+            out_tput_chip: 1060.82, out_tput_pool: 8486.54,
+            tot_tput_chip: 142223.93, tot_tput_pool: 1137791.47,
+            p90_ttft_ms: 1350.4,
+            e2e_lat_ms_tok: 1000.0 / 61.81,   // 16.18 ms/tok
+            dec_tpot_ms: 1000.0 / 79.38,      // 12.60 ms/tok
+            e2e_int: 61.81, dec_int: 79.38, kv_hit: "97.0% (Lustre+HBM)",
+            note: "Stage 4 (1,000 MBps/TiB Lustre KV Tier + P/D + KV-Aware) at c=64/rep: 1,060.8 tok/s/chip (+11.2% vs Stage 3b), 1,350ms P90 TTFT (-15.7%), & 16.18 ms/tok E2E latency (-17.0%)!"
+          },
+          {
+            conc_rep: 128, conc_pool: 256, label: "c=128/rep (Pool 256, Stage 4 1,000 MBps/TiB Lustre KV Tier)", tag: "S4 c=128",
+            out_tput_chip: 1504.49, out_tput_pool: 12035.93,
+            tot_tput_chip: 217734.51, tot_tput_pool: 1741876.04,
+            p90_ttft_ms: 1402.7,
+            e2e_lat_ms_tok: 1000.0 / 40.95,   // 24.42 ms/tok
+            dec_tpot_ms: 1000.0 / 52.46,      // 19.06 ms/tok
+            e2e_int: 40.95, dec_int: 52.46, kv_hit: "98.6% (Lustre+HBM)",
+            note: "Stage 4 (1,000 MBps/TiB Lustre KV Tier + P/D + KV-Aware) at c=128/rep: Peak 1,504.5 tok/s/chip (+33.4% vs Stage 3b), 1,402.7ms P90 TTFT (-83.9% / 6.2× faster!), & 24.42 ms/tok E2E latency (-53.0%)!"
+          }
+        ]
+      }
+    ];
+
+    const X_META = {
+      e2e_lat_ms_tok: { label: "P90 E2E Latency per Output Token (ms/tok — 10ms units)  [← Lower is Better]", unit: "ms", max: 60, step: 10, higherBetter: false },
+      dec_tpot_ms:    { label: "P90 Decode Inter-Token Latency / TPOT (ms/tok — 10ms units)  [← Lower is Better]", unit: "ms", max: 40, step: 10, higherBetter: false },
+      p90_ttft_ms:    { label: "P90 Time to First Token — TTFT (ms)  [← Lower is Better]", unit: "ms", max: 10000, step: 2000, higherBetter: false },
+      e2e_int:        { label: "P90 E2E Normalized Interactivity (tok/s/user — InferenceX X-Axis)  [→ Higher is Better]", unit: "", max: 250, step: 50, higherBetter: true }
+    };
+
+    const Y_META = {
+      out_tput_chip: { label: "Output Throughput / Chip (tok/s/chip)  [↑ Higher is Better]", unit: "tok/s/chip", max: 1600 },
+      out_tput_pool: { label: "Pool Output Throughput (tok/s — 8× B200)  [↑ Higher is Better]", unit: "tok/s", max: 13000 },
+      tot_tput_chip: { label: "Total Throughput / Chip (tok/s/chip)  [↑ Higher is Better]", unit: "tok/s/chip", max: 225000 },
+      tot_tput_pool: { label: "Pool Total Throughput (tok/s — 8× B200)  [↑ Higher is Better]", unit: "tok/s", max: 1800000 }
+    };
+
+    const svg = document.getElementById("plotSvg");
+    const tooltip = document.getElementById("tooltip");
+    const xAxisSel = document.getElementById("xAxisSel");
+    const yAxisSel = document.getElementById("yAxisSel");
+    const s3ModeSel = document.getElementById("s3ModeSel");
+    const legendBar = document.getElementById("legendBar");
+
+    function fmtNum(v) {
+      if (v >= 1000000) return (v / 1000000).toFixed(2) + "M";
+      if (v >= 10000) return (v / 1000).toFixed(1) + "k";
+      if (v >= 1000) return (v / 1000).toFixed(2) + "k";
+      if (v >= 100) return v.toFixed(1);
+      return v.toFixed(2);
+    }
+
+    function renderLegend() {
+      legendBar.innerHTML = "";
+      const left = document.createElement("div");
+      left.className = "flex flex-wrap items-center gap-2";
+      STAGES.forEach(s => {
+        const btn = document.createElement("button");
+        btn.className = `flex items-center gap-1.5 px-2 py-1 rounded-md border border-[var(--border)] text-xs transition ${
+          s.visible ? "bg-[var(--card)] font-semibold opacity-100" : "opacity-40"
+        }`;
+        btn.innerHTML = `
+          <span class="w-3 h-3 rounded-full inline-block" style="background:${s.color}"></span>
+          <span>${s.name}</span>
+        `;
+        btn.addEventListener("click", () => {
+          s.visible = !s.visible;
+          renderLegend();
+          renderPlot();
+        });
+        left.appendChild(btn);
+      });
+      legendBar.appendChild(left);
+    }
+
+    function renderPlot() {
+      const xKey = xAxisSel.value;
+      const yKey = yAxisSel.value;
+      const xInfo = X_META[xKey];
+      const yInfo = Y_META[yKey];
+
+      const isLight = document.documentElement.classList.contains("light");
+      const gridColor = isLight ? "#e2e8f0" : "#1e293b";
+      const axisColor = isLight ? "#475569" : "#94a3b8";
+      const labelColor = isLight ? "#0f172a" : "#f8fafc";
+
+      const W = 740, H = 320;
+      const padL = 68, padR = 32, padT = 22, padB = 44;
+      const plotW = W - padL - padR;
+      const plotH = H - padT - padB;
+
+      const maxX = xInfo.max;
+      const stepX = xInfo.step;
+      const maxY = yInfo.max;
+
+      const xScale = v => padL + (v / maxX) * plotW;
+      const yScale = v => padT + plotH - (v / maxY) * plotH;
+
+      svg.innerHTML = "";
+
+      // X-axis grid lines & ticks
+      for (let val = 0; val <= maxX; val += stepX) {
+        const x = xScale(val);
+        const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
+        line.setAttribute("x1", x);
+        line.setAttribute("y1", padT);
+        line.setAttribute("x2", x);
+        line.setAttribute("y2", padT + plotH);
+        line.setAttribute("stroke", gridColor);
+        line.setAttribute("stroke-width", "1");
+        svg.appendChild(line);
+
+        const t = document.createElementNS("http://www.w3.org/2000/svg", "text");
+        t.setAttribute("x", x);
+        t.setAttribute("y", padT + plotH + 16);
+        t.setAttribute("text-anchor", "middle");
+        t.setAttribute("fill", axisColor);
+        t.setAttribute("font-size", "12");
+        t.textContent = xInfo.unit ? `${val}${xInfo.unit}` : `${val}`;
+        svg.appendChild(t);
+      }
+
+      // Y-axis grid lines & ticks
+      const yTicks = 5;
+      for (let i = 0; i <= yTicks; i++) {
+        const val = (maxY / yTicks) * i;
+        const y = yScale(val);
+        const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
+        line.setAttribute("x1", padL);
+        line.setAttribute("y1", y);
+        line.setAttribute("x2", padL + plotW);
+        line.setAttribute("y2", y);
+        line.setAttribute("stroke", gridColor);
+        line.setAttribute("stroke-width", "1");
+        svg.appendChild(line);
+
+        const t = document.createElementNS("http://www.w3.org/2000/svg", "text");
+        t.setAttribute("x", padL - 8);
+        t.setAttribute("y", y + 4);
+        t.setAttribute("text-anchor", "end");
+        t.setAttribute("fill", axisColor);
+        t.setAttribute("font-size", "12");
+        t.textContent = fmtNum(val);
+        svg.appendChild(t);
+      }
+
+      // Axis Titles
+      const xTitle = document.createElementNS("http://www.w3.org/2000/svg", "text");
+      xTitle.setAttribute("x", padL + plotW / 2);
+      xTitle.setAttribute("y", H - 6);
+      xTitle.setAttribute("text-anchor", "middle");
+      xTitle.setAttribute("fill", labelColor);
+      xTitle.setAttribute("font-size", "12");
+      xTitle.setAttribute("font-weight", "600");
+      xTitle.textContent = xInfo.label;
+      svg.appendChild(xTitle);
+
+      const yTitle = document.createElementNS("http://www.w3.org/2000/svg", "text");
+      yTitle.setAttribute("transform", `translate(16, ${padT + plotH / 2}) rotate(-90)`);
+      yTitle.setAttribute("text-anchor", "middle");
+      yTitle.setAttribute("fill", labelColor);
+      yTitle.setAttribute("font-size", "12");
+      yTitle.setAttribute("font-weight", "600");
+      yTitle.textContent = yInfo.label;
+      svg.appendChild(yTitle);
+
+      // Draw "Ideal Frontier" callout badge
+      const badgeG = document.createElementNS("http://www.w3.org/2000/svg", "g");
+      const badgeRect = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+      badgeRect.setAttribute("x", padL + plotW - 224);
+      badgeRect.setAttribute("y", padT + 6);
+      badgeRect.setAttribute("width", 218);
+      badgeRect.setAttribute("height", 22);
+      badgeRect.setAttribute("rx", 5);
+      badgeRect.setAttribute("fill", "#06b6d422");
+      badgeRect.setAttribute("stroke", "#06b6d4");
+      badgeG.appendChild(badgeRect);
+
+      const badgeTxt = document.createElementNS("http://www.w3.org/2000/svg", "text");
+      badgeTxt.setAttribute("x", padL + plotW - 115);
+      badgeTxt.setAttribute("y", padT + 21);
+      badgeTxt.setAttribute("text-anchor", "middle");
+      badgeTxt.setAttribute("fill", "#06b6d4");
+      badgeTxt.setAttribute("font-size", "11.5");
+      badgeTxt.setAttribute("font-weight", "600");
+      badgeTxt.textContent = xInfo.higherBetter
+        ? "↗ Ideal Frontier (High Tput, High Int)"
+        : "↖ Ideal Frontier (High Tput, Low Lat)";
+      badgeG.appendChild(badgeTxt);
+      svg.appendChild(badgeG);
+
+      // Draw curves and points (connected in concurrency order within each series!)
+      STAGES.forEach(s => {
+        if (!s.visible) return;
+        const sorted = [...s.points].sort((a, b) => a.conc_rep - b.conc_rep);
+
+        // Path
+        let d = "";
+        sorted.forEach((p, idx) => {
+          const px = xScale(p[xKey]);
+          const py = yScale(p[yKey]);
+          d += (idx === 0 ? "M" : "L") + px.toFixed(1) + "," + py.toFixed(1);
+        });
+        const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+        path.setAttribute("d", d);
+        path.setAttribute("fill", "none");
+        path.setAttribute("stroke", s.color);
+        path.setAttribute("stroke-width", s.id === "stage4" ? "3.2" : "2.6");
+        if (s.dashed) path.setAttribute("stroke-dasharray", "6,4");
+        svg.appendChild(path);
+
+        // Points + Labels
+        sorted.forEach((p, idx) => {
+          const px = xScale(p[xKey]);
+          const py = yScale(p[yKey]);
+
+          const circle = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+          circle.setAttribute("cx", px);
+          circle.setAttribute("cy", py);
+          circle.setAttribute("r", s.id === "stage4" ? "6.5" : "5.5");
+          circle.setAttribute("fill", s.color);
+          circle.setAttribute("stroke", isLight ? "#ffffff" : "#090b0e");
+          circle.setAttribute("stroke-width", "2");
+          circle.style.cursor = "pointer";
+          attachTooltip(circle, s, p);
+          svg.appendChild(circle);
+
+          const lbl = document.createElementNS("http://www.w3.org/2000/svg", "text");
+          let dy = -8;
+          let dx = 7;
+          let anchor = "start";
+          if (s.id === "stage3a") {
+            dy = -9;
+            dx = -6;
+            anchor = "end";
+          } else if (s.id === "stage2") {
+            dy = 15;
+            dx = 6;
+          } else if (s.id === "stage1") {
+            dy = 15;
+            dx = 6;
+          } else if (s.id === "stage3b") {
+            dy = 14;
+            dx = 7;
+            if (idx === sorted.length - 1 && !xInfo.higherBetter) {
+              anchor = "end";
+              dx = -9;
+              dy = -8;
+            }
+          } else if (s.id === "stage4") {
+            dy = -9;
+            dx = 7;
+            if (idx === 0) {
+              dy = -10;
+              dx = -4;
+            }
+          }
+          lbl.setAttribute("x", px + dx);
+          lbl.setAttribute("y", py + dy);
+          lbl.setAttribute("text-anchor", anchor);
+          lbl.setAttribute("fill", s.color);
+          lbl.setAttribute("font-size", "11.5");
+          lbl.setAttribute("font-weight", "600");
+          lbl.textContent = `${p.tag}`;
+          svg.appendChild(lbl);
+        });
+      });
+    }
+
+    function attachTooltip(el, s, p) {
+      el.addEventListener("mouseenter", () => {
+        tooltip.classList.remove("hidden");
+        tooltip.innerHTML = `
+          <div class="font-bold mb-1" style="color:${s.color}">${s.name}</div>
+          <div class="text-[var(--foreground)] font-medium mb-1">Config: ${p.label}</div>
+          <div>Output Tput / Chip: <span class="font-semibold">${p.out_tput_chip.toFixed(1)} tok/s/chip</span> (Pool: ${fmtNum(p.out_tput_pool)} tok/s)</div>
+          <div>Total Tput / Chip: <span class="font-semibold">${fmtNum(p.tot_tput_chip)} tok/s/chip</span> (Pool: ${fmtNum(p.tot_tput_pool)} tok/s)</div>
+          <div class="mt-1 pt-1 border-t border-[var(--border)]">
+            <div>P90 E2E Latency / Token: <span class="font-semibold">${p.e2e_lat_ms_tok.toFixed(2)} ms/tok</span> (${p.e2e_int.toFixed(1)} tok/s/user)</div>
+            <div>P90 Decode TPOT / ITL: <span class="font-semibold">${p.dec_tpot_ms.toFixed(2)} ms/tok</span> (${p.dec_int.toFixed(1)} tok/s/user)</div>
+            <div>P90 TTFT Latency: <span class="font-semibold">${p.p90_ttft_ms.toFixed(1)} ms</span> (${(p.p90_ttft_ms / 1000).toFixed(2)}s)</div>
+            <div>GPU Prefix Cache Hit: <span class="font-semibold">${p.kv_hit}</span></div>
+          </div>
+          <div class="mt-1 pt-1 border-t border-[var(--border)] text-[var(--muted-foreground)]">${p.note}</div>
+        `;
+      });
+      el.addEventListener("mousemove", e => {
+        const rect = svg.getBoundingClientRect();
+        let left = e.clientX - rect.left + 14;
+        let top = e.clientY - rect.top - 10;
+        if (left > rect.width - 280) left -= 290;
+        if (top > rect.height - 170) top = Math.max(4, rect.height - 180);
+        tooltip.style.left = left + "px";
+        tooltip.style.top = top + "px";
+      });
+      el.addEventListener("mouseleave", () => {
+        tooltip.classList.add("hidden");
+      });
+    }
+
+    s3ModeSel.addEventListener("change", () => {
+      const mode = s3ModeSel.value;
+      const s3a = STAGES.find(s => s.id === "stage3a");
+      const s3b = STAGES.find(s => s.id === "stage3b");
+      if (mode === "both") {
+        s3a.visible = true;
+        s3b.visible = true;
+      } else if (mode === "3b_only") {
+        s3a.visible = false;
+        s3b.visible = true;
+      } else if (mode === "3a_only") {
+        s3a.visible = true;
+        s3b.visible = false;
+      }
+      renderLegend();
+      renderPlot();
+    });
+
+    xAxisSel.addEventListener("change", renderPlot);
+    yAxisSel.addEventListener("change", renderPlot);
+
+    renderLegend();
+    renderPlot();
+  </script>
+</body>
+</html>
