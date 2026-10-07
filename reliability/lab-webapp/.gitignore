@@ -1,0 +1,4 @@
+scoreboard.json
+scoreboard.json.tmp
+__pycache__/
+*.pyc

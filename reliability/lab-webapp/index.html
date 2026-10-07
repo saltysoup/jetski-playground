@@ -1,0 +1,2472 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Operation Goodput · GKE B200 Reliability Detective Lab</title>
+  <meta name="description" content="Self-paced interactive breadcrumb detective lab for diagnosing and remediating GPU training cluster failures on Google Kubernetes Engine (GKE) and Compute Engine.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #080b10;
+      --surface-1: #0f141c;
+      --surface-2: #151c27;
+      --surface-3: #1c2533;
+      --border: #243042;
+      --border-strong: #33435b;
+      --text: #eef2f7;
+      --text-secondary: #b4c0d0;
+      --text-muted: #78879b;
+      --blue: #4285F4;
+      --blue-soft: rgba(66, 133, 244, 0.14);
+      --blue-text: #8ab4f8;
+      --green: #34A853;
+      --green-soft: rgba(52, 168, 83, 0.14);
+      --green-text: #81c995;
+      --amber: #FBBC04;
+      --amber-soft: rgba(251, 188, 4, 0.14);
+      --amber-text: #fdd663;
+      --red: #EA4335;
+      --red-soft: rgba(234, 67, 53, 0.14);
+      --red-text: #f28b82;
+      --cyan: #24C1E0;
+      --cyan-soft: rgba(36, 193, 224, 0.14);
+      --cyan-text: #78d9ec;
+      --sans: "Google Sans Text", "Google Sans", "Inter", -apple-system, BlinkMacSystemFont, sans-serif;
+      --mono: "Google Sans Mono", "JetBrains Mono", monospace;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html, body {
+      margin: 0;
+      padding: 0;
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--sans);
+      font-variant-numeric: tabular-nums;
+      -webkit-font-smoothing: antialiased;
+      line-height: 1.55;
+    }
+
+    a {
+      color: var(--blue-text);
+      text-decoration: none;
+    }
+    a:hover {
+      text-decoration: underline;
+    }
+
+    /* Top Header */
+    .topbar {
+      position: sticky;
+      top: 0;
+      z-index: 50;
+      background: rgba(8, 11, 16, 0.92);
+      backdrop-filter: blur(12px);
+      border-bottom: 1px solid var(--border);
+      padding: 14px 28px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 20px;
+      flex-wrap: wrap;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }
+
+    .brand-mark {
+      width: 36px;
+      height: 36px;
+      border-radius: 8px;
+      background: var(--surface-2);
+      border: 1px solid var(--border-strong);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family: var(--mono);
+      font-weight: 700;
+      font-size: 14px;
+      color: var(--cyan-text);
+    }
+
+    .brand-title h1 {
+      margin: 0;
+      font-size: 17px;
+      font-weight: 700;
+      letter-spacing: -0.01em;
+      color: var(--text);
+    }
+
+    .brand-title p {
+      margin: 2px 0 0;
+      font-size: 12.5px;
+      color: var(--text-muted);
+    }
+
+    .topbar-controls {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+
+    .progress-pill {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 6px 14px;
+      border-radius: 20px;
+      background: var(--surface-1);
+      border: 1px solid var(--border);
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text-secondary);
+    }
+
+    .progress-bar-wrap {
+      width: 96px;
+      height: 6px;
+      background: var(--surface-3);
+      border-radius: 3px;
+      overflow: hidden;
+    }
+
+    .progress-bar-fill {
+      height: 100%;
+      background: var(--green);
+      width: 0%;
+      transition: width 0.35s ease;
+    }
+
+    .btn-ghost {
+      height: 34px;
+      padding: 0 12px;
+      border-radius: 6px;
+      border: 1px solid var(--border);
+      background: var(--surface-1);
+      color: var(--text-secondary);
+      font-size: 12.5px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: background 0.15s, border-color 0.15s, color 0.15s;
+    }
+
+    .btn-ghost:hover {
+      background: var(--surface-2);
+      border-color: var(--border-strong);
+      color: var(--text);
+    }
+
+    .btn-ghost.active {
+      background: var(--amber-soft);
+      border-color: var(--amber);
+      color: var(--amber-text);
+    }
+
+    /* Main Layout */
+    .layout {
+      max-width: 1360px;
+      margin: 0 auto;
+      padding: 24px 28px 64px;
+      display: grid;
+      grid-template-columns: 320px minmax(0, 1fr);
+      gap: 28px;
+      align-items: start;
+    }
+
+    @media (max-width: 980px) {
+      .layout {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    /* Left Sidebar: Cluster Context & Mission Selector */
+    .sidebar {
+      position: sticky;
+      top: 82px;
+      display: flex;
+      flex-direction: column;
+      gap: 18px;
+    }
+
+    .panel {
+      background: var(--surface-1);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 18px;
+    }
+
+    .panel-title {
+      font-size: 11.5px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--text-muted);
+      margin: 0 0 12px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .mission-nav {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .mission-tab {
+      width: 100%;
+      text-align: left;
+      padding: 13px 14px;
+      border-radius: 9px;
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      color: var(--text);
+      cursor: pointer;
+      transition: border-color 0.18s, background 0.18s, transform 0.12s;
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+    }
+
+    .mission-tab:hover:not(:disabled) {
+      border-color: var(--border-strong);
+      background: var(--surface-3);
+    }
+
+    .mission-tab.active {
+      border-color: var(--blue);
+      background: rgba(66, 133, 244, 0.1);
+    }
+
+    .mission-tab:disabled {
+      opacity: 0.48;
+      cursor: not-allowed;
+    }
+
+    .mission-tab-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      font-size: 12px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+    }
+
+    .mission-tab-title {
+      font-size: 14.5px;
+      font-weight: 600;
+      color: var(--text);
+    }
+
+    .mission-tab-sub {
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+    }
+
+    .badge.locked {
+      background: var(--surface-3);
+      color: var(--text-muted);
+    }
+    .badge.in-progress {
+      background: var(--blue-soft);
+      color: var(--blue-text);
+    }
+    .badge.completed {
+      background: var(--green-soft);
+      color: var(--green-text);
+    }
+
+    /* Cluster Info Table */
+    .kv-list {
+      display: flex;
+      flex-direction: column;
+      gap: 9px;
+      font-size: 12.5px;
+    }
+
+    .kv-row {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      padding-bottom: 8px;
+      border-bottom: 1px solid rgba(36, 48, 66, 0.6);
+    }
+    .kv-row:last-child {
+      border-bottom: none;
+      padding-bottom: 0;
+    }
+
+    .kv-label {
+      color: var(--text-muted);
+      font-size: 11.5px;
+    }
+
+    .kv-val {
+      font-family: var(--mono);
+      font-size: 12px;
+      color: var(--text-secondary);
+      word-break: break-all;
+    }
+
+    /* Main Content Area */
+    .content-area {
+      display: flex;
+      flex-direction: column;
+      gap: 22px;
+    }
+
+    /* Mission Banner */
+    .mission-banner {
+      background: var(--surface-1);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 24px 26px;
+    }
+
+    .mission-eyebrow {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 12px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--cyan-text);
+      margin-bottom: 8px;
+    }
+
+    .mission-banner h2 {
+      margin: 0 0 10px;
+      font-size: 24px;
+      font-weight: 700;
+      letter-spacing: -0.015em;
+    }
+
+    .mission-scenario-box {
+      margin-top: 14px;
+      padding: 15px 18px;
+      border-radius: 8px;
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      font-size: 14px;
+      color: var(--text-secondary);
+    }
+
+    .mission-scenario-box strong {
+      color: var(--text);
+    }
+
+    /* Clue Cards */
+    .clue-chain {
+      display: flex;
+      flex-direction: column;
+      gap: 18px;
+    }
+
+    .clue-card {
+      background: var(--surface-1);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 22px 24px;
+      transition: border-color 0.2s, opacity 0.2s;
+    }
+
+    .clue-card.active-clue {
+      border-color: var(--blue);
+    }
+
+    .clue-card.solved-clue {
+      border-color: rgba(52, 168, 83, 0.55);
+    }
+
+    .clue-card.locked-clue {
+      opacity: 0.52;
+      background: rgba(15, 20, 28, 0.6);
+    }
+
+    .clue-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 12px;
+    }
+
+    .clue-step-tag {
+      font-family: var(--mono);
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--blue-text);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    .clue-card.solved-clue .clue-step-tag {
+      color: var(--green-text);
+    }
+
+    .clue-title {
+      margin: 0 0 10px;
+      font-size: 17.5px;
+      font-weight: 600;
+      color: var(--text);
+    }
+
+    .clue-prompt {
+      font-size: 14.5px;
+      color: var(--text-secondary);
+      margin-bottom: 16px;
+    }
+
+    .clue-prompt code, .explanation-box code, .hint-drawer code {
+      font-family: var(--mono);
+      font-size: 12.5px;
+      background: var(--surface-3);
+      padding: 2px 6px;
+      border-radius: 4px;
+      color: var(--cyan-text);
+    }
+
+    /* Command / Hint Drawer */
+    .helper-row {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      margin-bottom: 16px;
+    }
+
+    .btn-helper {
+      height: 32px;
+      padding: 0 12px;
+      border-radius: 6px;
+      border: 1px solid var(--border);
+      background: var(--surface-2);
+      color: var(--text-secondary);
+      font-size: 12.5px;
+      font-weight: 500;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      transition: background 0.15s, border-color 0.15s, color 0.15s;
+    }
+
+    .btn-helper:hover {
+      background: var(--surface-3);
+      border-color: var(--border-strong);
+      color: var(--text);
+    }
+
+    .drawer {
+      display: none;
+      margin-bottom: 16px;
+      padding: 14px 16px;
+      border-radius: 8px;
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      font-size: 13.5px;
+      color: var(--text-secondary);
+    }
+
+    .drawer.open {
+      display: block;
+    }
+
+    .code-block {
+      position: relative;
+      margin: 10px 0 4px;
+      padding: 12px 14px;
+      border-radius: 7px;
+      background: #06080c;
+      border: 1px solid var(--border);
+      font-family: var(--mono);
+      font-size: 12.5px;
+      line-height: 1.5;
+      color: #d6e2f0;
+      overflow-x: auto;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+
+    .copy-btn {
+      position: absolute;
+      top: 8px;
+      right: 8px;
+      padding: 4px 8px;
+      font-size: 11px;
+      font-family: var(--sans);
+      font-weight: 600;
+      border-radius: 4px;
+      border: 1px solid var(--border-strong);
+      background: var(--surface-2);
+      color: var(--text-secondary);
+      cursor: pointer;
+    }
+    .copy-btn:hover {
+      color: var(--text);
+      background: var(--surface-3);
+    }
+
+    /* Input Controls */
+    .answer-form {
+      display: flex;
+      gap: 10px;
+      align-items: stretch;
+      flex-wrap: wrap;
+    }
+
+    .answer-input {
+      flex: 1;
+      min-width: 240px;
+      height: 42px;
+      padding: 0 14px;
+      border-radius: 8px;
+      border: 1px solid var(--border-strong);
+      background: #090d14;
+      color: var(--text);
+      font-family: var(--mono);
+      font-size: 13.5px;
+      transition: border-color 0.15s;
+    }
+
+    .answer-input:focus {
+      outline: none;
+      border-color: var(--blue);
+    }
+
+    .answer-input:disabled {
+      opacity: 0.65;
+      background: var(--surface-2);
+    }
+
+    /* Multiple Choice Options */
+    .mc-options {
+      display: flex;
+      flex-direction: column;
+      gap: 9px;
+      width: 100%;
+      margin-bottom: 12px;
+    }
+
+    .mc-option {
+      display: flex;
+      align-items: flex-start;
+      gap: 11px;
+      padding: 12px 14px;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      background: #0a0e16;
+      color: var(--text-secondary);
+      font-size: 13.5px;
+      cursor: pointer;
+      transition: border-color 0.15s, background 0.15s;
+      text-align: left;
+    }
+
+    .mc-option:hover:not(.disabled) {
+      border-color: var(--border-strong);
+      background: var(--surface-2);
+    }
+
+    .mc-option.selected {
+      border-color: var(--blue);
+      background: var(--blue-soft);
+      color: var(--text);
+    }
+
+    .mc-option.correct-choice {
+      border-color: var(--green);
+      background: var(--green-soft);
+      color: var(--text);
+    }
+
+    .mc-radio {
+      margin-top: 2px;
+      accent-color: var(--blue);
+    }
+
+    .btn-submit {
+      height: 42px;
+      padding: 0 20px;
+      border-radius: 8px;
+      border: 1px solid var(--blue);
+      background: var(--blue);
+      color: #fff;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.15s, opacity 0.15s;
+      white-space: nowrap;
+    }
+
+    .btn-submit:hover:not(:disabled) {
+      background: #357ae8;
+    }
+
+    .btn-submit:disabled {
+      opacity: 0.5;
+      cursor: default;
+    }
+
+    /* Feedback Messages */
+    .feedback-msg {
+      margin-top: 12px;
+      padding: 11px 14px;
+      border-radius: 8px;
+      font-size: 13.5px;
+      font-weight: 500;
+      display: none;
+    }
+
+    .feedback-msg.warm {
+      display: block;
+      background: var(--amber-soft);
+      border: 1px solid rgba(251, 188, 4, 0.45);
+      color: var(--amber-text);
+    }
+
+    .feedback-msg.error {
+      display: block;
+      background: var(--red-soft);
+      border: 1px solid rgba(234, 67, 53, 0.45);
+      color: var(--red-text);
+    }
+
+    /* Unlocked Deep-Dive Explanation Box */
+    .explanation-box {
+      display: none;
+      margin-top: 18px;
+      padding: 18px 20px;
+      border-radius: 9px;
+      background: rgba(52, 168, 83, 0.08);
+      border: 1px solid rgba(52, 168, 83, 0.42);
+      color: var(--text-secondary);
+      font-size: 14px;
+    }
+
+    .explanation-box.visible {
+      display: block;
+    }
+
+    .explanation-header {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 13.5px;
+      font-weight: 700;
+      color: var(--green-text);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      margin-bottom: 10px;
+    }
+
+    .explanation-box h4 {
+      margin: 14px 0 6px;
+      font-size: 14px;
+      color: var(--text);
+    }
+
+    .explanation-box ul {
+      margin: 6px 0 10px;
+      padding-left: 20px;
+    }
+
+    .explanation-box li {
+      margin-bottom: 5px;
+    }
+
+    /* Next Mission CTA */
+    .next-mission-bar {
+      display: none;
+      padding: 20px 24px;
+      border-radius: 12px;
+      background: var(--surface-2);
+      border: 1px solid var(--green);
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      flex-wrap: wrap;
+    }
+
+    .next-mission-bar.visible {
+      display: flex;
+    }
+
+    /* Per-Question 10-Minute Timer & Live Score Strip */
+    .timer-strip {
+      margin: 10px 0 14px;
+      padding: 10px 14px;
+      border-radius: 9px;
+      background: #0a0e16;
+      border: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      gap: 7px;
+    }
+
+    .timer-strip-top {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      flex-wrap: wrap;
+      font-size: 12.5px;
+    }
+
+    .timer-clock {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-family: var(--mono);
+      font-weight: 700;
+      font-size: 13px;
+      color: var(--green-text);
+    }
+
+    .timer-clock.warn {
+      color: var(--amber-text);
+    }
+
+    .timer-clock.danger {
+      color: var(--red-text);
+    }
+
+    .timer-points {
+      font-family: var(--mono);
+      font-weight: 700;
+      font-size: 12.5px;
+      padding: 2px 9px;
+      border-radius: 999px;
+      background: rgba(88, 166, 255, 0.14);
+      border: 1px solid rgba(88, 166, 255, 0.35);
+      color: var(--blue-text);
+    }
+
+    .timer-bar-track {
+      width: 100%;
+      height: 6px;
+      border-radius: 999px;
+      background: #171e2c;
+      overflow: hidden;
+    }
+
+    .timer-bar-fill {
+      height: 100%;
+      width: 100%;
+      background: linear-gradient(90deg, var(--green), var(--cyan));
+      transition: width 0.25s linear, background 0.25s ease;
+    }
+
+    .timer-bar-fill.warn {
+      background: var(--amber);
+    }
+
+    .timer-bar-fill.danger {
+      background: var(--red);
+    }
+
+    .btn-helper.reveal-btn {
+      border-color: rgba(210, 153, 34, 0.45);
+      color: var(--amber-text);
+      background: rgba(210, 153, 34, 0.08);
+    }
+
+    .btn-helper.reveal-btn:hover {
+      background: rgba(210, 153, 34, 0.18);
+      border-color: var(--amber);
+      color: #fff;
+    }
+
+    /* Live Scoreboard Sidebar & Modal */
+    .live-dot {
+      display: inline-block;
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--green);
+      box-shadow: 0 0 8px var(--green);
+      margin-right: 5px;
+      animation: pulseDot 1.8s infinite;
+    }
+
+    @keyframes pulseDot {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.45; transform: scale(0.85); }
+    }
+
+    .scoreboard-list {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      max-height: 290px;
+      overflow-y: auto;
+    }
+
+    .sb-row {
+      display: grid;
+      grid-template-columns: 34px 1fr auto;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 10px;
+      border-radius: 8px;
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      font-size: 12.5px;
+    }
+
+    .sb-row.is-me {
+      border-color: var(--blue);
+      background: rgba(31, 111, 235, 0.14);
+    }
+
+    .sb-rank {
+      font-family: var(--mono);
+      font-weight: 700;
+      color: var(--text-secondary);
+      font-size: 12px;
+    }
+
+    .sb-name {
+      font-weight: 600;
+      color: var(--text);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .sb-meta {
+      font-size: 11px;
+      color: var(--text-muted);
+      font-family: var(--mono);
+    }
+
+    .sb-score {
+      font-family: var(--mono);
+      font-weight: 700;
+      color: var(--green-text);
+      font-size: 13px;
+      text-align: right;
+    }
+
+    .player-pill {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 12px;
+      border-radius: 999px;
+      background: rgba(31, 111, 235, 0.15);
+      border: 1px solid rgba(88, 166, 255, 0.4);
+      font-size: 12.5px;
+      font-weight: 600;
+      color: var(--blue-text);
+      cursor: pointer;
+    }
+
+    .player-pill:hover {
+      background: rgba(31, 111, 235, 0.25);
+    }
+
+    /* Modals */
+    .modal-backdrop {
+      position: fixed;
+      inset: 0;
+      z-index: 200;
+      background: rgba(5, 8, 14, 0.82);
+      backdrop-filter: blur(6px);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+
+    .modal-backdrop.open {
+      display: flex;
+    }
+
+    .modal-card {
+      width: 100%;
+      max-width: 500px;
+      background: var(--surface);
+      border: 1px solid var(--border-strong);
+      border-radius: 14px;
+      padding: 24px 26px;
+      box-shadow: 0 20px 50px rgba(0, 0, 0, 0.65);
+    }
+
+    .modal-card.wide {
+      max-width: 780px;
+    }
+
+    .modal-card h3 {
+      margin: 0 0 8px;
+      font-size: 18px;
+      color: var(--text);
+    }
+
+    .modal-card p {
+      margin: 0 0 16px;
+      font-size: 13.5px;
+      color: var(--text-secondary);
+      line-height: 1.55;
+    }
+
+    .modal-actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 10px;
+      margin-top: 16px;
+    }
+
+    .sb-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+      margin-top: 10px;
+    }
+
+    .sb-table th {
+      text-align: left;
+      padding: 9px 10px;
+      border-bottom: 1px solid var(--border-strong);
+      color: var(--text-muted);
+      font-size: 11.5px;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    .sb-table td {
+      padding: 10px;
+      border-bottom: 1px solid var(--border);
+      color: var(--text-secondary);
+    }
+
+    .sb-table tr.is-me td {
+      background: rgba(31, 111, 235, 0.12);
+      color: var(--text);
+      font-weight: 600;
+    }
+  </style>
+</head>
+<body>
+
+  <header class="topbar">
+    <div class="brand">
+      <div class="brand-mark">B200</div>
+      <div class="brand-title">
+        <h1>Operation Goodput · GKE GPU Reliability Detective Lab</h1>
+        <p>Self-Paced Forensic Breadcrumb Challenges · Read-Only Cluster Investigation</p>
+      </div>
+    </div>
+    <div class="topbar-controls">
+      <button class="player-pill" id="btn-player-profile" type="button" title="Click to change your nickname">
+        <span id="player-nickname-label">👤 Set Nickname</span>
+        <span>·</span>
+        <span id="player-score-label" style="color: var(--green-text); font-family: var(--mono);">0 pts</span>
+      </button>
+      <div class="progress-pill">
+        <span id="progress-text">0 / 10 Clues Solved</span>
+        <div class="progress-bar-wrap">
+          <div class="progress-bar-fill" id="progress-fill"></div>
+        </div>
+      </div>
+      <button class="btn-ghost" id="btn-open-scoreboard" type="button">
+        🏆 Live Scoreboard
+      </button>
+      <button class="btn-ghost" id="btn-instructor-toggle" type="button" title="Password-protected Instructor Preview">
+        🔒 Instructor Preview: OFF
+      </button>
+      <button class="btn-ghost" id="btn-reset-progress" type="button">
+        Reset My Progress
+      </button>
+    </div>
+  </header>
+
+  <main class="layout">
+    <!-- Left Sidebar -->
+    <aside class="sidebar">
+      <!-- Live Real-Time Scoreboard Panel -->
+      <div class="panel">
+        <div class="panel-title">
+          <span><span class="live-dot"></span>Live CE Scoreboard</span>
+          <span class="badge completed" id="sb-player-count">0 Players</span>
+        </div>
+        <div class="scoreboard-list" id="sidebar-scoreboard">
+          <div style="font-size: 12.5px; color: var(--text-muted); padding: 8px 4px;">
+            Waiting for CEs to join...
+          </div>
+        </div>
+        <button class="btn-ghost" id="btn-sidebar-expand-sb" type="button" style="width: 100%; margin-top: 10px; font-size: 12px;">
+          🏆 View Full Leaderboard Table
+        </button>
+      </div>
+
+      <div class="panel">
+        <div class="panel-title">
+          <span>Investigation Missions</span>
+        </div>
+        <nav class="mission-nav" id="mission-nav"></nav>
+      </div>
+
+      <div class="panel">
+        <div class="panel-title">
+          <span>Target Cluster Environment</span>
+          <span class="badge in-progress">Read-Only</span>
+        </div>
+        <div class="kv-list">
+          <div class="kv-row">
+            <span class="kv-label">GCP Project</span>
+            <span class="kv-val">gpu-launchpad-playground</span>
+          </div>
+          <div class="kv-row">
+            <span class="kv-label">GKE Cluster &amp; Zone</span>
+            <span class="kv-val">ikwak-reliability (europe-west4-b)</span>
+          </div>
+          <div class="kv-row">
+            <span class="kv-label">GPU Node Pool (2 × a4-highgpu-8g)</span>
+            <span class="kv-val">16 × NVIDIA B200 (gIB RDMA)</span>
+          </div>
+          <div class="kv-row">
+            <span class="kv-label">Node 1 (Instance 174490015860863227)</span>
+            <span class="kv-val">gke-ikwak-reliabilit-a4-highgpu-8g-a4-0256e2f1-34t3</span>
+          </div>
+          <div class="kv-row">
+            <span class="kv-label">Node 2 (Instance 482910491827364512)</span>
+            <span class="kv-val">gke-ikwak-reliabilit-a4-highgpu-8g-a4-0256e2f1-6df3</span>
+          </div>
+          <div class="kv-row">
+            <span class="kv-label">Compute Reservation</span>
+            <span class="kv-val">nvidia-b200-6bsoymep8ylww</span>
+          </div>
+          <div class="kv-row">
+            <span class="kv-label">Reference Documentation</span>
+            <span class="kv-val">
+              <a href="https://docs.cloud.google.com/compute/docs/troubleshooting/troubleshooting-gpus#xid-handling" target="_blank" rel="noopener">
+                GCP GPU XID Handling Guide ↗
+              </a>
+            </span>
+          </div>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Main Investigation Feed -->
+    <section class="content-area">
+      <div class="mission-banner" id="mission-banner"></div>
+      <div class="clue-chain" id="clue-chain"></div>
+      <div class="next-mission-bar" id="next-mission-bar">
+        <div>
+          <strong style="color: var(--green-text); font-size: 15px;">Mission Complete!</strong>
+          <p style="margin: 3px 0 0; font-size: 13.5px; color: var(--text-secondary);" id="next-mission-desc"></p>
+        </div>
+        <button class="btn-submit" id="btn-next-mission" type="button">Proceed to Next Mission →</button>
+      </div>
+    </section>
+  </main>
+
+  <!-- 1. Nickname Onboarding Modal -->
+  <div class="modal-backdrop" id="nickname-modal">
+    <div class="modal-card">
+      <h3>🕵️ Welcome to Operation Goodput</h3>
+      <p>
+        Choose a nickname to join the <strong>Live CE Scoreboard</strong>.
+        Once you start, each breadcrumb question has a <strong>10:00 countdown timer</strong> worth up to <strong>1,000 points</strong>:
+      </p>
+      <ul style="margin: 0 0 16px; padding-left: 20px; font-size: 13px; color: var(--text-secondary);">
+        <li><strong>Speed Matters:</strong> The faster you submit the right answer, the more points you earn (`1,000 pts` at 10:00 down to `0 pts` at 00:00).</li>
+        <li><strong>Zero-Point Floor:</strong> If your 10-minute timer hits `00:00`, you earn `0` points for that question (you can still solve it to advance).</li>
+        <li><strong>Stuck?</strong> Click <code>🔓 Reveal Answer</code> on any question with the instructor password to reveal the answer and advance for `0` points.</li>
+      </ul>
+      <form id="nickname-form">
+        <input
+          type="text"
+          class="answer-input"
+          id="nickname-input"
+          placeholder="Enter your CE nickname (e.g., xid-hunter, b200-ninja)"
+          maxlength="28"
+          style="width: 100%;"
+          autocomplete="off"
+          required
+        />
+        <div class="modal-actions">
+          <button type="submit" class="btn-submit" style="width: 100%;">Start Investigation &amp; Start Timer →</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- 2. Password Modal (for Instructor Preview, Per-Clue Reveal Answer, or Reset Scoreboard) -->
+  <div class="modal-backdrop" id="password-modal">
+    <div class="modal-card">
+      <h3 id="password-modal-title">🔒 Enter Instructor Password</h3>
+      <p id="password-modal-desc">Enter the password to unlock this action.</p>
+      <form id="password-form">
+        <input
+          type="password"
+          class="answer-input"
+          id="password-input"
+          placeholder="Enter password..."
+          style="width: 100%;"
+          autocomplete="off"
+        />
+        <div class="feedback-msg error" id="password-error" style="display: none; margin-top: 10px;">
+          Incorrect password. Please try again.
+        </div>
+        <div class="modal-actions">
+          <button type="button" class="btn-ghost" id="btn-password-cancel">Cancel</button>
+          <button type="submit" class="btn-submit" id="btn-password-confirm">Unlock</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- 3. Full Live Scoreboard Modal -->
+  <div class="modal-backdrop" id="scoreboard-modal">
+    <div class="modal-card wide">
+      <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 8px;">
+        <h3 style="margin: 0;"><span class="live-dot"></span>🏆 Live CE Scoreboard (Real-Time)</h3>
+        <div style="display: flex; gap: 8px;">
+          <button type="button" class="btn-ghost" id="btn-clear-scoreboard" title="Requires Instructor Password">
+            🔒 Reset All Scores
+          </button>
+          <button type="button" class="btn-ghost" id="btn-close-scoreboard">Close ✕</button>
+        </div>
+      </div>
+      <p style="margin-bottom: 10px;">
+        Scores update automatically every 2 seconds across all connected CEs. Maximum possible score: <strong>10,000 pts</strong> (1,000 pts × 10 clues).
+      </p>
+      <div style="max-height: 420px; overflow-y: auto;">
+        <table class="sb-table">
+          <thead>
+            <tr>
+              <th>Rank</th>
+              <th>Nickname</th>
+              <th>Progress</th>
+              <th>Mission 1</th>
+              <th>Mission 2</th>
+              <th>Mission 3</th>
+              <th style="text-align: right;">Total Score</th>
+            </tr>
+          </thead>
+          <tbody id="full-scoreboard-tbody">
+            <tr><td colspan="7" style="text-align: center; color: var(--text-muted);">No players registered yet.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const MISSIONS = [
+      {
+        id: "mission-1",
+        number: "Mission 1",
+        title: "The Midnight Pager: Why Did the Training Job Die?",
+        subtitle: "Triage Application vs. Hardware Faults",
+        scenario: `<strong>Incident Ticket #101:</strong> Your ML team launched their first multi-node NeMo-RL Gemma 3 27B training run (<code>dapo-gemma3-run1</code>) across 16 × B200 GPUs. Less than 3 minutes into Step 1, the job crashed and paged on-call. The ML engineer insists: <em>"One of the B200 nodes must have bad GPU memory—please replace the node!"</em> Your job is to investigate the logs, find the true root cause, and recommend the fastest fix.`,
+        clues: [
+          {
+            id: "m1-c1",
+            stepLabel: "Breadcrumb 1.1 · Initial Triage",
+            title: "Check Kubernetes Node Health & Locate the Failed Job Logs",
+            prompt: `Before blaming physical GPU hardware, check whether Kubernetes sees any unhealthy nodes or missing GPUs, and locate the logs for the failed training run (<code>dapo-gemma3-run1</code>) in the <code>default</code> namespace.<br><br><strong>Question:</strong> How many total allocatable GPUs (<code>nvidia.com/gpu</code>) are currently healthy across the two <code>a4-highgpu-8g</code> nodes (or enter the name of the failed pod/job)?`,
+            inputType: "text",
+            placeholder: "e.g., 16 GPUs (or 8 per node) / dapo-gemma3-run1",
+            hint: `Run <code>kubectl get nodes</code> to check node status and allocatable GPUs, and <code>kubectl get pods -n default</code> to see the training pods/jobs:
+<div class="code-block">kubectl get nodes -l cloud.google.com/gke-accelerator=nvidia-b200 \\
+  -o custom-columns=NAME:.metadata.name,READY:.status.conditions[-1].status,GPUS:.status.allocatable."nvidia\\.com/gpu"
+
+kubectl get pods -n default</div>`,
+            telemetrySample: `$ kubectl get nodes -l cloud.google.com/gke-accelerator=nvidia-b200 -o custom-columns=NAME:.metadata.name,READY:.status.conditions[-1].status,GPUS:.status.allocatable."nvidia\\.com/gpu"
+NAME                                                  READY   GPUS
+gke-ikwak-reliabilit-a4-highgpu-8g-a4-0256e2f1-34t3   True    8
+gke-ikwak-reliabilit-a4-highgpu-8g-a4-0256e2f1-6df3   True    8
+
+$ kubectl get pods -n default
+NAME                                             READY   STATUS    RESTARTS   AGE
+dapo-gemma3-run1-driver                          0/1     Error     0          24m
+ray-cluster-kuberay-head-nt7b6                   2/2     Running   0          2h
+ray-cluster-kuberay-worker-workergroup-1-lsfdm   3/3     Running   0          2h
+ray-cluster-kuberay-worker-workergroup-1-k88n4   3/3     Running   0          2h`,
+            acceptedKeywords: ["16", "8", "dapo-gemma3-run1", "dapo-gemma3-run1-driver", "true"],
+            warmKeywords: ["ready", "node", "kubectl"],
+            warmMessage: "You're looking in the right place! Enter the total number of healthy allocatable GPUs across both nodes (16, or 8 per node) or the failed pod name (`dapo-gemma3-run1-driver`).",
+            explanationTitle: "Correct! Both nodes are Ready with all 16 B200 GPUs (8 per node), and `dapo-gemma3-run1-driver` exited with Error.",
+            explanationHtml: `
+              <p>Both <code>-34t3</code> and <code>-6df3</code> report <code>Ready=True</code> with <code>8</code> allocatable GPUs each (<strong>16 GPUs total</strong>), and the KubeRay worker pods are still running cleanly. Only the job submission driver (<code>dapo-gemma3-run1-driver</code>) failed.</p>
+              <h4>Why This Matters for MTTR:</h4>
+              <ul>
+                <li><strong>Warning:</strong> As you will see in Mission 2 and Mission 3, <code>kubectl get nodes</code> showing <code>Ready=True</code> does <em>not</em> guarantee the GPU hardware is healthy. However, when a job fails at Step 1 while worker pods stay alive, the first place to look is the <strong>job/application log</strong>.</li>
+              </ul>
+            `
+          },
+          {
+            id: "m1-c2",
+            stepLabel: "Breadcrumb 1.2 · Root Cause Analysis",
+            title: "Inspect the Training Job Traceback",
+            prompt: `Now inspect the logs of the failed job (<code>kubectl logs dapo-gemma3-run1-driver -n default</code>) and check whether any hardware error fired. <br><br><strong>Question:</strong> What is the exact root-cause error that killed <code>dapo-gemma3-run1</code>?`,
+            inputType: "text",
+            placeholder: "e.g., CUDA out of memory / torch.OutOfMemoryError",
+            hint: `Fetch the logs from the failed job pod in <code>default</code>:
+<div class="code-block">kubectl logs dapo-gemma3-run1-driver -n default --tail=50</div>`,
+            telemetrySample: `$ kubectl logs dapo-gemma3-run1-driver -n default --tail=30
+[Step 1/100] Starting rollout generation across 16 GPUs (rollout.max_model_len=32768, train_micro_batch_size=8)...
+(DTensorPolicyWorkerV2 pid=18422, ip=10.88.2.6) [Rank 0] Forward+Backward pass started
+Traceback (most recent call last):
+  File "/opt/nemo-rl/examples/run_grpo.py", line 241, in main
+    grpo_train(policy, rollout_workers, dataloader, config)
+  File "/opt/nemo-rl/nemo_rl/algorithms/grpo.py", line 418, in grpo_train
+    loss = policy.train_step(batch)
+torch.OutOfMemoryError: CUDA out of memory. Tried to allocate 14.50 GiB. GPU 0 has a total capacity of 178.35 GiB of which 2.12 GiB is free. Including non-PyTorch memory, this process has 176.18 GiB memory in use. Of the allocated memory 168.40 GiB is allocated by PyTorch, and 4.12 GiB is reserved by PyTorch but unallocated.
+ray.exceptions.RayTaskError(OutOfMemoryError): ray::DTensorPolicyWorkerV2.train_step() (pid=18422, ip=10.88.2.6)
+[Job Status] dapo-gemma3-run1 FAILED (ExitCode: 1)`,
+            acceptedKeywords: ["oom", "out of memory", "outofmemoryerror", "cuda out of memory", "memory"],
+            warmKeywords: ["cuda", "torch", "pytorch", "14.50", "178.35"],
+            warmMessage: "Almost there! Look at the specific exception line (`torch.OutOfMemoryError: ...`)—what type of CUDA error is this?",
+            explanationTitle: "Spot on! It's a Job-Level `torch.OutOfMemoryError: CUDA out of memory` (CUDA OOM)—NOT a hardware fault.",
+            explanationHtml: `
+              <p>The job crashed with <code>torch.OutOfMemoryError: CUDA out of memory</code> while trying to allocate an extra <code>14.50 GiB</code> during the FSDP2 policy backward pass because <code>train_micro_batch_size=8</code> and <code>max_model_len=32768</code> exceeded the 178.35 GiB HBM3e capacity when co-located with vLLM rollout weights.</p>
+              <h4>Key Takeaway from Industry Research (ByteRobust &amp; Acme):</h4>
+              <ul>
+                <li>In ByteDance's 9,600-GPU study (<em>ByteRobust</em>), <strong>CUDA errors ranked #1 by incident count (36.1%)</strong> and OOM/CPU overload accounted for <strong>>20%</strong> of job failures.</li>
+                <li>Yet a Python stack trace ending in a CUDA error can be either an <strong>application config bug</strong> (like this CUDA OOM) or a <strong>symptom of a deeper hardware XID</strong>. Checking the job traceback first (and confirming zero hardware XIDs in the kernel log) prevents you from wasting hours replacing healthy hardware!</li>
+              </ul>
+            `
+          },
+          {
+            id: "m1-c3",
+            stepLabel: "Breadcrumb 1.3 · Remediation Decision",
+            title: "Choose the Optimal Recovery Action",
+            prompt: `Every minute of downtime on a 512-GPU B200 cluster costs <strong>$96.23</strong> ($5,774/hr). Based on your diagnosis of <code>dapo-gemma3-run1</code>, select the correct remediation action to minimize MTTR:`,
+            inputType: "choice",
+            choices: [
+              {
+                id: "a",
+                text: "Apply `kubectl label node ... cloud.google.com/perform-reboot=true` to reboot the node and clear GPU memory."
+              },
+              {
+                id: "b",
+                text: "Apply `kubectl label node ... cloud.google.com/perform-maintenance=true` to request a GCE host replacement."
+              },
+              {
+                id: "c",
+                text: "Do not reboot or replace any nodes. Reduce `train_micro_batch_size` / `max_model_len` (or enable FSDP2 activation checkpointing / memory offloading) in the recipe YAML and immediately resubmit the job."
+              },
+              {
+                id: "d",
+                text: "Run `nvidia-smi --gpu-reset` on all 8 GPUs on the node."
+              }
+            ],
+            correctChoice: "c",
+            explanationTitle: "Correct! Fix the job configuration and resubmit immediately ($t_{re} = 0$).",
+            explanationHtml: `
+              <p>Because the hardware is 100% healthy and PyTorch released its CUDA context when the worker process exited, <strong>infrastructure recovery time ($t_{re}$) is 0 seconds</strong>.</p>
+              <ul>
+                <li>If you had rebooted the node (Option A), you would have wasted ~10–15 minutes—and in our Run 8a test, an unnecessary <code>perform-reboot=true</code> left a local SSD read-only and triggered a full GKE node recreation!</li>
+                <li>If you had triggered host maintenance (Option B), you would have idled the cluster for <strong>~35 minutes</strong> (or been ignored if no maintenance event was pending), only for the job to OOM again on the new node.</li>
+              </ul>
+            `
+          }
+        ]
+      },
+      {
+        id: "mission-2",
+        number: "Mission 2",
+        title: "The Second Crash: A Transient Hardware Fault Strikes",
+        subtitle: "Cloud Logging Serial Console & XID 48 Handling",
+        scenario: `<strong>Incident Ticket #102:</strong> The ML team fixed the batch size and launched <code>dapo-gemma3-run2</code>. It stepped smoothly at <code>116.4s/step</code> for 18 steps—then suddenly died! This time, the Python job log only says: <code>RuntimeError: NCCL error: unhandled cuda error</code>. Kubernetes still reports both nodes as <code>Ready=True</code> with 8 GPUs. Where did the real error go, what XID code fired, and how does Google Cloud recommend handling it?`,
+        clues: [
+          {
+            id: "m2-c1",
+            stepLabel: "Breadcrumb 2.1 · Detective Tooling (MTTD)",
+            title: "Locate the NVIDIA Driver Kernel Log Stream in Cloud Logging",
+            prompt: `When an NVIDIA GPU encounters a hardware or driver fault, the kernel module (<code>NVRM</code>) writes an <code>Xid</code> message to <code>/dev/kmsg</code>, which Google Cloud streams to the VM's serial console in Cloud Logging.<br><br><strong>Beware two common traps:</strong><br>1. Querying <code>log_id("compute.googleapis.com/serial_port_1_output")</code> returns <strong>nothing</strong>.<br>2. Searching bare <code>Xid</code> without <code>"NVRM: Xid"</code> matches thousands of unrelated <code>containerBoxID</code> lines.<br><br><strong>Question:</strong> What is the exact Cloud Logging <code>log_id</code> (or service name) where GCE serial console port 1 output actually lands?`,
+            inputType: "text",
+            placeholder: "e.g., serialconsole.googleapis.com/serial_port_1_output",
+            hint: `Use this Cloud Logging filter in the Logs Explorer UI or via <code>gcloud logging read</code>:
+<div class="code-block">gcloud logging read \\
+  'resource.type="gce_instance" AND log_id("serialconsole.googleapis.com/serial_port_1_output") AND "NVRM: Xid"' \\
+  --project=gpu-launchpad-playground --limit=10 \\
+  --format="table(timestamp, resource.labels.instance_id, textPayload)"</div>`,
+            telemetrySample: `Filter:
+resource.type="gce_instance"
+log_id("serialconsole.googleapis.com/serial_port_1_output")
+"NVRM: Xid"`,
+            acceptedKeywords: ["serialconsole.googleapis.com/serial_port_1_output", "serial_port_1_output", "serialconsole.googleapis.com"],
+            warmKeywords: ["serial", "logging", "kmsg", "dmesg"],
+            warmMessage: "Close! Enter the exact log_id name: `serialconsole.googleapis.com/serial_port_1_output`.",
+            explanationTitle: "Correct! `serialconsole.googleapis.com/serial_port_1_output` is the fastest and richest detective surface (~2.0s MTTD).",
+            explanationHtml: `
+              <p>Across our 11 benchmark runs on <code>ikwak-reliability</code>, we measured the exact latency from hardware fault ($T_0$) to each detection surface:</p>
+              <ul>
+                <li><strong>Cloud Logging (<code>serialconsole.googleapis.com/serial_port_1_output</code>):</strong> Emitted in <strong>0.06s</strong>, queryable in <strong>2.07s</strong>. It is the <em>only</em> surface that immediately tells you the exact GPU PCI bus address and numeric XID code.</li>
+                <li><strong>Log-Based Alert Policy (matching <code>"NVRM: Xid"</code> on this log_id):</strong> Fires to Pub/Sub and operator Email in <strong>1m 36s – 2m 15s</strong>.</li>
+                <li><strong>Default GKE Managed DCGM Exporter:</strong> Exports 168 utilization series (<code>GPU_UTIL</code>, <code>SM_CLOCK</code>) but <strong>0 XID or ECC fields</strong> (field 319 <code>DCGM_FI_DEV_XID_ERRORS</code> is omitted by default).</li>
+              </ul>
+            `
+          },
+          {
+            id: "m2-c2",
+            stepLabel: "Breadcrumb 2.2 · Identify the XID Error Code",
+            title: "Find the Exact XID Code That Killed Run 2",
+            prompt: `Query Cloud Logging (or inspect the captured serial console log for <code>dapo-gemma3-run2</code> on node <code>-6df3</code> / instance <code>482910491827364512</code>).<br><br><strong>Question:</strong> What numeric <strong>XID error code</strong> was emitted by <code>NVRM</code>, and what memory error does it indicate?`,
+            inputType: "text",
+            placeholder: "e.g., XID 48 (or 48 / Double Bit ECC)",
+            hint: `Run the Cloud Logging query filtering for <code>"NVRM: Xid"</code> on the cluster instances, or click "View Captured Cluster Telemetry" below to see the exact serial console output.`,
+            telemetrySample: `TIMESTAMP: 2026-10-06T19:14:22.418Z
+INSTANCE_ID: 482910491827364512 (gke-ikwak-reliabilit-a4-highgpu-8g-a4-0256e2f1-6df3)
+LOG_NAME: projects/gpu-launchpad-playground/logs/serialconsole.googleapis.com%2Fserial_port_1_output
+TEXT_PAYLOAD:
+[14289.412088] NVRM: Xid (PCI:0000:89:00): 48, pid=218402, name=ray::DTensorPolicy, An uncorrectable double bit error (DBE) has been detected on GPU (0000:89:00).`,
+            acceptedKeywords: ["48", "xid 48", "xid48", "double bit ecc", "dbe"],
+            warmKeywords: ["ecc", "memory", "uncorrectable", "89:00"],
+            warmMessage: "You found the memory error on PCI 0000:89:00! What is the numeric XID code shown right after `(PCI:0000:89:00):`?",
+            explanationTitle: "Correct! `XID 48` — An uncorrectable Double-Bit ECC Error (DBE) in GPU memory.",
+            explanationHtml: `
+              <p>The serial console log reveals: <code>NVRM: Xid (PCI:0000:89:00): 48 ... An uncorrectable double bit error (DBE) has been detected on GPU</code>.</p>
+              <h4>What Happens When XID 48 Fires:</h4>
+              <ul>
+                <li>GPU HBM memory is protected by Error-Correcting Code (ECC), which automatically corrects single-bit errors (SBE) and detects uncorrectable double-bit errors (DBE).</li>
+                <li>When a DBE occurs, the driver immediately terminates the running CUDA context (killing <code>dapo-gemma3-run2</code>) to prevent silent data corruption (SDC), and increments the volatile uncorrectable ECC counter.</li>
+                <li>On NVIDIA A100, H100, and B200 GPUs, the hardware records the bad HBM row for <strong>row remapping</strong> (often accompanied by <code>Xid 63</code>), which requires a GPU reset or VM reboot to take effect.</li>
+              </ul>
+            `
+          },
+          {
+            id: "m2-c3",
+            stepLabel: "Breadcrumb 2.3 · Remediation Playbook (GCP Docs)",
+            title: "Select the Recommended Action for XID 48",
+            prompt: `Consult the official <a href="https://docs.cloud.google.com/compute/docs/troubleshooting/troubleshooting-gpus#xid-handling" target="_blank" rel="noopener">Google Cloud GPU Troubleshooting Guide (#xid-handling)</a> under <strong>GPU memory errors → Xid 48: Double Bit ECC</strong>.<br><br>Notice also that checking the GCE Reservation and Instance shows <code>healthStatus: HEALTHY</code> and <code>upcomingMaintenance: null</code>. What is the recommended <strong>Customer Action</strong> to recover from an isolated <code>Xid 48</code> on a GKE node?`,
+            inputType: "choice",
+            choices: [
+              {
+                id: "a",
+                text: "Report the host as faulty immediately and wait for Google to replace the physical machine."
+              },
+              {
+                id: "b",
+                text: "Stop your workloads and reset the GPUs (`sudo nvidia-smi --gpu-reset`) or trigger a guest OS reboot on the GKE node (`kubectl label nodes <NODE_NAME> cloud.google.com/perform-reboot=true`) to clear the volatile ECC error and complete any pending row remap."
+              },
+              {
+                id: "c",
+                text: "Apply `kubectl label nodes <NODE_NAME> cloud.google.com/perform-maintenance=true` even though `upcomingMaintenance` is null."
+              },
+              {
+                id: "d",
+                text: "Disable ECC memory checking on the B200 GPUs (`nvidia-smi -e 0`) so future double-bit errors do not interrupt training."
+              }
+            ],
+            correctChoice: "b",
+            explanationTitle: "Correct! Stop workloads and reset the GPU (`nvidia-smi --gpu-reset`) or reboot the GKE node (`cloud.google.com/perform-reboot=true`).",
+            explanationHtml: `
+              <p>Per the <a href="https://docs.cloud.google.com/compute/docs/troubleshooting/troubleshooting-gpus#gpu-memory-errors" target="_blank" rel="noopener">official Google Cloud XID Handling documentation</a>:</p>
+              <blockquote><em>"When you encounter an uncorrectable ECC error, your workload terminates and the volatile error count increments. Our recommendation in this case is to reset the GPU or reboot the instance and not to report the host as faulty."</em></blockquote>
+              <h4>Two Empirical Insights from Our Run 8 Experiments:</h4>
+              <ul>
+                <li><strong>1. Isolated XID 48 does NOT trigger GCE Host Maintenance:</strong> In Runs 8a &amp; 8b, we injected 10 consecutive XID 48 events across 85+ minutes. GCE kept the reservation <code>HEALTHY</code> and never scheduled a host repair—because Google only replaces the hardware on memory errors if the HBM row-remap bank is exhausted (<code>Xid 64: All reserved rows for bank are remapped</code>), if SRAM lifetime error thresholds are exceeded, or after <strong>3 consecutive XID 63 row-remap events</strong> (Run 8d).</li>
+                <li><strong>2. How to Reset a GPU or Reboot a GKE Node:</strong>
+                  <ul>
+                    <li><strong>GKE Node Guest Reboot:</strong> <code>kubectl label nodes &lt;NODE_NAME&gt; cloud.google.com/perform-reboot=true</code></li>
+                    <li><strong>GKE GPU Reset Tool / CLI:</strong> On A3/A4 nodes, <code>/home/kubernetes/bin/nvidia/bin/nvidia-smi --gpu-reset</code> (or the <a href="https://github.com/ai-on-gke/tutorials-and-examples/tree/main/gpu-reset-tool" target="_blank" rel="noopener">GKE gpu-reset-tool</a>) resets the GPU after stopping the GKE GPU management daemons holding <code>/dev/nvidia*</code>.</li>
+                  </ul>
+                </li>
+              </ul>
+            `
+          }
+        ]
+      },
+      {
+        id: "mission-3",
+        number: "Mission 3",
+        title: "The Catastrophic Fault: Bus Drop, Emergency Maintenance & Host Repair",
+        subtitle: "XID 79 Triage, Pulling Forward Repair & Readiness Verification",
+        scenario: `<strong>Incident Ticket #103:</strong> Hours later, the Cloud Monitoring log-based alert fires for a third time! Training run <code>dapo-gemma3-run3</code> crashed in <strong>9.4 seconds</strong> with <code>ActorUnavailableError: Socket closed (rpc_code: 14)</code>. Your mission is to:<br>1) Find the catastrophic XID in Cloud Logging on node <code>-34t3</code>,<br>2) Confirm the fault across the GCE Reservation &amp; Instance maintenance status,<br>3) Trigger immediate Emergency Maintenance, and<br>4) Confirm that the bad node was repaired and returned to service with all 8 GPUs.`,
+        clues: [
+          {
+            id: "m3-c1",
+            stepLabel: "Breadcrumb 3.1 · Cloud Logging Forensics",
+            title: "Identify the Catastrophic XID Code on Node -34t3",
+            prompt: `Query Cloud Logging (<code>serialconsole.googleapis.com/serial_port_1_output</code>) for node <code>gke-ikwak-reliabilit-a4-highgpu-8g-a4-0256e2f1-34t3</code> (instance ID <code>174490015860863227</code>) during the <code>dapo-gemma3-run3</code> crash.<br><br><strong>Question:</strong> What primary <strong>XID error code</strong> fired on GPU 7 (<code>PCI:0000:cc:00</code>) that caused it to disappear from the PCIe bus?`,
+            inputType: "text",
+            placeholder: "e.g., XID 79 (or 79 / GPU has fallen off the bus)",
+            hint: `Run the Cloud Logging query filtered to instance <code>174490015860863227</code>:
+<div class="code-block">gcloud logging read \\
+  'resource.type="gce_instance" AND resource.labels.instance_id="174490015860863227" AND log_id("serialconsole.googleapis.com/serial_port_1_output") AND "NVRM: Xid"' \\
+  --project=gpu-launchpad-playground --limit=15 \\
+  --format="table(timestamp, textPayload)"</div>`,
+            telemetrySample: `TIMESTAMP: 2026-09-24T20:31:38.086Z
+INSTANCE_ID: 174490015860863227 (gke-ikwak-reliabilit-a4-highgpu-8g-a4-0256e2f1-34t3)
+TEXT_PAYLOAD:
+[ 4182.104821] NVRM: Xid (PCI:0000:cc:00): 79, pid=0, name=, GPU has fallen off the bus.
+[ 4182.105012] NVRM: GPU 0000:cc:00.0: GPU has fallen off the bus.
+[ 4182.741902] NVRM: Xid (PCI:0000:04:00): 154, GPU recovery action changed from 0x0 (None) to 0x1 (Node Reboot Required)
+[ 4182.789120] NVRM: Xid (PCI:0000:cc:00): 154, GPU recovery action changed from 0x0 (None) to 0x1 (Node Reboot Required)
+[ 4183.110492] NVRM: Xid (PCI:0000:89:00): 145, NVLink: fatal error detected on link...`,
+            acceptedKeywords: ["79", "xid 79", "xid79", "fallen off the bus"],
+            warmKeywords: ["154", "145", "cc:00", "bus", "pcie"],
+            warmMessage: "You see the burst of XIDs on node -34t3! Enter the primary XID code on `PCI:0000:cc:00` that says `GPU has fallen off the bus`.",
+            explanationTitle: "Correct! `XID 79: GPU has fallen off the bus` (followed by cascading `XID 154` across all 8 GPUs).",
+            explanationHtml: `
+              <p>When GPU 7 (<code>0000:cc:00.0</code>) dropped off the PCIe bus (<code>VENDOR_ID = ffff</code>), it triggered an immediate chain reaction across the entire node:</p>
+              <ul>
+                <li><strong><code>T0 + 1.0s</code>:</strong> <code>NVRM: Xid (PCI:0000:cc:00): 79, GPU has fallen off the bus.</code></li>
+                <li><strong><code>T0 + 1.7s</code>:</strong> Because all 8 B200 GPUs are interconnected over NVLink, losing GPU 7 faulted the fabric—emitting <code>Xid 154 (Node Reboot Required)</code> across <strong>all 8 GPUs</strong> and <code>Xid 145 / 45</code> NVLink errors on peer GPUs.</li>
+                <li><strong><code>T0 + 9.4s</code>:</strong> The KubeRay training job died. Yet Kubernetes <code>kubectl get nodes</code> kept reporting <code>-34t3</code> as <code>Ready=True</code> with <code>8</code> allocatable GPUs for the next <strong>40 minutes</strong>!</li>
+              </ul>
+            `
+          },
+          {
+            id: "m3-c2",
+            stepLabel: "Breadcrumb 3.2 · Confirming Platform Detection (Reservation & Instance)",
+            title: "Verify the Fault in GCE Reservation Health & Upcoming Maintenance",
+            prompt: `Unlike <code>XID 48</code>, Google Cloud proactively sends machines with <strong>XID 79</strong> to repair. Before triggering emergency maintenance, confirm that Google Cloud's control plane detected the fault:<br>1) Within ~30 seconds of <code>XID 79</code>, the Compute Reservation (<code>nvidia-b200-6bsoymep8ylww</code>) <code>healthStatus</code> flips from <code>HEALTHY</code> to <code>DEGRADED</code>.<br>2) Within ~11–26 minutes, GCE populates <code>resourceStatus.upcomingMaintenance</code> on instance <code>-34t3</code> (and mirrors it to the GKE node annotation <code>node.gke.io/upcoming-maintenance</code>).<br><br><strong>Question:</strong> Inspect the <code>upcomingMaintenance</code> payload on node <code>-34t3</code>. What exact string appears in <code>maintenanceReasons</code> to confirm Google scheduled this repair due to the GPU XID?`,
+            inputType: "text",
+            placeholder: "e.g., FAILURE_GPU_XID",
+            hint: `Check the GKE node annotation or GCE instance description (or inspect the captured telemetry below):
+<div class="code-block">kubectl get node gke-ikwak-reliabilit-a4-highgpu-8g-a4-0256e2f1-34t3 \\
+  -o jsonpath='{.metadata.annotations.node\\.gke\\.io/upcoming-maintenance}'
+
+gcloud compute instances describe gke-ikwak-reliabilit-a4-highgpu-8g-a4-0256e2f1-34t3 \\
+  --zone=europe-west4-b --project=gpu-launchpad-playground \\
+  --format="yaml(resourceStatus.upcomingMaintenance)"</div>`,
+            telemetrySample: `$ gcloud compute reservations describe nvidia-b200-6bsoymep8ylww --zone=europe-west4-b --format="yaml(resourceStatus.healthInfo)"
+resourceStatus:
+  healthInfo:
+    degradedBlockCount: 1
+    healthStatus: DEGRADED
+    healthyBlockCount: 0
+
+$ gcloud compute instances describe gke-ikwak-reliabilit-a4-highgpu-8g-a4-0256e2f1-34t3 --zone=europe-west4-b --format="json(resourceStatus.upcomingMaintenance)"
+{
+  "resourceStatus": {
+    "upcomingMaintenance": {
+      "canReschedule": true,
+      "latestWindowStartTime": "2026-10-02T00:00:01Z",
+      "maintenanceReasons": [
+        "FAILURE_GPU_XID",
+        "FAILURE_GPU"
+      ],
+      "maintenanceStatus": "PENDING",
+      "type": "UNSCHEDULED",
+      "windowEndTime": "2026-10-02T04:00:00Z",
+      "windowStartTime": "2026-10-02T00:00:00Z"
+    }
+  }
+}`,
+            acceptedKeywords: ["failure_gpu_xid", "failure_gpu", "degraded"],
+            warmKeywords: ["pending", "unscheduled", "upcomingmaintenance", "canreschedule"],
+            warmMessage: "You're looking right at the `upcomingMaintenance` block! Enter the reason code inside `maintenanceReasons` (`FAILURE_GPU_XID`).",
+            explanationTitle: "Correct! `maintenanceReasons: [\"FAILURE_GPU_XID\", \"FAILURE_GPU\"]` with `canReschedule: true`.",
+            explanationHtml: `
+              <p>Here is how the two-stage infrastructure detection works on Google Cloud:</p>
+              <ul>
+                <li><strong>Stage 1 — Reservation Health (<code>+12.5s – 35.6s</code>):</strong> <code>resourceStatus.healthInfo.healthStatus</code> flips to <code>DEGRADED</code>. Fast, coarse 1-bit signal.</li>
+                <li><strong>Stage 2 — Emergent Maintenance Scheduled (<code>+11m – 26m</code>):</strong> Because <strong>Emergent Maintenance</strong> was enabled on the reservation (<code>gcloud compute reservations update ... --enable-emergent-maintenance</code>), GCE schedules an <code>UNSCHEDULED</code> / <code>PENDING</code> repair with <code>maintenanceReasons: ["FAILURE_GPU_XID", "FAILURE_GPU"]</code> and sets <code>windowStartTime</code> <strong>7+ days in the future</strong> (snapped to <code>00:00:00 UTC</code> on day + 8) with <code>canReschedule: true</code>.</li>
+                <li><strong>Why the 7-day buffer matters:</strong> If a fault is non-fatal (like 3× XID 63s), Emergent Maintenance gives you 7 days to finish or checkpoint your training run cleanly instead of abruptly terminating the VM. When a fault is fatal (like XID 79), <code>canReschedule: true</code> lets you pull that repair forward to <strong>right now</strong>!</li>
+              </ul>
+            `
+          },
+          {
+            id: "m3-c3",
+            stepLabel: "Breadcrumb 3.3 · Request Emergency Maintenance",
+            title: "Trigger the Host Repair Immediately on GKE",
+            prompt: `According to the <a href="https://docs.cloud.google.com/compute/docs/troubleshooting/troubleshooting-gpus#other-xid-errors" target="_blank" rel="noopener">Google Cloud XID 79 documentation</a> and <a href="https://docs.cloud.google.com/ai-hypercomputer/docs/manage/manage-gke-clusters#report-faulty-hosts-how-to" target="_blank" rel="noopener">GKE Host Maintenance guide</a>, when <code>upcomingMaintenance</code> is <code>PENDING</code> with <code>canReschedule: true</code>, you should trigger the emergency maintenance immediately rather than waiting 7 days.<br><br><strong>Question:</strong> What node label (<code>key=value</code>) or <code>kubectl label node</code> command do you apply to node <code>gke-ikwak-reliabilit-a4-highgpu-8g-a4-0256e2f1-34t3</code> to start the host maintenance right now?`,
+            inputType: "text",
+            placeholder: "e.g., kubectl label node ... cloud.google.com/perform-maintenance=true",
+            hint: `Unlike <code>cloud.google.com/perform-reboot=true</code> (which only reboots the guest OS for transient errors like XID 48), pulling forward a scheduled GCE host maintenance event on GKE uses a specific <code>cloud.google.com/perform-...</code> node label:
+<div class="code-block">kubectl label node gke-ikwak-reliabilit-a4-highgpu-8g-a4-0256e2f1-34t3 \\
+  cloud.google.com/perform-maintenance=true</div>`,
+            telemetrySample: `# Command executed by operator / orchestrator (B7):
+$ kubectl label node gke-ikwak-reliabilit-a4-highgpu-8g-a4-0256e2f1-34t3 cloud.google.com/perform-maintenance=true
+node/gke-ikwak-reliabilit-a4-highgpu-8g-a4-0256e2f1-34t3 labeled
+
+# +20.8s later (B9):
+Taint applied: cloud.google.com/maintenance-window-started=PreferNoSchedule
+
+# +51.2s later (B8):
+upcomingMaintenance.maintenanceStatus: PENDING -> ONGOING
+upcomingMaintenance.canReschedule: true -> false
+upcomingMaintenance.windowStartTime: 2026-10-02T00:00:00Z -> 2026-09-24T20:58:11Z`,
+            acceptedKeywords: ["perform-maintenance=true", "cloud.google.com/perform-maintenance=true", "perform-maintenance"],
+            warmKeywords: ["kubectl label", "maintenance", "report-faulty-host"],
+            warmMessage: "Almost! Make sure to include the exact GKE node label: `cloud.google.com/perform-maintenance=true`.",
+            explanationTitle: "Correct! `kubectl label node <NODE> cloud.google.com/perform-maintenance=true` pulls the host repair forward immediately.",
+            explanationHtml: `
+              <p>Applying <code>cloud.google.com/perform-maintenance=true</code> triggers an immediate, deterministic repair sequence (measured in Run 10 &amp; Run 11):</p>
+              <ul>
+                <li><strong><code>+21s</code>:</strong> GKE applies the <code>cloud.google.com/maintenance-window-started:PreferNoSchedule</code> taint and begins draining pods.</li>
+                <li><strong><code>+51s</code>:</strong> GCE rewrites <code>windowStartTime</code> from 7 days out to <em>now</em>, flips <code>maintenanceStatus</code> from <code>PENDING</code> to <code>ONGOING</code>, and sets <code>canReschedule: false</code> (irreversible).</li>
+                <li><strong><code>+14m 23s</code>:</strong> Node drain completes (<code>NodeNotReady</code>).</li>
+                <li><strong><code>+17m 07s</code> to <code>+33m 27s</code>:</strong> The VM enters <code>REPAIRING</code> (~16m 20s of physical/hypervisor host repair) while the healthy sibling node (<code>-6df3</code>) stays untouched!</li>
+              </ul>
+            `
+          },
+          {
+            id: "m3-c4",
+            stepLabel: "Breadcrumb 3.4 · Verify Node Repair & Avoid the 4-Hour Automation Trap",
+            title: "Confirm the Repaired Node Is Back in Place and Ready",
+            prompt: `Now inspect the current live state of node <code>gke-ikwak-reliabilit-a4-highgpu-8g-a4-0256e2f1-34t3</code> on the cluster and in GCE Instance metadata after the repair completed.<br><br>Look closely at the post-repair timeline below:<br>• At <strong>+35m 25s</strong> after applying the label, the VM transitioned <code>REPAIRING → RUNNING</code> (with a new <code>lastStartTimestamp</code>) and the GKE node became <code>Ready=True</code> with all <code>8</code> allocatable GPUs.<br>• Yet <code>upcomingMaintenance.maintenanceStatus</code> stayed <code>ONGOING</code> until <code>windowEndTime</code> (<strong>+4 hours 00 minutes</strong>—nearly 3.5 hours after the node was already repaired!).<br><br><strong>Question:</strong> How does GCE repair the GKE node (does the Kubernetes Node Name / GCE Instance ID change, or is it repaired <strong>in-place</strong> with a new <code>lastStartTimestamp</code> and <code>8</code> GPUs?), and what <strong>two signals</strong> should you check to confirm the node is ready instead of waiting 4 hours for <code>windowEndTime</code>?`,
+            inputType: "text",
+            placeholder: "e.g., In-place repair; check lastStartTimestamp + Ready with 8 GPUs",
+            hint: `Check the live node and GCE instance fields:
+<div class="code-block">kubectl get node gke-ikwak-reliabilit-a4-highgpu-8g-a4-0256e2f1-34t3 \\
+  -o jsonpath='{.metadata.name}{" | UID="}{.metadata.uid}{" | Ready="}{.status.conditions[?(@.type=="Ready")].status}{" | GPUs="}{.status.allocatable.nvidia\\.com/gpu}{"\\n"}'
+
+gcloud compute instances describe gke-ikwak-reliabilit-a4-highgpu-8g-a4-0256e2f1-34t3 \\
+  --zone=europe-west4-b --project=gpu-launchpad-playground \\
+  --format="yaml(id, status, lastStartTimestamp, resourceStatus.upcomingMaintenance)"</div>`,
+            telemetrySample: `Post-Repair Verification (Run 11 Timeline):
+- Node Name: gke-ikwak-reliabilit-a4-highgpu-8g-a4-0256e2f1-34t3 (UNCHANGED)
+- GCE Instance ID: 174490015860863227 (UNCHANGED — repaired in-place on healthy host hardware)
+- Pre-repair lastStartTimestamp:  2026-09-24T15:12:19.474Z
+- Post-repair lastStartTimestamp: 2026-09-24T21:31:26.374Z (+33m 27s after label: VM RUNNING)
+- GKE Node Status at +35m 25s:    Ready=True | allocatable nvidia.com/gpu: 8 (Cluster 16/16 GPUs)
+- Reservation Health at +27m 58s: Flipped DEGRADED -> HEALTHY (5m 29s BEFORE the VM booted!)
+- upcomingMaintenance status:     Stayed ONGOING until 00:58:07Z (6.1s after 4-hour windowEndTime, 3h 24m AFTER node was Ready!)`,
+            acceptedKeywords: ["laststarttimestamp", "in-place", "in place", "8", "ready", "same", "unchanged", "35"],
+            warmKeywords: ["windowendtime", "ongoing", "running", "gpu"],
+            warmMessage: "Almost there! Mention `lastStartTimestamp` (or `in-place` / `Ready` with `8` GPUs) to confirm how we verify the node is back.",
+            explanationTitle: "Lab Complete! You confirmed the 35-minute In-Place Host Repair and mastered the Readiness Gate.",
+            explanationHtml: `
+              <p>Congratulations! Here are the three golden rules of GCE/GKE Host Repair verification from our 11-run study:</p>
+              <ul>
+                <li><strong>1. The Node Is Repaired In-Place (Same Node Name, UID, and Instance ID):</strong> GKE does not delete the Kubernetes Node object or change its GCE Instance ID (<code>174490015860863227</code>). The VM transitions <code>RUNNING → REPAIRING → RUNNING</code> in <strong>~35 minutes</strong> from applying the label, returning with a fresh <code>lastStartTimestamp</code> and <code>8</code> healthy B200 GPUs.</li>
+                <li><strong>2. Never Wait for <code>upcomingMaintenance</code> to Clear (+4 Hours):</strong> GCE keeps <code>maintenanceStatus: ONGOING</code> until the 4-hour <code>windowEndTime</code> expires—<strong>~3.5 hours after your node is already repaired and Ready</strong>. Waiting for <code>CLEAR</code> wastes 3.5 hours of cluster capacity ($630 on 2 nodes; $20,200 on 64 nodes).</li>
+                <li><strong>3. Never Gate on Reservation <code>HEALTHY</code> Alone (-5.5 Minutes Early):</strong> Reservation health flips back to <code>HEALTHY</code> ~5.5 minutes <em>before</em> the VM finishes booting. Always verify: <strong>(a)</strong> GCE <code>lastStartTimestamp</code> has advanced, and <strong>(b)</strong> K8s Node is <code>Ready=True</code> with <code>nvidia.com/gpu: 8</code>!</li>
+              </ul>
+            `
+          }
+        ]
+      }
+    ];
+
+    const STORAGE_KEY = "operation_goodput_ce_lab_v2";
+    const INSTRUCTOR_PASSWORD = "ilovejensen";
+    const QUESTION_DURATION_SEC = 600; // 10 minutes per question
+    const MAX_POINTS_PER_QUESTION = 1000;
+
+    let state = {
+      playerId: "",
+      nickname: "",
+      currentMissionIdx: 0,
+      solvedClues: {},
+      savedInputs: {},
+      clueStartTimes: {}, // { clueId: timestampMs }
+      clueScores: {},     // { clueId: { points, elapsedSec, revealed } }
+      instructorMode: false
+    };
+
+    let liveLeaderboard = [];
+    let pendingPasswordCallback = null;
+
+    const BACKTICK_RE = new RegExp("\\x60([^\\x60]+)\\x60", "g");
+    function formatInlineCode(str) {
+      if (!str) return "";
+      return str.replace(BACKTICK_RE, "<code>$1</code>");
+    }
+
+    function escapeHtml(str) {
+      return String(str || "")
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;");
+    }
+
+    function generatePlayerId() {
+      return "ce-" + Math.random().toString(36).slice(2, 10) + "-" + Date.now().toString(36);
+    }
+
+    function loadState() {
+      try {
+        const raw = localStorage.getItem(STORAGE_KEY);
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          state.playerId = parsed.playerId || generatePlayerId();
+          state.nickname = parsed.nickname || "";
+          state.solvedClues = parsed.solvedClues || {};
+          state.savedInputs = parsed.savedInputs || {};
+          state.clueStartTimes = parsed.clueStartTimes || {};
+          state.clueScores = parsed.clueScores || {};
+          if (typeof parsed.currentMissionIdx === "number") {
+            state.currentMissionIdx = parsed.currentMissionIdx;
+          }
+        } else {
+          state.playerId = generatePlayerId();
+        }
+      } catch (e) {
+        console.warn("Could not read localStorage state:", e);
+        state.playerId = generatePlayerId();
+      }
+    }
+
+    function saveState() {
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify({
+          playerId: state.playerId,
+          nickname: state.nickname,
+          currentMissionIdx: state.currentMissionIdx,
+          solvedClues: state.solvedClues,
+          savedInputs: state.savedInputs,
+          clueStartTimes: state.clueStartTimes,
+          clueScores: state.clueScores
+        }));
+      } catch (e) {
+        console.warn("Could not save localStorage state:", e);
+      }
+    }
+
+    function totalCluesCount() {
+      return MISSIONS.reduce((acc, m) => acc + m.clues.length, 0);
+    }
+
+    function solvedCluesCount() {
+      if (state.instructorMode) return totalCluesCount();
+      return Object.keys(state.solvedClues).filter(k => state.solvedClues[k]).length;
+    }
+
+    function computeMyTotalScore() {
+      return Object.values(state.clueScores).reduce((sum, item) => sum + (Number(item.points) || 0), 0);
+    }
+
+    function isMissionUnlocked(mIdx) {
+      if (state.instructorMode || mIdx === 0) return true;
+      const prevMission = MISSIONS[mIdx - 1];
+      return prevMission.clues.every(c => !!state.solvedClues[c.id]);
+    }
+
+    function isMissionCompleted(mIdx) {
+      if (state.instructorMode) return true;
+      return MISSIONS[mIdx].clues.every(c => !!state.solvedClues[c.id]);
+    }
+
+    function isClueUnlocked(mIdx, cIdx) {
+      if (state.instructorMode) return true;
+      if (!isMissionUnlocked(mIdx)) return false;
+      if (cIdx === 0) return true;
+      const prevClue = MISSIONS[mIdx].clues[cIdx - 1];
+      return !!state.solvedClues[prevClue.id];
+    }
+
+    // Timer & Points Calculation (10 min = 600s countdown -> 1000 pts down to 0 pts)
+    function ensureClueTimerStarted(clueId) {
+      if (!state.nickname || state.instructorMode || state.solvedClues[clueId]) return;
+      if (!state.clueStartTimes[clueId]) {
+        state.clueStartTimes[clueId] = Date.now();
+        saveState();
+      }
+    }
+
+    function getClueTimerStatus(clueId) {
+      const startMs = state.clueStartTimes[clueId];
+      if (!startMs) {
+        return {
+          remainingSec: QUESTION_DURATION_SEC,
+          elapsedSec: 0,
+          livePoints: MAX_POINTS_PER_QUESTION,
+          pctRemaining: 100
+        };
+      }
+      const elapsedSec = Math.max(0, (Date.now() - startMs) / 1000);
+      const remainingSec = Math.max(0, QUESTION_DURATION_SEC - elapsedSec);
+      const livePoints = remainingSec <= 0
+        ? 0
+        : Math.floor(MAX_POINTS_PER_QUESTION * (remainingSec / QUESTION_DURATION_SEC));
+      const pctRemaining = Math.max(0, Math.min(100, (remainingSec / QUESTION_DURATION_SEC) * 100));
+      return {
+        remainingSec: Math.ceil(remainingSec),
+        elapsedSec: Math.round(elapsedSec),
+        livePoints,
+        pctRemaining
+      };
+    }
+
+    function formatMMSS(sec) {
+      const s = Math.max(0, Math.floor(sec));
+      const mm = String(Math.floor(s / 60)).padStart(2, "0");
+      const ss = String(s % 60).padStart(2, "0");
+      return `${mm}:${ss}`;
+    }
+
+    function updateActiveTimersDOM() {
+      if (!state.nickname || state.instructorMode) return;
+      const mission = MISSIONS[state.currentMissionIdx];
+      if (!mission) return;
+
+      mission.clues.forEach((clue, cIdx) => {
+        if (!isClueUnlocked(state.currentMissionIdx, cIdx) || state.solvedClues[clue.id]) return;
+        ensureClueTimerStarted(clue.id);
+        const t = getClueTimerStatus(clue.id);
+
+        const clockEl = document.getElementById(`timer-clock-${clue.id}`);
+        const ptsEl = document.getElementById(`timer-pts-${clue.id}`);
+        const fillEl = document.getElementById(`timer-fill-${clue.id}`);
+
+        if (clockEl) {
+          clockEl.className = "timer-clock " + (t.remainingSec <= 120 ? "danger" : (t.remainingSec <= 300 ? "warn" : ""));
+          clockEl.textContent = t.remainingSec > 0
+            ? `⏱ ${formatMMSS(t.remainingSec)} remaining (of 10:00)`
+            : `⏱ 00:00 · Time Expired (0 pts — solve or reveal to advance)`;
+        }
+        if (ptsEl) {
+          ptsEl.textContent = `⚡ +${t.livePoints} pts available`;
+        }
+        if (fillEl) {
+          fillEl.style.width = `${t.pctRemaining.toFixed(1)}%`;
+          fillEl.className = "timer-bar-fill " + (t.remainingSec <= 120 ? "danger" : (t.remainingSec <= 300 ? "warn" : ""));
+        }
+      });
+    }
+
+    // Password Modal Helper
+    function openPasswordModal({ title, description, confirmLabel, onSuccess }) {
+      pendingPasswordCallback = onSuccess;
+      document.getElementById("password-modal-title").textContent = title || "🔒 Enter Instructor Password";
+      document.getElementById("password-modal-desc").innerHTML = description || "Enter the password to continue.";
+      document.getElementById("btn-password-confirm").textContent = confirmLabel || "Unlock";
+      const inputEl = document.getElementById("password-input");
+      const errEl = document.getElementById("password-error");
+      inputEl.value = "";
+      errEl.style.display = "none";
+      document.getElementById("password-modal").classList.add("open");
+      setTimeout(() => inputEl.focus(), 40);
+    }
+
+    function closePasswordModal() {
+      document.getElementById("password-modal").classList.remove("open");
+      pendingPasswordCallback = null;
+    }
+
+    // Scoreboard Backend API Sync
+    async function fetchScoreboard() {
+      try {
+        const res = await fetch("/api/scoreboard", { cache: "no-store" });
+        if (!res.ok) return;
+        const data = await res.json();
+        if (Array.isArray(data.leaderboard)) {
+          liveLeaderboard = data.leaderboard;
+          renderScoreboardUI();
+        }
+      } catch (e) {
+        // Ignore transient network errors
+      }
+    }
+
+    async function syncPlayerRegistration() {
+      if (!state.nickname) return;
+      try {
+        const res = await fetch("/api/register", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            playerId: state.playerId,
+            nickname: state.nickname,
+            currentMissionIdx: state.currentMissionIdx
+          })
+        });
+        if (res.ok) {
+          const data = await res.json();
+          if (Array.isArray(data.leaderboard)) {
+            liveLeaderboard = data.leaderboard;
+            renderScoreboardUI();
+          }
+        }
+      } catch (e) {
+        console.warn("Could not register player on scoreboard:", e);
+      }
+    }
+
+    async function syncClueScore(clueId, points, elapsedSec, revealed) {
+      if (!state.nickname) return;
+      try {
+        const res = await fetch("/api/score", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            playerId: state.playerId,
+            nickname: state.nickname,
+            clueId,
+            points,
+            elapsedSec,
+            revealed,
+            currentMissionIdx: state.currentMissionIdx
+          })
+        });
+        if (res.ok) {
+          const data = await res.json();
+          if (Array.isArray(data.leaderboard)) {
+            liveLeaderboard = data.leaderboard;
+            renderScoreboardUI();
+          }
+        }
+      } catch (e) {
+        console.warn("Could not post clue score:", e);
+      }
+    }
+
+    async function syncResetPlayer() {
+      try {
+        const res = await fetch("/api/reset-player", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ playerId: state.playerId })
+        });
+        if (res.ok) {
+          const data = await res.json();
+          if (Array.isArray(data.leaderboard)) {
+            liveLeaderboard = data.leaderboard;
+            renderScoreboardUI();
+          }
+        }
+      } catch (e) {
+        console.warn("Could not reset player on scoreboard:", e);
+      }
+    }
+
+    function missionScoreForPlayer(player, missionPrefix) {
+      const cs = player.clueScores || {};
+      let sum = 0;
+      Object.keys(cs).forEach(cid => {
+        if (cid.startsWith(missionPrefix)) {
+          sum += Number(cs[cid].points) || 0;
+        }
+      });
+      return sum;
+    }
+
+    function renderScoreboardUI() {
+      const countEl = document.getElementById("sb-player-count");
+      if (countEl) {
+        countEl.textContent = `${liveLeaderboard.length} ${liveLeaderboard.length === 1 ? "CE" : "CEs"}`;
+      }
+
+      const sidebarList = document.getElementById("sidebar-scoreboard");
+      if (sidebarList) {
+        if (liveLeaderboard.length === 0) {
+          sidebarList.innerHTML = `<div style="font-size: 12.5px; color: var(--text-muted); padding: 8px 4px;">No CEs on the board yet. Choose a nickname to take #1!</div>`;
+        } else {
+          sidebarList.innerHTML = liveLeaderboard.map(p => {
+            const isMe = p.playerId === state.playerId;
+            const medal = p.rank === 1 ? "🥇" : (p.rank === 2 ? "🥈" : (p.rank === 3 ? "🥉" : `#${p.rank}`));
+            const mNum = Math.min(3, (Number(p.currentMissionIdx) || 0) + 1);
+            return `
+              <div class="sb-row ${isMe ? "is-me" : ""}">
+                <div class="sb-rank">${medal}</div>
+                <div style="min-width: 0;">
+                  <div class="sb-name">${escapeHtml(p.nickname)}${isMe ? " (You)" : ""}</div>
+                  <div class="sb-meta">${p.solvedCount || 0}/10 Clues · Mission ${mNum}</div>
+                </div>
+                <div class="sb-score">${(Number(p.totalScore) || 0).toLocaleString()} pts</div>
+              </div>
+            `;
+          }).join("");
+        }
+      }
+
+      const fullTbody = document.getElementById("full-scoreboard-tbody");
+      if (fullTbody) {
+        if (liveLeaderboard.length === 0) {
+          fullTbody.innerHTML = `<tr><td colspan="7" style="text-align: center; color: var(--text-muted);">No players registered yet.</td></tr>`;
+        } else {
+          fullTbody.innerHTML = liveLeaderboard.map(p => {
+            const isMe = p.playerId === state.playerId;
+            const medal = p.rank === 1 ? "🥇 #1" : (p.rank === 2 ? "🥈 #2" : (p.rank === 3 ? "🥉 #3" : `#${p.rank}`));
+            const m1 = missionScoreForPlayer(p, "m1-");
+            const m2 = missionScoreForPlayer(p, "m2-");
+            const m3 = missionScoreForPlayer(p, "m3-");
+            return `
+              <tr class="${isMe ? "is-me" : ""}">
+                <td style="font-family: var(--mono); font-weight: 700;">${medal}</td>
+                <td>${escapeHtml(p.nickname)}${isMe ? ' <span class="badge in-progress" style="margin-left:4px;">You</span>' : ""}</td>
+                <td style="font-family: var(--mono);">${p.solvedCount || 0} / 10</td>
+                <td style="font-family: var(--mono);">${m1.toLocaleString()} pts</td>
+                <td style="font-family: var(--mono);">${m2.toLocaleString()} pts</td>
+                <td style="font-family: var(--mono);">${m3.toLocaleString()} pts</td>
+                <td style="font-family: var(--mono); font-weight: 700; color: var(--green-text); text-align: right;">
+                  ${(Number(p.totalScore) || 0).toLocaleString()} pts
+                </td>
+              </tr>
+            `;
+          }).join("");
+        }
+      }
+    }
+
+    function evaluateTextAnswer(userRaw, clue) {
+      const norm = (userRaw || "").trim().toLowerCase().replace(/\s+/g, " ");
+      if (!norm) {
+        return { status: "error", message: "Please enter an answer in the text box before submitting." };
+      }
+      for (const kw of clue.acceptedKeywords) {
+        if (norm.includes(kw.toLowerCase())) {
+          return { status: "correct" };
+        }
+      }
+      if (clue.warmKeywords) {
+        for (const wkw of clue.warmKeywords) {
+          if (norm.includes(wkw.toLowerCase())) {
+            return { status: "warm", message: clue.warmMessage };
+          }
+        }
+      }
+      return {
+        status: "error",
+        message: "Not quite what we're looking for. Click 'Where to Look (CLI Hint)', 'View Captured Cluster Telemetry', or ask the instructor to 'Reveal Answer'!"
+      };
+    }
+
+    function recordSolvedClue(clue, savedInputVal, revealed) {
+      const alreadyRecorded = !!state.clueScores[clue.id];
+      const t = getClueTimerStatus(clue.id);
+      const earnedPoints = revealed ? 0 : (alreadyRecorded ? state.clueScores[clue.id].points : t.livePoints);
+      const elapsedSec = alreadyRecorded ? state.clueScores[clue.id].elapsedSec : t.elapsedSec;
+
+      state.solvedClues[clue.id] = true;
+      state.savedInputs[clue.id] = savedInputVal;
+      if (!alreadyRecorded) {
+        state.clueScores[clue.id] = {
+          points: earnedPoints,
+          elapsedSec,
+          revealed: !!revealed
+        };
+      }
+      saveState();
+      syncClueScore(clue.id, earnedPoints, elapsedSec, !!revealed);
+      renderAll();
+    }
+
+    function renderTopProgress() {
+      const total = totalCluesCount();
+      const solved = solvedCluesCount();
+      document.getElementById("progress-text").textContent = state.instructorMode
+        ? `${total} / ${total} Clues (Instructor Mode)`
+        : `${solved} / ${total} Clues Solved`;
+      const pct = total > 0 ? Math.round((solved / total) * 100) : 0;
+      document.getElementById("progress-fill").style.width = `${pct}%`;
+
+      const nickLabel = document.getElementById("player-nickname-label");
+      const scoreLabel = document.getElementById("player-score-label");
+      if (nickLabel) {
+        nickLabel.textContent = state.nickname ? `👤 ${state.nickname}` : "👤 Choose Nickname";
+      }
+      if (scoreLabel) {
+        scoreLabel.textContent = `${computeMyTotalScore().toLocaleString()} pts`;
+      }
+
+      const instBtn = document.getElementById("btn-instructor-toggle");
+      instBtn.textContent = `${state.instructorMode ? "🔓" : "🔒"} Instructor Preview: ${state.instructorMode ? "ON" : "OFF"}`;
+      instBtn.classList.toggle("active", state.instructorMode);
+    }
+
+    function renderSidebar() {
+      const nav = document.getElementById("mission-nav");
+      nav.innerHTML = "";
+      MISSIONS.forEach((m, idx) => {
+        const unlocked = isMissionUnlocked(idx);
+        const completed = isMissionCompleted(idx);
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = `mission-tab ${state.currentMissionIdx === idx ? "active" : ""}`;
+        btn.disabled = !unlocked;
+
+        let badgeClass = "locked";
+        let badgeText = "Locked";
+        if (state.instructorMode) {
+          badgeClass = "completed";
+          badgeText = "Preview Unlocked";
+        } else if (completed) {
+          badgeClass = "completed";
+          badgeText = "Completed ✓";
+        } else if (unlocked) {
+          const solvedInM = m.clues.filter(c => state.solvedClues[c.id]).length;
+          badgeClass = "in-progress";
+          badgeText = `${solvedInM}/${m.clues.length} Clues`;
+        }
+
+        btn.innerHTML = `
+          <div class="mission-tab-header">
+            <span style="color: var(--cyan-text)">${m.number}</span>
+            <span class="badge ${badgeClass}">${badgeText}</span>
+          </div>
+          <div class="mission-tab-title">${m.title}</div>
+          <div class="mission-tab-sub">${m.subtitle}</div>
+        `;
+        btn.addEventListener("click", () => {
+          if (isMissionUnlocked(idx)) {
+            state.currentMissionIdx = idx;
+            saveState();
+            syncPlayerRegistration();
+            renderAll();
+            window.scrollTo({ top: 0, behavior: "smooth" });
+          }
+        });
+        nav.appendChild(btn);
+      });
+    }
+
+    function renderMission() {
+      const mIdx = state.currentMissionIdx;
+      const mission = MISSIONS[mIdx];
+
+      const instructorNotice = state.instructorMode
+        ? `<div style="margin-bottom: 14px; padding: 10px 14px; border-radius: 8px; background: var(--amber-dim); border: 1px solid rgba(210,153,34,0.45); color: var(--amber-text); font-size: 13px;">
+             <strong>🎓 Instructor Preview Mode is ON:</strong> All 3 missions (use left sidebar to switch), all breadcrumb clues, accepted answer keys, CLI hints, captured telemetry, and educational deep-dive explanations are unlocked below.
+           </div>`
+        : "";
+
+      const banner = document.getElementById("mission-banner");
+      banner.innerHTML = `
+        ${instructorNotice}
+        <div class="mission-eyebrow">
+          <span>${mission.number}</span>
+          <span>·</span>
+          <span>${mission.subtitle}</span>
+        </div>
+        <h2>${mission.title}</h2>
+        <div class="mission-scenario-box">${mission.scenario}</div>
+      `;
+
+      const chain = document.getElementById("clue-chain");
+      chain.innerHTML = "";
+
+      mission.clues.forEach((clue, cIdx) => {
+        const unlocked = isClueUnlocked(mIdx, cIdx);
+        const isActuallySolved = !!state.solvedClues[clue.id];
+        const solved = isActuallySolved || state.instructorMode;
+        const card = document.createElement("article");
+        card.id = `card-${clue.id}`;
+
+        let stateClass = "locked-clue";
+        if (solved) stateClass = "solved-clue";
+        else if (unlocked) stateClass = "active-clue";
+
+        card.className = `clue-card ${stateClass}`;
+
+        if (!unlocked) {
+          card.innerHTML = `
+            <div class="clue-header">
+              <span class="clue-step-tag">${clue.stepLabel}</span>
+              <span class="badge locked">Locked — Solve Previous Clue First</span>
+            </div>
+            <h3 class="clue-title">${clue.title}</h3>
+            <p class="clue-prompt" style="margin-bottom:0; color: var(--text-muted);">
+              Complete the previous breadcrumb to unlock this investigation step and start its 10:00 timer.
+            </p>
+          `;
+          chain.appendChild(card);
+          return;
+        }
+
+        // Start 10-min countdown timer if this clue is active & unsolved
+        if (!isActuallySolved && !state.instructorMode) {
+          ensureClueTimerStarted(clue.id);
+        }
+
+        const tStatus = getClueTimerStatus(clue.id);
+        const scoreInfo = state.clueScores[clue.id];
+
+        let timerStripHtml = "";
+        if (isActuallySolved && scoreInfo) {
+          const solvedLabel = scoreInfo.revealed
+            ? `🔓 Answer Revealed (Instructor Override) · +0 pts`
+            : `✓ Solved in ${formatMMSS(scoreInfo.elapsedSec)} · Earned +${scoreInfo.points} pts`;
+          timerStripHtml = `
+            <div class="timer-strip" style="border-color: ${scoreInfo.revealed ? "rgba(210,153,34,0.45)" : "rgba(46,160,67,0.45)"};">
+              <div class="timer-strip-top">
+                <span class="timer-clock ${scoreInfo.revealed ? "warn" : ""}">${solvedLabel}</span>
+                <span class="timer-points" style="color: ${scoreInfo.revealed ? "var(--amber-text)" : "var(--green-text)"};">
+                  +${scoreInfo.points} / 1,000 pts
+                </span>
+              </div>
+            </div>
+          `;
+        } else if (!state.instructorMode) {
+          const warnCls = tStatus.remainingSec <= 120 ? "danger" : (tStatus.remainingSec <= 300 ? "warn" : "");
+          timerStripHtml = `
+            <div class="timer-strip">
+              <div class="timer-strip-top">
+                <span class="timer-clock ${warnCls}" id="timer-clock-${clue.id}">
+                  ${tStatus.remainingSec > 0
+                    ? `⏱ ${formatMMSS(tStatus.remainingSec)} remaining (of 10:00)`
+                    : `⏱ 00:00 · Time Expired (0 pts — solve or reveal to advance)`}
+                </span>
+                <span class="timer-points" id="timer-pts-${clue.id}">
+                  ⚡ +${tStatus.livePoints} pts available
+                </span>
+              </div>
+              <div class="timer-bar-track">
+                <div class="timer-bar-fill ${warnCls}" id="timer-fill-${clue.id}" style="width: ${tStatus.pctRemaining.toFixed(1)}%;"></div>
+              </div>
+            </div>
+          `;
+        }
+
+        const savedVal = state.savedInputs[clue.id] || (state.instructorMode ? (clue.inputType === "choice" ? clue.correctChoice : clue.acceptedKeywords[0]) : "");
+
+        let instructorKeyHtml = "";
+        if (state.instructorMode) {
+          const keySummary = clue.inputType === "choice"
+            ? `Correct Option: <code>${clue.correctChoice.toUpperCase()}</code>`
+            : `Accepted Fuzzy Keywords (any match unlocks): ${clue.acceptedKeywords.map(k => `<code>${k}</code>`).join(", ")}`;
+          instructorKeyHtml = `
+            <div style="margin-bottom: 12px; padding: 9px 13px; border-radius: 8px; background: var(--amber-dim); border: 1px solid rgba(210,153,34,0.35); color: var(--amber-text); font-size: 12.5px;">
+              <strong>🔑 Instructor Answer Key:</strong> ${keySummary}
+            </div>
+          `;
+        }
+
+        let inputMarkup = "";
+        if (clue.inputType === "text") {
+          inputMarkup = `
+            <form class="answer-form" id="form-${clue.id}">
+              <input
+                type="text"
+                class="answer-input"
+                id="input-${clue.id}"
+                placeholder="${clue.placeholder}"
+                value="${savedVal.replace(/"/g, '&quot;')}"
+                ${solved && !state.instructorMode ? "disabled" : ""}
+                autocomplete="off"
+              />
+              <button type="submit" class="btn-submit" ${solved && !state.instructorMode ? "disabled" : ""}>
+                ${solved ? "Unlocked ✓" : "Verify Answer"}
+              </button>
+            </form>
+          `;
+        } else if (clue.inputType === "choice") {
+          const optionsHtml = clue.choices.map(ch => {
+            const isSelected = savedVal === ch.id;
+            const isCorrectStyle = solved && ch.id === clue.correctChoice;
+            const formattedText = formatInlineCode(ch.text);
+            return `
+              <label class="mc-option ${isSelected ? "selected" : ""} ${isCorrectStyle ? "correct-choice" : ""} ${solved && !state.instructorMode ? "disabled" : ""}" data-choice="${ch.id}">
+                <input
+                  type="radio"
+                  class="mc-radio"
+                  name="radio-${clue.id}"
+                  value="${ch.id}"
+                  ${isSelected ? "checked" : ""}
+                  ${solved && !state.instructorMode ? "disabled" : ""}
+                />
+                <span>${formattedText}</span>
+              </label>
+            `;
+          }).join("");
+
+          inputMarkup = `
+            <form class="answer-form" id="form-${clue.id}" style="flex-direction: column; align-items: flex-start;">
+              <div class="mc-options" id="mc-${clue.id}">${optionsHtml}</div>
+              <button type="submit" class="btn-submit" ${solved && !state.instructorMode ? "disabled" : ""}>
+                ${solved ? "Unlocked ✓" : "Submit Decision"}
+              </button>
+            </form>
+          `;
+        }
+
+        const hasTelemetry = !!clue.telemetrySample;
+        const hasHint = !!clue.hint;
+        const showRevealBtn = !isActuallySolved && !state.instructorMode;
+
+        card.innerHTML = `
+          <div class="clue-header">
+            <span class="clue-step-tag">${clue.stepLabel}</span>
+            <span class="badge ${solved ? "completed" : "in-progress"}">
+              ${state.instructorMode ? "Instructor Preview ✓" : (solved ? "Solved ✓" : "Active Investigation")}
+            </span>
+          </div>
+          <h3 class="clue-title">${clue.title}</h3>
+          ${timerStripHtml}
+          <div class="clue-prompt">${clue.prompt}</div>
+
+          ${instructorKeyHtml}
+
+          <div class="helper-row">
+            ${hasHint ? `
+            <button type="button" class="btn-helper" id="btn-hint-${clue.id}">
+              <span>💡 Where to Look (CLI Hint)</span>
+            </button>` : ""}
+            ${hasTelemetry ? `
+            <button type="button" class="btn-helper" id="btn-telemetry-${clue.id}">
+              <span>📟 View Captured Cluster Telemetry</span>
+            </button>` : ""}
+            ${showRevealBtn ? `
+            <button type="button" class="btn-helper reveal-btn" id="btn-reveal-${clue.id}" title="Stuck? Unlock this question with the instructor password">
+              <span>🔓 Reveal Answer</span>
+            </button>` : ""}
+          </div>
+
+          ${hasHint ? `
+          <div class="drawer ${state.instructorMode ? "open" : ""}" id="drawer-hint-${clue.id}">
+            <strong>Suggested Read-Only Command:</strong>
+            <div style="margin-top:6px;">${clue.hint}</div>
+          </div>` : ""}
+
+          ${hasTelemetry ? `
+          <div class="drawer ${state.instructorMode ? "open" : ""}" id="drawer-telemetry-${clue.id}">
+            <strong>Captured Live Cluster Output (429 Quota Fallback):</strong>
+            <div class="code-block">${clue.telemetrySample.replace(/</g, "&lt;").replace(/>/g, "&gt;")}</div>
+          </div>` : ""}
+
+          ${inputMarkup}
+          <div class="feedback-msg" id="feedback-${clue.id}"></div>
+
+          <div class="explanation-box ${solved ? "visible" : ""}" id="exp-${clue.id}">
+            <div class="explanation-header">
+              <span>✓ ${formatInlineCode(clue.explanationTitle)}</span>
+            </div>
+            ${clue.explanationHtml}
+          </div>
+        `;
+
+        chain.appendChild(card);
+
+        // Wire up hint & telemetry drawers
+        if (hasHint) {
+          document.getElementById(`btn-hint-${clue.id}`).addEventListener("click", () => {
+            document.getElementById(`drawer-hint-${clue.id}`).classList.toggle("open");
+          });
+        }
+        if (hasTelemetry) {
+          document.getElementById(`btn-telemetry-${clue.id}`).addEventListener("click", () => {
+            document.getElementById(`drawer-telemetry-${clue.id}`).classList.toggle("open");
+          });
+        }
+        if (showRevealBtn) {
+          document.getElementById(`btn-reveal-${clue.id}`).addEventListener("click", () => {
+            openPasswordModal({
+              title: `🔓 Reveal Answer — ${clue.stepLabel}`,
+              description: `Enter the instructor password to reveal the answer for <strong>${escapeHtml(clue.title)}</strong> and advance to the next breadcrumb (awards <code>0 pts</code> for this question).`,
+              confirmLabel: "Reveal Answer & Advance",
+              onSuccess: () => {
+                const defaultAns = clue.inputType === "choice" ? clue.correctChoice : clue.acceptedKeywords[0];
+                recordSolvedClue(clue, defaultAns, true);
+              }
+            });
+          });
+        }
+
+        // Wire up multiple choice visual selection
+        if (clue.inputType === "choice") {
+          const mcContainer = document.getElementById(`mc-${clue.id}`);
+          mcContainer.querySelectorAll(".mc-option").forEach(optEl => {
+            optEl.addEventListener("click", () => {
+              if (solved && !state.instructorMode) return;
+              mcContainer.querySelectorAll(".mc-option").forEach(el => el.classList.remove("selected"));
+              optEl.classList.add("selected");
+              const radio = optEl.querySelector("input[type=radio]");
+              if (radio) radio.checked = true;
+            });
+          });
+        }
+
+        // Wire up form submit
+        const form = document.getElementById(`form-${clue.id}`);
+        form.addEventListener("submit", (e) => {
+          e.preventDefault();
+          const feedbackEl = document.getElementById(`feedback-${clue.id}`);
+          feedbackEl.className = "feedback-msg";
+
+          if (clue.inputType === "text") {
+            const val = document.getElementById(`input-${clue.id}`).value;
+            const res = evaluateTextAnswer(val, clue);
+            if (res.status === "correct") {
+              recordSolvedClue(clue, val, false);
+            } else if (res.status === "warm") {
+              feedbackEl.className = "feedback-msg warm";
+              feedbackEl.innerHTML = formatInlineCode(res.message);
+            } else {
+              feedbackEl.className = "feedback-msg error";
+              feedbackEl.innerHTML = formatInlineCode(res.message);
+            }
+          } else if (clue.inputType === "choice") {
+            const checked = form.querySelector(`input[name="radio-${clue.id}"]:checked`);
+            if (!checked) {
+              feedbackEl.className = "feedback-msg error";
+              feedbackEl.textContent = "Please select one of the options above.";
+              return;
+            }
+            if (checked.value === clue.correctChoice) {
+              recordSolvedClue(clue, checked.value, false);
+            } else {
+              feedbackEl.className = "feedback-msg error";
+              feedbackEl.textContent = "Not the recommended action. Check the linked Google Cloud XID documentation or review the hint above and try again!";
+            }
+          }
+        });
+      });
+
+      // Next Mission CTA bar
+      const nextBar = document.getElementById("next-mission-bar");
+      const nextBtn = document.getElementById("btn-next-mission");
+      const nextDesc = document.getElementById("next-mission-desc");
+      if (isMissionCompleted(mIdx) && mIdx < MISSIONS.length - 1) {
+        nextBar.classList.add("visible");
+        nextDesc.textContent = `You have unlocked ${MISSIONS[mIdx + 1].number}: ${MISSIONS[mIdx + 1].title}.`;
+        nextBtn.onclick = () => {
+          state.currentMissionIdx = mIdx + 1;
+          saveState();
+          syncPlayerRegistration();
+          renderAll();
+          window.scrollTo({ top: 0, behavior: "smooth" });
+        };
+      } else {
+        nextBar.classList.remove("visible");
+      }
+    }
+
+    function renderAll() {
+      renderTopProgress();
+      renderSidebar();
+      renderMission();
+      renderScoreboardUI();
+    }
+
+    // Event Listeners: Nickname Modal
+    function openNicknameModal() {
+      const modal = document.getElementById("nickname-modal");
+      const input = document.getElementById("nickname-input");
+      input.value = state.nickname || "";
+      modal.classList.add("open");
+      setTimeout(() => input.focus(), 50);
+    }
+
+    document.getElementById("nickname-form").addEventListener("submit", (e) => {
+      e.preventDefault();
+      const val = document.getElementById("nickname-input").value.trim();
+      if (!val) return;
+      state.nickname = val.slice(0, 28);
+      saveState();
+      document.getElementById("nickname-modal").classList.remove("open");
+      syncPlayerRegistration();
+      renderAll();
+    });
+
+    document.getElementById("btn-player-profile").addEventListener("click", () => {
+      openNicknameModal();
+    });
+
+    // Event Listeners: Password Modal
+    document.getElementById("password-form").addEventListener("submit", (e) => {
+      e.preventDefault();
+      const entered = document.getElementById("password-input").value.trim();
+      const errEl = document.getElementById("password-error");
+      if (entered === INSTRUCTOR_PASSWORD) {
+        const cb = pendingPasswordCallback;
+        closePasswordModal();
+        if (typeof cb === "function") cb();
+      } else {
+        errEl.style.display = "block";
+      }
+    });
+
+    document.getElementById("btn-password-cancel").addEventListener("click", () => {
+      closePasswordModal();
+    });
+
+    // Event Listeners: Instructor Preview Toggle (Password-Protected)
+    document.getElementById("btn-instructor-toggle").addEventListener("click", () => {
+      if (state.instructorMode) {
+        state.instructorMode = false;
+        renderAll();
+      } else {
+        openPasswordModal({
+          title: "🔒 Enable Instructor Preview Mode",
+          description: "Enter the instructor password to unlock all 3 missions, 10 breadcrumb clues, accepted answer keys, and explanations.",
+          confirmLabel: "Enable Preview",
+          onSuccess: () => {
+            state.instructorMode = true;
+            renderAll();
+          }
+        });
+      }
+    });
+
+    // Event Listeners: Live Scoreboard Modal
+    document.getElementById("btn-open-scoreboard").addEventListener("click", () => {
+      fetchScoreboard();
+      document.getElementById("scoreboard-modal").classList.add("open");
+    });
+
+    document.getElementById("btn-sidebar-expand-sb").addEventListener("click", () => {
+      fetchScoreboard();
+      document.getElementById("scoreboard-modal").classList.add("open");
+    });
+
+    document.getElementById("btn-close-scoreboard").addEventListener("click", () => {
+      document.getElementById("scoreboard-modal").classList.remove("open");
+    });
+
+    document.getElementById("btn-clear-scoreboard").addEventListener("click", () => {
+      openPasswordModal({
+        title: "🔒 Reset Live Scoreboard (All Players)",
+        description: "Enter the instructor password to clear all player scores from the live leaderboard.",
+        confirmLabel: "Reset All Scores",
+        onSuccess: async () => {
+          try {
+            const res = await fetch("/api/reset-scoreboard", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ password: INSTRUCTOR_PASSWORD })
+            });
+            if (res.ok) {
+              const data = await res.json();
+              liveLeaderboard = data.leaderboard || [];
+              renderScoreboardUI();
+            }
+          } catch (err) {
+            console.warn("Failed to reset scoreboard:", err);
+          }
+        }
+      });
+    });
+
+    // Event Listeners: Reset My Progress
+    document.getElementById("btn-reset-progress").addEventListener("click", () => {
+      state.solvedClues = {};
+      state.savedInputs = {};
+      state.clueStartTimes = {};
+      state.clueScores = {};
+      state.currentMissionIdx = 0;
+      state.instructorMode = false;
+      saveState();
+      syncResetPlayer();
+      renderAll();
+    });
+
+    // Initialize App
+    loadState();
+    renderAll();
+    if (!state.nickname) {
+      openNicknameModal();
+    } else {
+      syncPlayerRegistration();
+    }
+    fetchScoreboard();
+    setInterval(updateActiveTimersDOM, 250);
+    setInterval(fetchScoreboard, 2000);
+  </script>
+</body>
+</html>
