@@ -657,9 +657,9 @@ To restart it on its own whenever it exits, run it in a loop: `while true; do ku
 Use [README §7](./README.md#7-pre-show-health-check) when:
 - Wake 1,000 stops short of 1,000;
 - Wake 1,000 gets slower than about 2.1 s;
-- Suspend all hangs.
+- Suspend all hangs, or ends with "Suspend incomplete · N still up".
 
-It covers unrestorable snapshots, OOM-restarted workers, bloated snapshots and uneven placement, with the commands for each.
+It covers unrestorable snapshots, stuck agents (OOM-restarted workers or failed checkpoints), leftover sandboxes, bloated snapshots and uneven placement, with the commands for each. After Simulate Traffic has run for hours, do its full fix before the next show (README §9).
 
 ### 4.8 GKE upgraded the cluster (every node recreated)
 

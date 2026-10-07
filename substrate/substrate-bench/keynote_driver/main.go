@@ -427,9 +427,12 @@ type driver struct {
 	reqBusy []int32
 	// retryReasons buckets why LLM requests needed a retry (reset per burst).
 	retryReasons map[string]int
-	// badSnap holds agents whose last wake failed inside `runsc restore` (a
-	// snapshot that can never be restored). preflight re-creates them, so the
-	// next Wake or reconcile heals the fleet instead of stopping at 999.
+	// badSnap holds broken agents: the last wake failed inside `runsc restore`
+	// (a snapshot that can never be restored), or a pause failed inside `runsc
+	// checkpoint` (the agent is stuck PAUSING; every retry fails the same way).
+	// They show as failed on the grid, the duty cycle and Suspend all skip them,
+	// and preflight re-creates them, so the next Wake or reconcile heals the
+	// fleet instead of stopping at 999 or waiting on a pause that never lands.
 	badSnap map[int]bool
 
 	mmu       sync.Mutex
@@ -796,6 +799,12 @@ func (d *driver) applyStates(st map[string]ateapipb.ActorState) {
 		default:
 			d.states[i] = stSuspended
 		}
+		// A broken agent stays failed until preflight re-creates it, so nothing
+		// wakes or pauses it meanwhile; if ate-api still has it up, it still
+		// counts in d.up (it is not at rest).
+		if d.badSnap[i+1] {
+			d.states[i] = stFailed
+		}
 	}
 }
 
@@ -991,6 +1000,38 @@ func restoreFailed(err error) bool {
 	return status.Code(err) == codes.Internal && strings.Contains(err.Error(), "runsc restore")
 }
 
+// pauseFailed reports a pause or suspend that failed inside `runsc checkpoint`
+// (seen as "exit status 128" when the agent's sandbox had died or was wedged).
+// The actor is left PAUSING, and every later checkpoint fails the same way
+// within milliseconds (57 of 57 tries on 2026-10-07), so retrying cannot help.
+func pauseFailed(err error) bool {
+	return status.Code(err) == codes.Internal && strings.Contains(err.Error(), "runsc checkpoint")
+}
+
+// markBrokenLocked flags an agent whose wake or pause failed inside runsc: it
+// shows as failed on the grid, the duty cycle and Suspend all skip it, and the
+// next reconcile (or Wake's preflight) re-creates it. Caller holds d.mu.
+func (d *driver) markBrokenLocked(idx int, op string, err error) {
+	msg := fmt.Sprintf("%s %s failed, marked broken (reconcile re-creates it): %v", agentName(idx), op, err)
+	if !d.badSnap[idx] {
+		log.Print(msg)
+	}
+	d.badSnap[idx] = true
+	d.states[idx-1] = stFailed
+	d.note = msg
+}
+
+// brokenNamesLocked lists the agents marked broken. Caller holds d.mu.
+func (d *driver) brokenNamesLocked() []string {
+	var names []string
+	for i := 1; i <= d.cfg.agents; i++ {
+		if d.badSnap[i] {
+			names = append(names, agentName(i))
+		}
+	}
+	return names
+}
+
 // wakeRPC resumes one actor; ResumeActor returns once the sandbox is RUNNING.
 func (d *driver) wakeRPC(ctx context.Context, idx int) (int, error) {
 	cli := d.cliFor(idx)
@@ -1043,7 +1084,8 @@ func (d *driver) restRPC(ctx context.Context, idx, attempts int, mode string) er
 		if err == nil {
 			d.memRested(idx)
 		}
-		if err == nil || !retryable(err) {
+		// pauseFailed: the checkpoint itself fails, so a retry fails the same way.
+		if err == nil || !retryable(err) || pauseFailed(err) {
 			return err
 		}
 		time.Sleep(time.Duration(100*attempt) * time.Millisecond)
@@ -1667,6 +1709,12 @@ func (d *driver) dutyPauseOne(ctx context.Context, b *burst, idx int) bool {
 		return false
 	}
 	if err != nil {
+		if pauseFailed(err) {
+			// Stuck PAUSING in ate-api: still up (d.up unchanged), but never
+			// picked again; reconcile re-creates it.
+			d.markBrokenLocked(idx, "pause", err)
+			return false
+		}
 		d.states[i] = stRunning
 		d.note = fmt.Sprintf("%s pause failed: %v", agentName(idx), err)
 		return false
@@ -1713,6 +1761,13 @@ func (d *driver) dutyWakeAndRequest(ctx context.Context, b *burst) {
 		return
 	}
 	if err != nil {
+		if restoreFailed(err) {
+			// Unrestorable snapshot: don't pick it again (each failed restore
+			// can hold a worker in ate-api's cache); reconcile re-creates it.
+			d.markBrokenLocked(idx, "wake", err)
+			d.mu.Unlock()
+			return
+		}
 		// ResumeActor failed, so the agent should still be at rest; suspend-all
 		// re-checks ate-api and pauses it if it came up anyway.
 		d.states[idx-1] = stSuspended
@@ -1888,6 +1943,11 @@ func (d *driver) suspendOne(ctx context.Context, b *burst, idx int) {
 	r.SuspendedMs = msSince(b.t0)
 	if err != nil {
 		r.SuspendErr = err.Error()
+		if pauseFailed(err) {
+			// Stays up in ate-api (d.up unchanged); the next passes skip it.
+			d.markBrokenLocked(idx, "suspend", err)
+			return
+		}
 		d.states[i] = stRunning
 		d.note = fmt.Sprintf("%s suspend failed: %v", agentName(idx), err)
 		return
@@ -2010,18 +2070,27 @@ func (d *driver) runSuspendAll(b *burst) {
 	// Cross-check ate-api (the source of truth), not only our own bookkeeping.
 	fixed, notRest, verr := d.verifyAtRest(ctx)
 	d.mu.Lock()
+	broken := ""
+	if names := d.brokenNamesLocked(); len(names) > 0 {
+		if len(names) > 8 {
+			names = append(names[:8], "…")
+		}
+		broken = fmt.Sprintf("; marked broken: %s (run reconcile to re-create them)", strings.Join(names, " "))
+	}
 	switch {
 	case verr != nil:
 		d.note = "suspend-all: ate-api check failed: " + verr.Error()
 	case notRest > 0:
 		b.allSuspMs = -1
-		d.note = fmt.Sprintf("suspend-all: %d agents still not at rest in ate-api (see driver log)", notRest)
+		d.note = fmt.Sprintf("suspend-all: %d agents still not at rest in ate-api%s (see driver log)", notRest, broken)
 	default:
 		if fixed > 0 || b.allSuspMs < 0 {
 			b.allSuspMs = msSince(b.suspendT0) // honest: includes the check-and-fix time
 		}
 		if fixed > 0 {
-			d.note = fmt.Sprintf("suspend-all: ate-api still had %d agents up after the sweep; paused them", fixed)
+			d.note = fmt.Sprintf("suspend-all: ate-api still had %d agents up after the sweep; paused them%s", fixed, broken)
+		} else if broken != "" {
+			d.note = "suspend-all: all at rest" + broken
 		}
 	}
 	d.phase = "idle"
@@ -2035,8 +2104,10 @@ func (d *driver) runSuspendAll(b *burst) {
 
 // verifyAtRest cross-checks ate-api after suspend-all: any agent still RUNNING,
 // RESUMING, PAUSING or SUSPENDING gets the matching rest RPC again (up to 3
-// rounds), then the grid is re-synced from ate-api. It returns how many agents
-// needed a fix and how many are still not at rest.
+// rounds), then the grid is re-synced from ate-api. Agents marked broken are
+// not retried (their checkpoint fails every time) but still count as not at
+// rest. It returns how many agents needed a fix and how many are still not at
+// rest.
 func (d *driver) verifyAtRest(ctx context.Context) (fixed, notRest int, err error) {
 	fixedSet := map[int]bool{}
 	for round := 1; ; round++ {
@@ -2044,7 +2115,14 @@ func (d *driver) verifyAtRest(ctx context.Context) (fixed, notRest int, err erro
 		if err != nil {
 			return len(fixedSet), 0, err
 		}
+		d.mu.Lock()
+		bad := make(map[int]bool, len(d.badSnap))
+		for idx := range d.badSnap {
+			bad[idx] = true
+		}
+		d.mu.Unlock()
 		var left []int
+		broken := 0
 		modeOf := map[int]string{}
 		for i := 1; i <= d.cfg.agents; i++ {
 			switch st[agentName(i)] {
@@ -2057,11 +2135,15 @@ func (d *driver) verifyAtRest(ctx context.Context) (fixed, notRest int, err erro
 			default:
 				continue
 			}
+			if bad[i] {
+				broken++
+				continue
+			}
 			left = append(left, i)
 		}
 		if len(left) == 0 || round > 3 {
 			d.applyStates(st)
-			return len(fixedSet), len(left), nil
+			return len(fixedSet), len(left) + broken, nil
 		}
 		names := make([]string, 0, len(left))
 		for _, i := range left {
@@ -2069,7 +2151,15 @@ func (d *driver) verifyAtRest(ctx context.Context) (fixed, notRest int, err erro
 			names = append(names, fmt.Sprintf("%s(%s)", agentName(i), st[agentName(i)]))
 		}
 		log.Printf("suspend-all check round %d: ate-api still has %d agents up: %s", round, len(left), strings.Join(names, " "))
-		d.forEachLimited(left, func(idx int) error { return d.restRPC(ctx, idx, 3, modeOf[idx]) })
+		d.forEachLimited(left, func(idx int) error {
+			err := d.restRPC(ctx, idx, 3, modeOf[idx])
+			if pauseFailed(err) {
+				d.mu.Lock()
+				d.markBrokenLocked(idx, modeOf[idx], err)
+				d.mu.Unlock()
+			}
+			return err
+		})
 	}
 }
 

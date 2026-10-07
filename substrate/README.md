@@ -444,6 +444,7 @@ substrate/
 │   ├── ck_scan.py                     per-agent checkpoint sizes from every node
 │   ├── rebalance.py                   evens out agents per node after re-creations
 │   ├── recreate_lost.py               re-creates agents whose snapshot node is gone, then reconciles (user guide §4.5)
+│   ├── sandbox_scan.py                lists worker pods with leftover sandboxes, stuck agents or restarts (§7)
 │   └── demo_soak.py                   replays the stage flow and samples the driver's state
 ├── patches/
 │   ├── ateapi-atelet-fast-wake.patch  against agent-substrate/substrate@fa6d949 (v0.1.0)
@@ -503,18 +504,28 @@ kubectl ate --context="${CTX_SUB}" get actors -a ate-demo-sandbox -o json \
 2. Run `post reconcile` and wait until `state` prints `idle`. The driver re-creates every agent whose restore failed, and every agent that is not at rest.
 3. Run this health check again. A re-created agent's first wake restores from the golden snapshot in GCS, so it is slower.
 
-**If Suspend all hangs, or Wake 1,000 gets slower than about 2.1 s:**
-1. **OOM-restarted workers.** An agent whose worker restarted is stuck PAUSING or DELETING, and Suspend all waits for it. Replace the restarted workers (the WorkerPool recreates them), then reconcile:
+**If Suspend all hangs or ends "Suspend incomplete", or Wake 1,000 gets slower than about 2.1 s:**
+1. **Stuck agents and leftover sandboxes.** Suspend all can't finish while an agent won't pause. That happens when:
+   - its worker was OOM-restarted, which leaves the agent PAUSING or DELETING;
+   - its sandbox died or hung, so every pause fails inside gVisor with `runsc checkpoint … exit status 128`. No worker restarts. This is what happened on 2026-10-07 (§9).
+
+   The driver marks an agent broken the first time its checkpoint or restore fails inside `runsc`: its cell turns red, the duty cycle never picks it again, and Suspend all doesn't retry it. Suspend all then ends as **Suspend incomplete · N still up**, and the note reads `suspend-all: N agents still not at rest in ate-api; marked broken: agent-NNNN (run reconcile to re-create them)`. Long runs can also leave gVisor sandboxes that no agent owns, in workers that ate-api counts as free. `ops/sandbox_scan.py` lists all these workers, and any that restarted. Replace them (the WorkerPool recreates them), then reconcile:
    ```bash
-   kubectl --context="${CTX_SUB}" -n ate-demo-sandbox get pods -o json \
-     | python3 -c 'import json,sys; [print(p["metadata"]["name"]) for p in json.load(sys.stdin)["items"] if any(c.get("restartCount",0) for c in p["status"].get("containerStatuses",[]))]' \
+   CTX_SUB="${CTX_SUB}" python3 ops/sandbox_scan.py             # read-only: each worker to replace, and why
+   CTX_SUB="${CTX_SUB}" NAMES_ONLY=1 python3 ops/sandbox_scan.py \
      | xargs -r kubectl --context="${CTX_SUB}" -n ate-demo-sandbox delete pod --grace-period=10
    post reconcile
    until curl -s localhost:8090/api/state | python3 -c 'import json,sys; sys.exit(json.load(sys.stdin)["phase"]!="idle")'; do sleep 5; done
    curl -s localhost:8090/api/state | python3 -c 'import json,sys; print(json.load(sys.stdin).get("note"))'   # expect: preflight: … re-created N (0 failed) … 0 not at rest
    ```
-2. **Bloated snapshots.** Run `CTX_SUB=… python3 ops/ck_scan.py`. A fresh agent checkpoints at 1.4 MiB and at 2–4 MiB after it has served traffic. Bigger checkpoints restore more slowly; on 2026-10-02 they came from zombie processes (§9). Re-create those agents: delete them with `kubectl ate … delete actor --any-state`, then `post reconcile`.
-3. **Uneven placement.** Every re-created agent lands on a random node, and the node with the most agents sets the wake time. `CTX_SUB=… python3 ops/rebalance.py 40 10` evens it out. On 2026-10-02 it took 10 rounds, about 80 s, and left 32–41 agents per node. It wakes and suspends the fleet every round, so run it only while the stage is not in use.
+   The scan runs only while the driver is idle. To be safe, wait about 5 minutes before the next wake: ate-api's worker cache relists every 5 minutes (§9).
+2. **Bloated snapshots.** Run `CTX_SUB=… python3 ops/ck_scan.py`. A fresh agent checkpoints at 1.4 MiB and at 2–4 MiB after it has served traffic. Bigger checkpoints restore more slowly. On 2026-10-02 they came from zombie processes (§9). On 2026-10-07, after a 21-hour run, they were 4.5–8.0 MiB, and Wake 1,000 took about 3.1 s. Re-create those agents: delete them with `kubectl ate … delete actor --any-state`, then `post reconcile`. To re-create all 1,000 (deleting 24 at a time took 75 s on 2026-10-07):
+   ```bash
+   seq -f 'agent-%04g' 1 1000 | xargs -P 24 -I{} kubectl ate --context="${CTX_SUB}" delete actor {} --any-state -a ate-demo-sandbox
+   post reconcile   # then wait for idle as above; expect: re-created 1000 (0 failed); at T0: 1000 suspended, 0 paused, 0 not at rest
+   ```
+   Then run this health check once, so every agent gets a local snapshot (the first wake took 2.5 s on 2026-10-07), and go on to step 3.
+3. **Uneven placement.** Every re-created agent lands on a random node, and the node with the most agents sets the wake time. `CTX_SUB=… python3 ops/rebalance.py 40 10` evens it out. On 2026-10-02 it took 10 rounds, about 80 s, and left 32–41 agents per node. On 2026-10-07, after all 1,000 were re-created (up to 53 on one node), it took 10 rounds, about 94 s, and left 34–41. It wakes and suspends the fleet every round, so run it only while the stage is not in use.
 4. Run this health check again.
 
 ## 8. Stage runbook
@@ -572,6 +583,13 @@ kubectl ate --context="${CTX_SUB}" get actors -a ate-demo-sandbox -o json \
   - Two things cut off a `/process` call: atenet's route timeout (10 s by default, not overridden here) and a pause during a call. Either way the shell is killed, its `wget` becomes a zombie, and the zombie is checkpointed with the agent.
   - Agents collected up to about 75 zombies, checkpoints grew to 14 MiB, and Wake 1,000 slowed from about 1.9 s to 2.7–3.1 s.
   - The driver now avoids both triggers (`wget -T 8`, and it waits for an agent's calls before pausing it). `ops/ck_scan.py` shows checkpoint growth.
+- **Long Simulate Traffic runs wear the fleet down.** One ran nonstop for 21 hours on 2026-10-06/07 (4.8 M LLM requests). It left:
+  - 2 agents that could not be paused. One's sandbox died; the other's `runsc checkpoint` hung for 90 s. After that every pause of either failed within milliseconds (`exit status 128`). No worker restarted and the node logged no OOM kill. gVisor's logs are discarded (above), so the cause is unknown.
+  - 1 agent with an unrestorable snapshot, which the duty cycle tried to wake more than 190 times;
+  - 20 gVisor sandboxes that no agent owned (about one an hour), each in a worker that ate-api counted as free;
+  - checkpoints of 4.5–8.0 MiB. With the stuck agents fixed, Wake 1,000 still took about 3.1 s and Suspend all about 3.5 s.
+
+  Suspend all could not finish: it kept retrying the 2 stuck agents for about 25 s and then left them up, so its clock never stopped. The driver now marks an agent broken at its first failed checkpoint or restore, and skips it from then on (§7). §7 fixed the fleet: the 22 workers replaced, a reconcile, then all 1,000 agents re-created and rebalanced. The health check then woke all 1,000 in 1.76–1.85 s and suspended them in 1.53–1.56 s, with 0 failed. Before a show that follows a long run, do the same.
 - **EPP in-flight leak and restarts.** The endpoint picker's in-flight count can leak. Flow-control saturation then stays high with no traffic (0.99 was seen), and llm-d sheds or queues calls. Its liveness probe (1 s timeout) also restarted it under load. If saturation stays above 0 while idle, restart it with `kubectl --context="${CTX_TPU}" rollout restart deployment/gaie-pd-epp`. The pod IP changes, so re-run `deploy-driver.sh` ([user guide §4.3](./USER_GUIDE.md#43-flow-control-saturation-stays-above-0-while-idle)).
 - **Failed resumes hold workers.** After a failed resume, the patched ate-api's worker cache can keep that worker marked as taken until its next relist (every 5 minutes). Repeated failed wakes can therefore use up a node's free workers. This is why the driver no longer retries a failed restore.
 - **vLLM is about half as fast as on 2026-09-26.** The vLLM pods were restarted on 2026-09-28 with `--max-model-len 65536` for the Hermes variant. Before that they ran 2048; the image digest and every other flag are unchanged.
@@ -579,7 +597,7 @@ kubectl ate --context="${CTX_SUB}" get actors -a ate-demo-sandbox -o json \
   - On 2026-09-26, with 2048, each pod served 124 req/s at 345 ms (§2.2).
   - The likely cause is the context length: vllm-torchtpu sizes the attention kernel's per-sequence page table and its tuned block sizes from `--max-model-len`. This has not been confirmed by an A/B test.
   - Every request since 2026-09-28 had under 5,000 prompt tokens, so a smaller `--max-model-len` (for example 8192) would serve both variants. Hermes reads its 64k window from the driver's proxy (`-context-length`), not from vLLM. A request longer than vLLM's limit would be rejected.
-- **Stale checkpoints.** Deleting an actor leaves its local checkpoint on the node. After the 2026-10-02 re-creations there were 1,299 such directories (6.7 GiB across the 25 nodes). The node tuner's page-cache warmer still reads them every 20 s.
+- **Stale checkpoints.** Deleting an actor leaves its local checkpoint on the node. After the 2026-10-02 re-creations there were 1,299 such directories (6.7 GiB across the 25 nodes), and 1,329 (6.0 GiB) after the 2026-10-07 re-creation. The node tuner's page-cache warmer still reads them every 20 s.
 - **Node recreation destroys node-local snapshots.** This includes auto-upgrade, auto-repair and maintenance. Agents paused on the affected node can no longer be restored and must be re-created. Upstream also warns that actors awake when their worker dies go `CRASHED`.
   - **It happened on 2026-10-04:** GKE auto-upgraded both clusters to 1.35.8-gke.1380001 and recreated every node. The driver pod was gone, `postgres-0` could not be scheduled, the atelets crash-looped on Postgres's old IP, and no agent could wake. It was recovered with [user guide §4.8](./USER_GUIDE.md#48-gke-upgraded-the-cluster-every-node-recreated), which re-creates all 1,000 agents of both fleets.
   - **Auto-upgrade is still on for every pool in both demo clusters, and there is no maintenance exclusion.**
@@ -618,6 +636,14 @@ Details are in [user guide §7](./USER_GUIDE.md#7-how-this-guide-was-verified). 
 - The Hermes dashboard serves the same file and was checked while idle.
 
 Nothing on the TPU side was changed by hand.
+
+**2026-10-07 (broken agents after a 21-hour run; light fleet re-created):** see §9 for what the run left behind.
+- The 22 workers were found by hand, with the same check `ops/sandbox_scan.py` now makes, and deleted; the reconcile then re-created the 3 broken agents.
+- The driver built from this folder (it marks broken agents, §7) was copied with `deploy-driver.sh` and `BIN_DIR`; `/work/args` is unchanged. A checkpoint failure can't be forced on the live cluster, so its new failure paths were tested only against a fake ate-api.
+- All 1,000 light agents were deleted with §7's `kubectl ate … delete actor` call, 24 at a time, and re-created by the reconcile. The `seq … | xargs` wrapper in §7 was checked only with `echo`.
+- Then the §7 health check, `rebalance.py 40 10`, and the health check twice more (numbers in §7 and §9). `ck_scan.py` then showed every checkpoint at 1.4 MiB.
+- `ops/sandbox_scan.py`: run offline on the data saved during the incident, its selection picked the same 22 workers. Live, with all agents at rest, it found 0 sandboxes. With all 1,000 awake it matched each of the 1,000 sandboxes to its agent's worker. Its output has not yet been piped into a real delete.
+- The Hermes fleet and driver were not touched. Nothing on the TPU side changed.
 
 The table below is from 2026-09-26. Its step numbers are the user guide's (then README §6.N).
 
