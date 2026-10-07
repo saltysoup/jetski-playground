@@ -82,7 +82,7 @@ spec:
             --served-model-name deepseek-ai/DeepSeek-V4.1-Flash \
             --tp 4 \
             --ep-size 4 \
-            --max-running-requests 256 \
+            --max-running-requests 64 \
             --host 0.0.0.0 \
             --port 8888 \
             --mem-fraction-static 0.8 \
@@ -238,7 +238,7 @@ spec:
             --served-model-name deepseek-ai/DeepSeek-V4.1-Flash \
             --tp 4 \
             --ep-size 4 \
-            --max-running-requests 256 \
+            --max-running-requests 64 \
             --host 0.0.0.0 \
             --port 8888 \
             --mem-fraction-static 0.8 \

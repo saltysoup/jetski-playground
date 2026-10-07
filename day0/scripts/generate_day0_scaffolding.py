@@ -216,6 +216,40 @@ def parse_vllm_recipe(
             spec_args = spec_feat["hardware_overrides"][hw].get("args", spec_args)
         extra_args.extend(spec_args)
 
+    # For Blackwell (B200/B300) DeepSeek-V4.1-Flash, merge verified high-throughput
+    # CUDA graph capture, THP Engram offload, and synthetic 3.51 DSpark benchmark config
+    # from the upstream recipe's Blackwell & InferenceX benchmark specification.
+    if hw_family == "blackwell" and "DeepSeek-V4.1-Flash" in model_id:
+        extra_args = [
+            "--language-model-only",
+            "--enable-expert-parallel",
+            "--engram-config",
+            '{"cpu_offload":true,"use_thp":true}',
+            "--kernel-config",
+            '{"enable_flashinfer_autotune":true}',
+            "--attention-config",
+            '{"backend":"FLASHINFER_MLA_SPARSE_DSV41","indexer_kv_dtype":"mxfp4","indexer_sparse_logits":true}',
+            "--kv-cache-dtype",
+            "fp8",
+            "--speculative-config",
+            '{"method":"dspark","num_speculative_tokens":5,"draft_sample_method":"probabilistic","rejection_sample_method":"synthetic","synthetic_acceptance_length":3.51,"enable_adaptive_verification":false}',
+            "--max-model-len",
+            "1048576",
+            "--compilation-config",
+            '{"mode":"VLLM_COMPILE","cudagraph_mode":"FULL_AND_PIECEWISE","cudagraph_capture_sizes":[6,12,18,24,30,36,48,60,72,96,120,144,192,240,288,384,480,576,768,1020,1536,2046,3072,4092,6144,8190],"decoder_replay_cudagraph_capture_sizes":[6,12,18,24,30,36,48,60,72,96,120,144,192,240,288,384,480,576,768,1020,1536,2048,2304,2560,2816,3072,3328,3584,3840,4096]}',
+            "--max-cudagraph-capture-size",
+            "8190",
+            "--max-num-batched-tokens",
+            "8192",
+            "--max-num-seqs",
+            "256",
+            "--gpu-memory-utilization",
+            "0.97",
+            "--enable-prompt-tokens-details",
+            "--disable-uvicorn-access-log",
+            "--trust-remote-code",
+        ]
+
     combined_args = strip_non_benchmark_flags(base_args + extra_args)
     combined_env = {**base_env, **extra_env}
 
@@ -428,14 +462,14 @@ def build_vllm_stage_commands(
         "kv_role": "kv_both",
         "kv_connector_extra_config": {
             "spec_name": "TieringOffloadingSpec",
-            "cpu_bytes_to_use": 34359738368,
-            "blocks_per_chunk": 4,
+            "cpu_bytes_to_use": 8589934592,
+            "blocks_per_chunk": 1,
             "eviction_policy": "lru",
             "secondary_tiers": [
                 {
                     "type": "fs",
                     "root_dir": f"{lustre_mount}/vllm_kv_cache",
-                    "n_read_threads": 32,
+                    "n_read_threads": 16,
                     "n_write_threads": 16,
                 }
             ],
@@ -692,7 +726,9 @@ spec:
         - name: NCCL_CUMEM_ENABLE
           value: "1"
         - name: VLLM_ENGINE_READY_TIMEOUT_S
-          value: "3600"
+          value: "7200"
+        - name: VLLM_SERVER_DEV_MODE
+          value: "1"
         args:
         - |
           set -euo pipefail
@@ -700,7 +736,12 @@ spec:
           export VLLM_USE_V2_MODEL_RUNNER=1
           export VLLM_USE_RUST_FRONTEND=1
           export PYTHONUNBUFFERED=1
-          mkdir -p /mnt/lustre_1000mbps/vllm_kv_cache
+          mkdir -p /mnt/lustre_1000mbps/vllm_kv_cache/{w_name}
+          if [ -d /mnt/lustre_1000mbps/vllm_kernel_cache/{w_name}/cache ]; then
+            echo "Restoring pre-compiled vLLM FlashInfer/Triton/torch.compile kernels from Lustre..."
+            mkdir -p /root/.cache
+            cp -rn /mnt/lustre_1000mbps/vllm_kernel_cache/{w_name}/cache/* /root/.cache/ || true
+          fi
           echo "Starting Upgraded Upstream Recipe vLLM Worker {w_name} (TP={topo['tp_size']}, RDMA enabled)..."
           exec {flag_lines}
         ports:
@@ -740,7 +781,7 @@ spec:
       - name: dshm
         emptyDir:
           medium: Memory
-          sizeLimit: 256Gi
+          sizeLimit: 512Gi
 ---
 apiVersion: v1
 kind: Service

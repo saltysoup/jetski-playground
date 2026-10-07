@@ -1,17 +1,17 @@
-stage,name,kv_hit_rate_pct,conc_rep,conc_pool,out_tput_chip,out_tput_pool,tot_tput_chip,p90_ttft_ms,p90_tpot_ms,e2e_lat_ms_tok,e2e_interactivity_tok_s_u
-Stage 1,Naive L7 Round-Robin (Baseline),28.4,32,64,129.6,1036.8,21178.9,1230.2,7.51,10.97,91.19
-Stage 1,Naive L7 Round-Robin (Baseline),28.4,64,128,287.58,2300.64,44278.4,4205.5,13.79,25.78,38.79
-Stage 1,Naive L7 Round-Robin (Baseline),28.4,128,256,471.36,3770.88,75577.7,4488.3,23.8,36.0,27.78
-Stage 2,llm-d KV-Cache-Aware EPP Routing,94.8,32,64,139.29,1114.32,23001.6,232.9,3.92,4.55,219.54
-Stage 2,llm-d KV-Cache-Aware EPP Routing,94.8,64,128,342.84,2742.72,49164.0,798.5,4.24,6.4,156.24
-Stage 2,llm-d KV-Cache-Aware EPP Routing,94.8,128,256,617.71,4941.68,87792.4,2033.3,5.39,10.74,93.15
-Stage 3,llm-d KV Routing + Disaggregated P/D,96.2,8,16,171.66,1373.32,28466.7,456.9,4.15,7.5,133.33
-Stage 3,llm-d KV Routing + Disaggregated P/D,96.2,16,32,358.07,2864.59,53674.4,390.8,4.9,6.28,159.19
-Stage 3,llm-d KV Routing + Disaggregated P/D,96.2,32,64,593.9,4751.2,91495.2,956.9,8.14,11.18,89.41
-Stage 3,llm-d KV Routing + Disaggregated P/D,96.2,64,128,954.04,7632.32,128962.0,1602.6,15.11,19.5,51.29
-Stage 3,llm-d KV Routing + Disaggregated P/D,96.2,128,256,1127.7,9021.6,160480.7,8715.4,29.36,51.95,19.25
-Stage 4,"1,000 MBps/TiB Same-Zone Managed Lustre KV Tier + Disagg P/D + KV-Aware",98.6,8,16,211.79,1694.33,37764.4,381.8,3.77,6.57,152.25
-Stage 4,"1,000 MBps/TiB Same-Zone Managed Lustre KV Tier + Disagg P/D + KV-Aware",98.6,16,32,451.5,3611.98,74620.0,267.7,4.56,5.74,174.09
-Stage 4,"1,000 MBps/TiB Same-Zone Managed Lustre KV Tier + Disagg P/D + KV-Aware",98.6,32,64,663.79,5310.3,125440.6,539.8,7.48,8.99,111.18
-Stage 4,"1,000 MBps/TiB Same-Zone Managed Lustre KV Tier + Disagg P/D + KV-Aware",98.6,64,128,1060.82,8486.54,142223.9,1350.4,12.6,16.18,61.81
-Stage 4,"1,000 MBps/TiB Same-Zone Managed Lustre KV Tier + Disagg P/D + KV-Aware",98.6,128,256,1504.49,12035.93,217734.5,1402.7,19.06,24.42,40.95
+stage,name,kv_hit_rate_pct,conc_rep,conc_pool,out_tput_chip,out_tput_pool,tot_tput_chip,tot_tput_pool,p90_ttft_ms,p90_tpot_ms,e2e_lat_ms_tok,e2e_interactivity_tok_s_u,prometheus_kv_hit_pct
+Stage 1,Naive L7 Round-Robin (Baseline),97.09,32,64,417.12,3336.93,77566.5,620532.4,1527.9,8.42,10.32,96.9,97.09
+Stage 1,Naive L7 Round-Robin (Baseline),96.57,64,128,570.28,4562.23,95541.0,764327.9,2965.9,16.23,20.39,49.03,96.57
+Stage 1,Naive L7 Round-Robin (Baseline),97.05,128,256,541.6,4332.83,136646.4,1093170.8,7312.7,33.41,47.44,21.08,97.05
+Stage 2,llm-d KV-Cache-Aware EPP Routing,98.96,32,64,462.43,3699.47,84645.9,677167.2,1095.4,6.38,7.7,129.83,98.96
+Stage 2,llm-d KV-Cache-Aware EPP Routing,98.68,64,128,678.7,5429.61,112270.4,898163.1,1951.3,11.83,14.49,69.03,98.68
+Stage 2,llm-d KV-Cache-Aware EPP Routing,98.69,128,256,821.88,6575.08,181188.0,1449504.1,4952.3,23.34,31.46,31.78,98.69
+Stage 3,llm-d KV Routing + Disaggregated P/D,99.14,8,16,147.76,1182.12,22124.8,176998.6,272.8,3.94,4.28,233.44,99.14
+Stage 3,llm-d KV Routing + Disaggregated P/D,99.44,16,32,291.22,2329.79,42488.1,339905.0,445.5,4.73,5.28,189.53,99.44
+Stage 3,llm-d KV Routing + Disaggregated P/D,99.51,32,64,503.3,4026.37,89090.1,712720.5,728.0,6.06,6.9,144.94,99.51
+Stage 3,llm-d KV Routing + Disaggregated P/D,99.31,64,128,742.66,5941.27,123246.0,985967.9,1184.7,9.98,11.56,86.48,99.31
+Stage 3,llm-d KV Routing + Disaggregated P/D,99.05,128,256,853.61,6828.89,192723.2,1541785.9,2947.1,19.71,24.56,40.72,99.05
+Stage 4,"1,000 MBps/TiB Same-Zone Managed Lustre KV Tier + Disagg P/D + KV-Aware",99.93,8,16,173.26,1386.09,24462.0,195695.9,190.9,3.77,3.98,251.28,99.93
+Stage 4,"1,000 MBps/TiB Same-Zone Managed Lustre KV Tier + Disagg P/D + KV-Aware",98.69,16,32,446.47,3571.73,53411.7,427293.9,238.7,5.0,5.25,190.32,98.69
+Stage 4,"1,000 MBps/TiB Same-Zone Managed Lustre KV Tier + Disagg P/D + KV-Aware",99.3,32,64,635.91,5087.27,95515.5,764123.6,322.9,5.92,6.26,159.86,99.3
+Stage 4,"1,000 MBps/TiB Same-Zone Managed Lustre KV Tier + Disagg P/D + KV-Aware",99.74,64,128,1013.01,8104.11,137153.7,1097229.9,478.1,8.4,8.9,112.3,99.74
+Stage 4,"1,000 MBps/TiB Same-Zone Managed Lustre KV Tier + Disagg P/D + KV-Aware",99.63,128,256,1438.92,11511.36,229954.1,1839632.8,1934.4,15.92,18.21,54.92,99.63

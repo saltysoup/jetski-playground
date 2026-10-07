@@ -25,20 +25,20 @@ When a new model lands with Day-0 support in **vLLM** or **SGLang**, running nai
 
 Both stacks were benchmarked on `gke-a4-b200` (`europe-west4-b`, `a4-highgpu-8g`, `8x NVIDIA B200` = `2x 4-GPU replicas`) using the `semianalysis_cc_traces_weka_062126` multi-turn agentic coding workload (`AIPerf`).
 
-### 2.1 `llm-d + vLLM` (`2x TP=4 = 8x B200`, FP4)
+### 2.1 `llm-d + vLLM` (`2x TP=4 = 8x B200`, FP4 + `DSPARK` 5-tok MTP + V2 Model Runner + Rust Frontend)
 
 ![llm-d + Managed Lustre Stage 1 to 4 Slide](slides/slide4_llmd_b200_stage1_to_4.png)
 
-| Stage | KV Hit Rate | `c=32` Tput (`tok/s/chip`) | Peak Tput (`tok/s/chip`) | `c=32` P90 TTFT (`ms`) | `c=128` P90 TTFT (`ms`) | P90 Interactivity (`c=32 \| c=64 tok/s/u`) | Gain vs. Stage 1 Base |
+| Stage | KV Hit Rate | `c=64` Tput (`tok/s/chip`) | Peak Tput (`tok/s/chip`) | `c=128` P90 TTFT (`ms`) | `c=256` P90 TTFT (`ms`) | P90 Interactivity (`c=64 \| Peak tok/s/u`) | Gain vs. Stage 1 Base |
 | :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
-| **1. Naive L7 Round-Robin** | `28.4%` | `129.6` | `471.4` | `4,486` | `14,621` | `91.2 \| 38.8` | `1.00x Base` |
-| **2. KV-Cache-Aware Routing** | `94.8%` | `139.2` | `617.6` | `982` | `2,462` | `219.5 \| 156.2` | `1.31x Tput \| 4.0x Int` |
-| **3. KV Routing + P/D Disagg** | `96.2%` | `594.0` | `1,128.0` | `4,820` | `19,350` | `89.4 \| 51.3` | `4.58x Tput (2.4x Pk)` |
-| **4. Lustre KV Tier + P/D Disagg** | **`98.6%`** | **`663.6`** | **`1,504.4`** | **`1,402`** | **`3,120`** | **`111.2 \| 61.8`** | **`5.12x Tput (3.2x Pk)`** |
+| **1. Naive L7 Round-Robin** | `96.9%` | `417.1` | `570.3` | `2,966` | `7,313` | `96.9 \| 21.1` | `1.00x Base` |
+| **2. KV-Cache-Aware Routing** | `98.8%` | `462.4` | `821.9` | `1,951` | `4,952` | `129.8 \| 31.8` | `1.52x Tput \| 1.5x Int` |
+| **3. KV Routing + P/D Disagg** | `99.3%` | `503.3` | `853.6` | `1,185` | `2,947` | `144.9 \| 233.4*` | `1.58x Tput \| 2.4x Int` |
+| **4. Lustre KV Tier + P/D Disagg** | **`99.7%`** | **`635.9`** | **`1,438.9`** | **`478`** | **`1,934`** | **`159.9 \| 251.3*`** | **`2.66x Tput \| 2.6x Int`** |
 
-- **Stage 4 vs. Stage 1 (Baseline) Summary (`llm-d + vLLM`)**:
-  - **Throughput**: **`5.12x` (`+412.0%`)** higher output throughput at `c=32` (`663.6` vs. `129.6 tok/s/chip`) and **`3.19x` (`+219.1%`)** higher peak throughput at `c=128` (`1,504.4` vs. `471.4 tok/s/chip`, or `12,035 tok/s` vs. `3,771 tok/s` across the 8-GPU pool).
-  - **Latency & Interactivity**: **`68.7%` lower (`3.20x` faster)** P90 TTFT at `c=32` (`1,402 ms` vs. `4,486 ms`), **`78.7%` lower (`4.69x` faster)** P90 TTFT at `c=128` (`3,120 ms` vs. `14,621 ms`), and **`1.59x` (`+59.3%`)** higher P90 E2E interactivity at `c=64` (`61.8` vs. `38.8 tok/s/user`).
+- **Stage 4 vs. Stage 1 (Baseline) Summary (`llm-d + vLLM v0.30.1rc1` Upstream Recipe Scaffolding)**:
+  - **Throughput**: **`2.66x` (`+165.7%`)** higher output throughput at `c=256` (`1,438.9` vs. `541.6 tok/s/chip`, or `11,511 tok/s` vs. `4,333 tok/s` pool) and **`229,954 tok/s/chip` (`1,839,633 tok/s` pool = 1.84M tok/s)** total token throughput across the 8x B200 pool.
+  - **Latency & Interactivity**: **`83.9%` lower (`6.20x` faster)** P90 TTFT at `c=128` (`478.1 ms` vs. `2,965.9 ms`), **`73.5%` lower (`3.78x` faster)** P90 TTFT at `c=256` (`1,934.4 ms` vs. `7,312.7 ms`), **`2.61x` (`+160.5%`)** higher P90 E2E interactivity at `c=256` (`54.92` vs. `21.08 tok/s/user`), and **`251.28 tok/s/user` (`3.98 ms/tok`, `190.9 ms` P90 TTFT, `3.77 ms` P90 ITL)** peak interactivity at `c=16`.
 
 ---
 
