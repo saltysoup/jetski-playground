@@ -1,0 +1,18 @@
+run_name,stage,concurrency,out_pool_tok_s,out_per_gpu_tok_s,tot_pool_tok_s,tot_per_gpu_tok_s,ttft_p90_ms,itl_p90_ms,e2e_lat_p90_ms_per_tok,e2e_interactivity_tok_s_user,decode_interactivity_p90_tok_s_user,sglang_kv_hit_pct
+dynamo_stage1_naive_rr_c32,Stage 1: Baseline (Naive L7 RR),32,504.0,63.0,145120.4,18140.0,16276.43,5.77,29.53,33.86,173.31,85.4
+dynamo_stage1_naive_rr_c64,Stage 1: Baseline (Naive L7 RR),64,913.84,114.23,145667.8,18208.5,13604.77,5.51,22.56,44.33,181.49,84.8
+dynamo_stage1_naive_rr_c128,Stage 1: Baseline (Naive L7 RR),128,983.55,122.94,158341.9,19792.7,22353.8,14.53,52.88,18.91,68.82,84.1
+dynamo_stage2_kv_routing_c32,Stage 2: KV-Cache Routing (Colocated P/D),32,1330.39,166.3,205123.0,25640.4,7189.7,18.7,27.7,36.1,53.48,91.9
+dynamo_stage2_kv_routing_c64,Stage 2: KV-Cache Routing (Colocated P/D),64,1541.68,192.71,265722.5,33215.3,12792.93,7.39,23.63,42.33,135.32,92.7
+dynamo_stage2_kv_routing_c128,Stage 2: KV-Cache Routing (Colocated P/D),128,1352.72,169.09,234180.0,29272.5,22452.0,4.68,36.83,27.15,213.68,91.2
+dynamo_stage3_pd_disagg_c16,Stage 3: KV Routing + Disaggregated P/D (HBM Only),16,1276.52,159.56,192881.7,24110.2,2416.4,13.11,16.15,61.91,76.28,93.6
+dynamo_stage3_pd_disagg_c32,Stage 3: KV Routing + Disaggregated P/D (HBM Only),32,1483.34,185.42,217116.8,27139.6,4214.5,17.03,22.48,44.49,58.72,95.6
+dynamo_stage3_pd_disagg_c64,Stage 3: KV Routing + Disaggregated P/D (HBM Only),64,2321.38,290.17,441452.8,55181.6,7207.7,17.04,26.55,37.66,58.69,97.6
+dynamo_stage4_hicache_dram_c16,Stage 4: SGLang HiCache Host DRAM Tier + Disagg P/D,16,1288.4,161.05,205412.6,25676.6,2974.0,3.6,7.34,136.17,277.78,98.9
+dynamo_stage4_hicache_dram_c32,Stage 4: SGLang HiCache Host DRAM Tier + Disagg P/D,32,1834.6,229.32,267727.0,33465.9,5061.0,6.75,12.44,80.4,148.15,98.8
+dynamo_stage4_hicache_dram_c64,Stage 4: SGLang HiCache Host DRAM Tier + Disagg P/D,64,2388.2,298.53,457292.1,57161.5,13094.2,6.56,22.77,43.92,152.44,99.6
+dynamo_stage4_hicache_dram_c128,Stage 4: SGLang HiCache Host DRAM Tier + Disagg P/D,128,2629.2,328.65,443746.8,55468.4,18024.1,47.12,73.48,13.61,21.22,97.9
+dynamo_stage5_mooncake_lustre_c16,"Stage 5: Mooncake + 1,000 MBps/TiB Lustre KV Tier + Disagg P/D",16,1310.86,163.86,218810.8,27351.3,3087.1,3.49,7.27,137.47,286.53,98.5
+dynamo_stage5_mooncake_lustre_c32,"Stage 5: Mooncake + 1,000 MBps/TiB Lustre KV Tier + Disagg P/D",32,1934.13,241.77,277914.7,34739.3,4562.2,7.1,12.31,81.25,140.85,99.3
+dynamo_stage5_mooncake_lustre_c64,"Stage 5: Mooncake + 1,000 MBps/TiB Lustre KV Tier + Disagg P/D",64,2428.17,303.52,452274.3,56534.3,11554.3,21.05,35.43,28.23,47.51,99.2
+dynamo_stage5_mooncake_lustre_c128,"Stage 5: Mooncake + 1,000 MBps/TiB Lustre KV Tier + Disagg P/D",128,2656.16,332.02,450522.7,56315.3,17462.5,41.79,67.95,14.72,23.93,99.6

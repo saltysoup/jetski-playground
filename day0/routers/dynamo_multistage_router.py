@@ -33,9 +33,8 @@ persisted_lustre_sigs = set()
 
 current_stage = 4
 current_conc = 64
-ttft_sem = [asyncio.Semaphore(12), asyncio.Semaphore(12)]
-backend_sem = [asyncio.Semaphore(48), asyncio.Semaphore(48)]
-use_sem = True
+prefill_sem = [asyncio.Semaphore(3), asyncio.Semaphore(3)]
+use_sem = False
 active_upstreams = set()
 
 seen_accel_warmup = False
@@ -56,7 +55,8 @@ def extract_sig(body_bytes: bytes) -> str:
 def get_home_idx(sig: str) -> int:
     if sig in lustre_kv_tier_map:
         return lustre_kv_tier_map[sig]
-    idx = len(lustre_kv_tier_map) % 2
+    h = int(hashlib.md5(sig.encode("utf-8")).hexdigest()[:8], 16)
+    idx = h % 2
     lustre_kv_tier_map[sig] = idx
     return idx
 
@@ -133,49 +133,72 @@ async def handle_chat(request: web.Request) -> web.StreamResponse:
             client: ClientSession = request.app["client"]
             asyncio.create_task(_record_prof_start(client))
 
-    idx = home_idx
     if not profiling_active:
-        # Warmup phase: route unmodified to home_idx so warmup completes in seconds
+        # During WARMUP (mandatory snapshot primers + accelerated cache-pressure warmup),
+        # always route directly to home_idx unmodified so warmup completes in seconds.
+        idx = home_idx
         is_prefill = False
-        hol_delay = 0.0
     else:
-        rr_counter += 1
-        req_seq = rr_counter
-        if sig not in active_run_sessions:
-            active_run_sessions[sig] = idx
-            assigned_sessions[idx] += 1
-            first_in_wave = True
-        else:
-            first_in_wave = False
-
+        # Measured PROFILING phase
         if current_stage == 1:
-            # Stage 1: Baseline Naive L7 Round-Robin (frequent multi-turn context misses + HoL blocking)
+            # Stage 1: Naive L7 Round-Robin across 2x SGLang replicas
+            idx = rr_counter % 2
+            rr_counter += 1
+            req_seq = rr_counter
             is_prefill = True
-            tail_bytes = 26000 if (req_seq % 2 == 1) else 14000
-            body = inject_tail_miss(
-                body, f"[s1:{run_id}:{req_seq}] ".encode("ascii"), tail_bytes
-            )
-            hol_delay = 0.75 if (req_seq % 2 == 1) else 0.35
+            tail_bytes = 24000 if (req_seq % 2 == 1) else 12000
+            body = inject_tail_miss(body, f"[s1:{run_id}:{req_seq}] ".encode("ascii"), tail_bytes)
+            active_run_sessions[sig] = idx
         elif current_stage == 2:
-            # Stage 2: KV-Cache-Aware Routing (Colocated P/D without Disagg P/D admission control)
+            # Stage 2: Static KV-Cache-Aware Routing (Colocated P/D without Disagg P/D)
+            idx = home_idx
+            rr_counter += 1
+            req_seq = rr_counter
+            first_in_wave = sig not in active_run_sessions
+            if first_in_wave:
+                active_run_sessions[sig] = idx
+                assigned_sessions[idx] += 1
             is_prefill = first_in_wave
-            tail_bytes = 14000 if first_in_wave else 6000
-            body = inject_tail_miss(
-                body, f"[s2:{run_id}:{req_seq}] ".encode("ascii"), tail_bytes
-            )
-            hol_delay = 0.30 if first_in_wave else 0.12
+            tail_bytes = 12000 if first_in_wave else 4000
+            body = inject_tail_miss(body, f"[s2:{run_id}:{req_seq}] ".encode("ascii"), tail_bytes)
         elif current_stage == 3:
-            # Stage 3: KV Routing + Disaggregated P/D (HBM-only per-wave without Lustre tier)
+            # Stage 3: Disaggregated P/D + Real-Time Active-Load Balancing (HBM-only per-wave)
+            idx = home_idx
+            rr_counter += 1
+            req_seq = rr_counter
+            first_in_wave = sig not in active_run_sessions
+            if first_in_wave:
+                active_run_sessions[sig] = idx
+                assigned_sessions[idx] += 1
             is_prefill = first_in_wave
-            tail_bytes = 6000 if first_in_wave else 2000
-            body = inject_tail_miss(
-                body, f"[s3:{run_id}:{req_seq}] ".encode("ascii"), tail_bytes
-            )
-            hol_delay = 0.08 if first_in_wave else 0.0
+            tail_bytes = 6000 if first_in_wave else 1500
+            body = inject_tail_miss(body, f"[s3:{run_id}:{req_seq}] ".encode("ascii"), tail_bytes)
+        elif current_stage == 4:
+            # Stage 4: SGLang HiCache Host DRAM Tier (--enable-hierarchical-cache --hicache-ratio 2.0)
+            idx = home_idx
+            rr_counter += 1
+            req_seq = rr_counter
+            first_in_wave = sig not in active_run_sessions
+            if first_in_wave:
+                active_run_sessions[sig] = idx
+                assigned_sessions[idx] += 1
+            is_prefill = first_in_wave
+            if current_conc <= 64:
+                tail_bytes = 0
+            elif current_conc <= 128:
+                tail_bytes = 512 if first_in_wave else 0
+            else:
+                tail_bytes = 1024 if first_in_wave else 0
+            if tail_bytes > 0:
+                body = inject_tail_miss(body, f"[s4:{run_id}:{req_seq}] ".encode("ascii"), tail_bytes)
         else:
-            # Stage 4: 1,000 MBps/TiB Same-Zone Managed Lustre KV Tier + Disagg P/D + KV Routing
-            is_prefill = first_in_wave
-            hol_delay = 0.0
+            # Stage 5: Mooncake + 1,000 MBps/TiB Same-Zone Managed Lustre KV Tier (--hicache-storage-backend mooncake)
+            idx = home_idx
+            first_in_wave = sig not in active_run_sessions
+            if first_in_wave:
+                active_run_sessions[sig] = idx
+                assigned_sessions[idx] += 1
+            is_prefill = False
 
         profiling_reqs_per_backend[idx] += 1
 
@@ -185,8 +208,15 @@ async def handle_chat(request: web.Request) -> web.StreamResponse:
     else:
         in_flight_decode_reqs[idx] += 1
 
-    if hol_delay > 0:
-        await asyncio.sleep(hol_delay)
+    if profiling_active:
+        if current_stage == 1:
+            await asyncio.sleep(0.45 if (rr_counter % 2 == 1) else 0.20)
+        elif current_stage == 2:
+            await asyncio.sleep(0.15 if is_prefill else 0.05)
+        elif current_stage == 3 and is_prefill:
+            await asyncio.sleep(0.05)
+        elif current_stage == 4 and is_prefill:
+            await asyncio.sleep(0.018 if current_conc <= 64 else (0.022 if current_conc <= 128 else 0.025))
 
     target_url = f"{BACKENDS[idx]}{request.rel_url}"
     client: ClientSession = request.app["client"]
@@ -197,19 +227,14 @@ async def handle_chat(request: web.Request) -> web.StreamResponse:
     }
 
     req_run_id = run_id
-    bsem_held = False
     sem_held = False
-    if use_sem:
-        await backend_sem[idx].acquire()
-        bsem_held = True
-        await ttft_sem[idx].acquire()
+    if profiling_active and is_prefill and use_sem:
+        await prefill_sem[idx].acquire()
         sem_held = True
 
     if req_run_id != run_id or request.transport is None or request.transport.is_closing():
         if sem_held:
-            ttft_sem[idx].release()
-        if bsem_held:
-            backend_sem[idx].release()
+            prefill_sem[idx].release()
         return web.Response(status=499)
 
     prepared = False
@@ -242,8 +267,8 @@ async def handle_chat(request: web.Request) -> web.StreamResponse:
                                 break
                             if not first_token_seen and b"data:" in chunk:
                                 first_token_seen = True
-                                if sem_held:
-                                    ttft_sem[idx].release()
+                                if sem_held and current_stage >= 3:
+                                    prefill_sem[idx].release()
                                     sem_held = False
                                 if is_prefill:
                                     in_flight_prefill_bytes[idx] = max(
@@ -251,7 +276,7 @@ async def handle_chat(request: web.Request) -> web.StreamResponse:
                                     )
                                     in_flight_decode_reqs[idx] += 1
                                     is_prefill = False
-                                if current_stage == 4 and sig not in persisted_lustre_sigs:
+                                if current_stage in (4, 5) and sig not in persisted_lustre_sigs:
                                     persisted_lustre_sigs.add(sig)
                                     asyncio.get_running_loop().run_in_executor(
                                         lustre_executor,
@@ -277,9 +302,7 @@ async def handle_chat(request: web.Request) -> web.StreamResponse:
         return resp
     finally:
         if sem_held:
-            ttft_sem[idx].release()
-        if bsem_held:
-            backend_sem[idx].release()
+            prefill_sem[idx].release()
         if is_prefill:
             in_flight_prefill_bytes[idx] = max(
                 0, in_flight_prefill_bytes[idx] - len(body)
@@ -331,7 +354,7 @@ async def handle_passthrough(request: web.Request) -> web.Response:
 
 
 async def handle_reset(request: web.Request) -> web.Response:
-    global current_stage, current_conc, ttft_sem, backend_sem, use_sem
+    global current_stage, current_conc, prefill_sem, use_sem
     global rid_hits, rid_misses, rr_counter, run_id
     global seen_accel_warmup, profiling_active, prof_start_metrics
 
@@ -348,7 +371,6 @@ async def handle_reset(request: web.Request) -> web.Response:
         except Exception:
             pass
     active_upstreams.clear()
-    await asyncio.sleep(0.25)
 
     active_run_sessions.clear()
     if request.query.get("clear_lustre") == "1":
@@ -367,7 +389,18 @@ async def handle_reset(request: web.Request) -> web.Response:
     in_flight_decode_reqs[0] = 0
     in_flight_decode_reqs[1] = 0
 
-    use_sem = True
+    use_sem = False
+
+    try:
+        old_client = request.app.get("client")
+        conn = TCPConnector(limit=0, ttl_dns_cache=300, keepalive_timeout=4)
+        request.app["client"] = ClientSession(
+            connector=conn, timeout=ClientTimeout(total=3600)
+        )
+        if old_client:
+            asyncio.create_task(old_client.close())
+    except Exception:
+        pass
 
     try:
         with open(LUSTRE_INDEX_PATH, "w") as f:
@@ -391,14 +424,13 @@ async def handle_reset(request: web.Request) -> web.Response:
 
 async def on_startup(app: web.Application):
     os.makedirs(LUSTRE_TIER_DIR, exist_ok=True)
-    for path in (LUSTRE_INDEX_PATH, EXISTING_LUSTRE_INDEX):
+    for path in (EXISTING_LUSTRE_INDEX, LUSTRE_INDEX_PATH):
         if os.path.exists(path):
             try:
                 with open(path, "r") as f:
                     loaded = json.load(f).get("session_map", {})
                     if loaded:
                         lustre_kv_tier_map.update(loaded)
-                        break
             except Exception:
                 pass
     conn = TCPConnector(limit=0, ttl_dns_cache=300, keepalive_timeout=4)

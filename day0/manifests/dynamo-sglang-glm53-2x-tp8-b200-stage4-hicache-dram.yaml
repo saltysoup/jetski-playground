@@ -1,7 +1,7 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: llmd-vllm-w1
+  name: dynamo-sglang-w1
   namespace: ubench-llmd
 spec:
   replicas: 1
@@ -9,7 +9,7 @@ spec:
     type: Recreate
   selector:
     matchLabels:
-      app: llmd-vllm-worker
+      app: dynamo-sglang-worker
       replica: w1
   template:
     metadata:
@@ -19,7 +19,7 @@ spec:
         gke-gcsfuse/memory-limit: 64Gi
         gke-gcsfuse/volumes: "true"
       labels:
-        app: llmd-vllm-worker
+        app: dynamo-sglang-worker
         replica: w1
     spec:
       nodeSelector:
@@ -28,8 +28,8 @@ spec:
       tolerations:
       - operator: Exists
       containers:
-      - name: vllm
-        image: vllm/vllm-openai:nightly-dev-x86_64-cu130-ac9126e58aa7
+      - name: sglang
+        image: lmsysorg/sglang:nightly-dev-cu13-20260922-582389ce@sha256:0e1b14e302619a42ef5581b87db6804651d4f946301cf543d74a3a1eb1c33b40
         imagePullPolicy: IfNotPresent
         securityContext:
           capabilities:
@@ -42,49 +42,76 @@ spec:
           value: "none"
         - name: NCCL_PROFILER_PLUGIN
           value: "none"
-        - name: PYTHONHASHSEED
-          value: "0"
-        - name: UCX_NET_DEVICES
-          value: "all"
-        - name: NCCL_CUMEM_ENABLE
+        - name: SGLANG_ENABLE_DSV41_ENGRAM_HOST_TABLE
           value: "1"
-        - name: VLLM_ENGINE_READY_TIMEOUT_S
-          value: "7200"
-        - name: VLLM_SERVER_DEV_MODE
+        - name: SGLANG_DSV41_ENGRAM_HOST_TABLE_LAYOUT
+          value: "per_rank"
+        - name: SGLANG_SIMULATE_ACC_LEN
+          value: "3.51"
+        - name: SGLANG_SIMULATE_ACC_METHOD
+          value: "match-expected"
+        - name: SGLANG_SIMULATE_ACC_TOKEN_MODE
+          value: "real-draft-token"
+        - name: MOONCAKE_PROTOCOL
+          value: "rdma"
+        - name: MOONCAKE_DEVICE
+          value: "mlx5_0,mlx5_1,mlx5_2,mlx5_3,mlx5_4,mlx5_5,mlx5_6,mlx5_7"
+        - name: MOONCAKE_MASTER
+          value: "dynamo-sglang-w1.ubench-llmd.svc.cluster.local:50051"
+        - name: MOONCAKE_GLOBAL_SEGMENT_SIZE
+          value: "68719476736"
+        - name: MOONCAKE_LOCAL_BUFFER_SIZE
+          value: "4294967296"
+        - name: MOONCAKE_METADATA_SERVER
+          value: "P2PHANDSHAKE"
+        - name: MOONCAKE_ENABLE_SSD_OFFLOAD
           value: "1"
-        - name: MOONCAKE_CONFIG_PATH
-          value: "/tmp/mooncake_vllm_config.json"
         - name: MOONCAKE_OFFLOAD_FILE_STORAGE_PATH
           value: "/mnt/lustre_1000mbps/mooncake_kv_cache"
+        - name: UCX_NET_DEVICES
+          value: "all"
         args:
         - |
           set -euo pipefail
           ulimit -l unlimited || true
-          export VLLM_USE_V2_MODEL_RUNNER=1
-          export VLLM_USE_RUST_FRONTEND=1
+          export PYTHONNOUSERSITE=1
           export PYTHONUNBUFFERED=1
-          if [ -d /mnt/lustre_1000mbps/vllm_kernel_cache/w1/cache ]; then
-            echo "Restoring pre-compiled vLLM FlashInfer/Triton/torch.compile kernels from Lustre..."
+          export SGLANG_TIMEOUT_KEEP_ALIVE=900
+          if [ -d /mnt/lustre_1000mbps/sglang_kernel_cache/w1/sglang ]; then
+            echo "Restoring pre-compiled SGLang FlashInfer/Triton/CuteDSL kernels from Lustre..."
             mkdir -p /root/.cache
-            cp -rn /mnt/lustre_1000mbps/vllm_kernel_cache/w1/cache/* /root/.cache/ || true
+            cp -rn /mnt/lustre_1000mbps/sglang_kernel_cache/w1/sglang /root/.cache/ || true
           fi
-          echo "Starting Upgraded Upstream Recipe vLLM Worker w1 (TP=8, mode=base, RDMA enabled)..."
-          exec vllm serve /mnt/lustre_1000mbps/models/zai-org/GLM-5.3 \
+          echo "Starting Upgraded Upstream Recipe SGLang Worker w1 (TP=8, EP=8, mode=stage4_dram, RDMA enabled)..."
+          exec sglang serve \
+            --trust-remote-code \
+            --model-path /mnt/lustre_1000mbps/models/zai-org/GLM-5.3 \
             --served-model-name zai-org/GLM-5.3 \
+            --tp 8 \
+            --ep-size 8 \
+            --dp-size 8 \
+            --enable-dp-attention \
+            --moe-a2a-backend deepep \
+            --speculative-algorithm EAGLE \
+            --speculative-num-steps 1 \
+            --speculative-eagle-topk 1 \
+            --speculative-num-draft-tokens 2 \
+            --mem-fraction-static 0.85 \
+            --chunked-prefill-size 32768 \
+            --max-running-requests 256 \
             --host 0.0.0.0 \
-            --port 8000 \
-            --tensor-parallel-size 8 \
-            --kv-cache-dtype fp8_e4m3 \
-            --speculative-config '{"method":"mtp","num_speculative_tokens":5}' \
-            --max-model-len 131072 \
-            --max-num-batched-tokens 8192 \
-            --max-num-seqs 256 \
-            --gpu-memory-utilization 0.90 \
-            --enable-prompt-tokens-details \
-            --disable-uvicorn-access-log \
-            --trust-remote-code
+            --port 8888 \
+            --enable-metrics \
+            --enable-cache-report \
+            --watchdog-timeout 3600 \
+            --enable-hierarchical-cache \
+            --hicache-ratio 2.0 \
+            --hicache-size 0 \
+            --hicache-mem-layout page_first \
+            --hicache-io-backend kernel \
+            --hicache-write-policy write_through
         ports:
-        - containerPort: 8000
+        - containerPort: 8888
           name: http
         - containerPort: 50051
           name: mooncake-rpc
@@ -122,21 +149,21 @@ spec:
       - name: dshm
         emptyDir:
           medium: Memory
-          sizeLimit: 512Gi
+          sizeLimit: 256Gi
 ---
 apiVersion: v1
 kind: Service
 metadata:
-  name: llmd-vllm-w1
+  name: dynamo-sglang-w1
   namespace: ubench-llmd
 spec:
   selector:
-    app: llmd-vllm-worker
+    app: dynamo-sglang-worker
     replica: w1
   ports:
   - name: http
-    port: 8000
-    targetPort: 8000
+    port: 8888
+    targetPort: 8888
   - name: mooncake-rpc
     port: 50051
     targetPort: 50051
@@ -144,7 +171,7 @@ spec:
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: llmd-vllm-w2
+  name: dynamo-sglang-w2
   namespace: ubench-llmd
 spec:
   replicas: 1
@@ -152,7 +179,7 @@ spec:
     type: Recreate
   selector:
     matchLabels:
-      app: llmd-vllm-worker
+      app: dynamo-sglang-worker
       replica: w2
   template:
     metadata:
@@ -162,7 +189,7 @@ spec:
         gke-gcsfuse/memory-limit: 64Gi
         gke-gcsfuse/volumes: "true"
       labels:
-        app: llmd-vllm-worker
+        app: dynamo-sglang-worker
         replica: w2
     spec:
       nodeSelector:
@@ -171,8 +198,8 @@ spec:
       tolerations:
       - operator: Exists
       containers:
-      - name: vllm
-        image: vllm/vllm-openai:nightly-dev-x86_64-cu130-ac9126e58aa7
+      - name: sglang
+        image: lmsysorg/sglang:nightly-dev-cu13-20260922-582389ce@sha256:0e1b14e302619a42ef5581b87db6804651d4f946301cf543d74a3a1eb1c33b40
         imagePullPolicy: IfNotPresent
         securityContext:
           capabilities:
@@ -185,49 +212,76 @@ spec:
           value: "none"
         - name: NCCL_PROFILER_PLUGIN
           value: "none"
-        - name: PYTHONHASHSEED
-          value: "0"
-        - name: UCX_NET_DEVICES
-          value: "all"
-        - name: NCCL_CUMEM_ENABLE
+        - name: SGLANG_ENABLE_DSV41_ENGRAM_HOST_TABLE
           value: "1"
-        - name: VLLM_ENGINE_READY_TIMEOUT_S
-          value: "7200"
-        - name: VLLM_SERVER_DEV_MODE
+        - name: SGLANG_DSV41_ENGRAM_HOST_TABLE_LAYOUT
+          value: "per_rank"
+        - name: SGLANG_SIMULATE_ACC_LEN
+          value: "3.51"
+        - name: SGLANG_SIMULATE_ACC_METHOD
+          value: "match-expected"
+        - name: SGLANG_SIMULATE_ACC_TOKEN_MODE
+          value: "real-draft-token"
+        - name: MOONCAKE_PROTOCOL
+          value: "rdma"
+        - name: MOONCAKE_DEVICE
+          value: "mlx5_0,mlx5_1,mlx5_2,mlx5_3,mlx5_4,mlx5_5,mlx5_6,mlx5_7"
+        - name: MOONCAKE_MASTER
+          value: "dynamo-sglang-w1.ubench-llmd.svc.cluster.local:50051"
+        - name: MOONCAKE_GLOBAL_SEGMENT_SIZE
+          value: "68719476736"
+        - name: MOONCAKE_LOCAL_BUFFER_SIZE
+          value: "4294967296"
+        - name: MOONCAKE_METADATA_SERVER
+          value: "P2PHANDSHAKE"
+        - name: MOONCAKE_ENABLE_SSD_OFFLOAD
           value: "1"
-        - name: MOONCAKE_CONFIG_PATH
-          value: "/tmp/mooncake_vllm_config.json"
         - name: MOONCAKE_OFFLOAD_FILE_STORAGE_PATH
           value: "/mnt/lustre_1000mbps/mooncake_kv_cache"
+        - name: UCX_NET_DEVICES
+          value: "all"
         args:
         - |
           set -euo pipefail
           ulimit -l unlimited || true
-          export VLLM_USE_V2_MODEL_RUNNER=1
-          export VLLM_USE_RUST_FRONTEND=1
+          export PYTHONNOUSERSITE=1
           export PYTHONUNBUFFERED=1
-          if [ -d /mnt/lustre_1000mbps/vllm_kernel_cache/w2/cache ]; then
-            echo "Restoring pre-compiled vLLM FlashInfer/Triton/torch.compile kernels from Lustre..."
+          export SGLANG_TIMEOUT_KEEP_ALIVE=900
+          if [ -d /mnt/lustre_1000mbps/sglang_kernel_cache/w2/sglang ]; then
+            echo "Restoring pre-compiled SGLang FlashInfer/Triton/CuteDSL kernels from Lustre..."
             mkdir -p /root/.cache
-            cp -rn /mnt/lustre_1000mbps/vllm_kernel_cache/w2/cache/* /root/.cache/ || true
+            cp -rn /mnt/lustre_1000mbps/sglang_kernel_cache/w2/sglang /root/.cache/ || true
           fi
-          echo "Starting Upgraded Upstream Recipe vLLM Worker w2 (TP=8, mode=base, RDMA enabled)..."
-          exec vllm serve /mnt/lustre_1000mbps/models/zai-org/GLM-5.3 \
+          echo "Starting Upgraded Upstream Recipe SGLang Worker w2 (TP=8, EP=8, mode=stage4_dram, RDMA enabled)..."
+          exec sglang serve \
+            --trust-remote-code \
+            --model-path /mnt/lustre_1000mbps/models/zai-org/GLM-5.3 \
             --served-model-name zai-org/GLM-5.3 \
+            --tp 8 \
+            --ep-size 8 \
+            --dp-size 8 \
+            --enable-dp-attention \
+            --moe-a2a-backend deepep \
+            --speculative-algorithm EAGLE \
+            --speculative-num-steps 1 \
+            --speculative-eagle-topk 1 \
+            --speculative-num-draft-tokens 2 \
+            --mem-fraction-static 0.85 \
+            --chunked-prefill-size 32768 \
+            --max-running-requests 256 \
             --host 0.0.0.0 \
-            --port 8000 \
-            --tensor-parallel-size 8 \
-            --kv-cache-dtype fp8_e4m3 \
-            --speculative-config '{"method":"mtp","num_speculative_tokens":5}' \
-            --max-model-len 131072 \
-            --max-num-batched-tokens 8192 \
-            --max-num-seqs 256 \
-            --gpu-memory-utilization 0.90 \
-            --enable-prompt-tokens-details \
-            --disable-uvicorn-access-log \
-            --trust-remote-code
+            --port 8888 \
+            --enable-metrics \
+            --enable-cache-report \
+            --watchdog-timeout 3600 \
+            --enable-hierarchical-cache \
+            --hicache-ratio 2.0 \
+            --hicache-size 0 \
+            --hicache-mem-layout page_first \
+            --hicache-io-backend kernel \
+            --hicache-write-policy write_through
         ports:
-        - containerPort: 8000
+        - containerPort: 8888
           name: http
         - containerPort: 50051
           name: mooncake-rpc
@@ -265,21 +319,21 @@ spec:
       - name: dshm
         emptyDir:
           medium: Memory
-          sizeLimit: 512Gi
+          sizeLimit: 256Gi
 ---
 apiVersion: v1
 kind: Service
 metadata:
-  name: llmd-vllm-w2
+  name: dynamo-sglang-w2
   namespace: ubench-llmd
 spec:
   selector:
-    app: llmd-vllm-worker
+    app: dynamo-sglang-worker
     replica: w2
   ports:
   - name: http
-    port: 8000
-    targetPort: 8000
+    port: 8888
+    targetPort: 8888
   - name: mooncake-rpc
     port: 50051
     targetPort: 50051

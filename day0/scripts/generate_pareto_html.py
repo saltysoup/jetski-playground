@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generates interactive Pareto HTML benchmark charts for Day-0 scaffolding runs."""
+"""Generates interactive 5-Stage Pareto HTML benchmark charts for Day-0 scaffolding runs."""
 
 import json
 import os
@@ -66,7 +66,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     <div id="legendBar" class="flex flex-wrap items-center justify-between gap-2 py-2"></div>
 
     <div class="relative bg-[var(--background)] border border-[var(--border)] rounded-lg p-2">
-      <svg id="plotSvg" viewBox="0 0 760 320" class="w-full h-auto overflow-visible select-none"></svg>
+      <svg id="plotSvg" viewBox="0 0 760 330" class="w-full h-auto overflow-visible select-none"></svg>
       <div id="tooltip" class="tooltip-card hidden absolute bg-[var(--card)] text-[var(--foreground)] border border-[var(--border)] rounded-lg p-2.5 shadow-lg text-xs max-w-xs"></div>
     </div>
   </div>
@@ -133,7 +133,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       const axisColor = isLight ? "#475569" : "#94a3b8";
       const labelColor = isLight ? "#0f172a" : "#f8fafc";
 
-      const W = 760, H = 320;
+      const W = 760, H = 330;
       const padL = 68, padR = 36, padT = 22, padB = 44;
       const plotW = W - padL - padR;
       const plotH = H - padT - padB;
@@ -248,7 +248,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         path.setAttribute("d", d);
         path.setAttribute("fill", "none");
         path.setAttribute("stroke", s.color);
-        path.setAttribute("stroke-width", s.id === "stage4" ? "3.2" : "2.6");
+        path.setAttribute("stroke-width", s.id === "stage5" ? "3.2" : (s.id === "stage4" ? "2.9" : "2.4"));
         if (s.dashed) path.setAttribute("stroke-dasharray", "6,4");
         svg.appendChild(path);
 
@@ -259,7 +259,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
           const circle = document.createElementNS("http://www.w3.org/2000/svg", "circle");
           circle.setAttribute("cx", px);
           circle.setAttribute("cy", py);
-          circle.setAttribute("r", s.id === "stage4" ? "6.5" : "5.5");
+          circle.setAttribute("r", s.id === "stage5" ? "6.5" : (s.id === "stage4" ? "6.0" : "5.2"));
           circle.setAttribute("fill", s.color);
           circle.setAttribute("stroke", isLight ? "#ffffff" : "#090b0e");
           circle.setAttribute("stroke-width", "2");
@@ -268,7 +268,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
           svg.appendChild(circle);
 
           const lbl = document.createElementNS("http://www.w3.org/2000/svg", "text");
-          let dy = s.id === "stage4" ? -9 : (s.id === "stage3" ? -8 : 15);
+          let dy = s.id === "stage5" ? -10 : (s.id === "stage4" ? 14 : (s.id === "stage3" ? -8 : 15));
           let dx = 7;
           let anchor = "start";
           if (px > padL + plotW - 75) {
@@ -334,13 +334,16 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 
 
 def build_llmd_dsv4_dataset():
-  with open(os.path.join(RESULTS_DIR, "llmd_vllm_stage1_to_4_summary.json")) as f:
+  path_5 = os.path.join(RESULTS_DIR, "llmd_vllm_stage1_to_5_summary.json")
+  path_4 = os.path.join(RESULTS_DIR, "llmd_vllm_stage1_to_4_summary.json")
+  with open(path_5 if os.path.exists(path_5) else path_4) as f:
     raw = json.load(f)
   colors = {
       "Stage 1": ("stage1", "#f43f5e", True),
       "Stage 2": ("stage2", "#10b981", False),
       "Stage 3": ("stage3", "#f59e0b", False),
-      "Stage 4": ("stage4", "#06b6d4", False),
+      "Stage 4": ("stage4", "#a855f7", False),
+      "Stage 5": ("stage5", "#06b6d4", False),
   }
   stages = []
   for st in raw["stages"]:
@@ -373,8 +376,8 @@ def build_llmd_dsv4_dataset():
         "points": pts,
     })
   return {
-      "title": "llm-d + vLLM (v0.30.1rc1 Day-0 Scaffolding, 8× B200): Stage 1 → 4 Pareto Frontier",
-      "subtitle": "DeepSeek-V4.1-Flash (MXFP4 + FP8 KV + 5-tok DSpark MTP, V2 Runner + Rust Frontend, 2× TP=4 = 8× B200)",
+      "title": "llm-d + vLLM (v0.30.1rc1 Day-0 Scaffolding, 8× B200): Stage 1 → 5 Pareto Frontier",
+      "subtitle": "DeepSeek-V4.1-Flash (MXFP4 + FP8 KV + 5-tok DSpark MTP, Stage 4 Native DRAM OffloadingConnector + Stage 5 Mooncake Lustre)",
       "stages": stages,
       "x_meta": {
           "e2e_int": {"label": "P90 E2E Normalized Interactivity (tok/s/user — InferenceX X-Axis)  [→ Higher is Better]", "unit": "", "max": 280, "step": 40, "higherBetter": True},
@@ -392,13 +395,17 @@ def build_llmd_dsv4_dataset():
 
 
 def build_dynamo_dsv4_dataset():
-  with open(os.path.join(RESULTS_DIR, "dynamo_sglang_stage1_to_4_summary.json")) as f:
+  path_5 = os.path.join(RESULTS_DIR, "dynamo_sglang_stage1_to_5_summary.json")
+  path_4 = os.path.join(RESULTS_DIR, "dynamo_sglang_stage1_to_4_summary.json")
+  with open(path_5 if os.path.exists(path_5) else path_4) as f:
     rows = json.load(f)
   stage_map = {
       "Stage 1: Baseline (Naive L7 RR)": ("stage1", "Stage 1: Naive L7 Round-Robin (Baseline)", "#f43f5e", True, "Stateless L7 round-robin splits multi-turn sessions across 2× TEP=4 SGLang workers without prefix affinity."),
       "Stage 2: KV-Cache Routing (Colocated P/D)": ("stage2", "Stage 2: Dynamo KV-Cache-Aware Routing (Colocated P/D)", "#10b981", False, "Prefix-aware routing pins multi-turn conversations to the worker holding cached prefix blocks (+68.7% output throughput at c=64)."),
       "Stage 3: KV Routing + Disaggregated P/D (HBM Only)": ("stage3", "Stage 3: KV Routing + Mooncake RDMA Disagg P/D (HBM Only)", "#f59e0b", False, "Mooncake RDMA 1P1D disaggregation isolates prefill bursts from decode steps (+50.6% output throughput at c=64 vs Stage 2)."),
-      "Stage 4: 1,000 MBps/TiB Lustre KV Tier + Disagg P/D + KV Routing": ("stage4", "Stage 4: 1,000 MBps/TiB Lustre HiCache + Mooncake P/D + KV Routing", "#06b6d4", False, "Same-zone 1,000 MBps/TiB Managed Lustre HiCache + Mooncake RDMA P/D reaches 99.6% KV hits, 332.02 tok/s/GPU, and 137.47 tok/s/user interactivity."),
+      "Stage 4: SGLang HiCache Host DRAM Tier + Disagg P/D": ("stage4", "Stage 4: SGLang HiCache Host DRAM Tier (--hicache-ratio 2.0)", "#a855f7", False, "SGLang HiCache Host DRAM tier (--enable-hierarchical-cache --hicache-ratio 2.0) offloads evicted RadixCache pages to pinned Host DRAM over PCIe Gen5."),
+      "Stage 5: Mooncake + 1,000 MBps/TiB Lustre KV Tier + Disagg P/D": ("stage5", "Stage 5: Mooncake + 1,000 MBps/TiB Lustre KV Tier", "#06b6d4", False, "Mooncake distributed KV store (--hicache-storage-backend mooncake) backed by same-zone 1,000 MBps/TiB Managed Lustre provides a global shared KV pool across all nodes."),
+      "Stage 4: 1,000 MBps/TiB Lustre KV Tier + Disagg P/D + KV Routing": ("stage5", "Stage 5: Mooncake + 1,000 MBps/TiB Lustre KV Tier", "#06b6d4", False, "Mooncake distributed KV store (--hicache-storage-backend mooncake) backed by same-zone 1,000 MBps/TiB Managed Lustre."),
   }
   grouped = {}
   for r in rows:
@@ -429,10 +436,11 @@ def build_dynamo_dsv4_dataset():
         "kv_hit": f"{r['sglang_kv_hit_pct']:.1f}%",
         "note": note,
     })
+  order = [k for k in ["stage1", "stage2", "stage3", "stage4", "stage5"] if k in grouped]
   return {
-      "title": "NVIDIA Dynamo + SGLang (v0.5.10 Day-0 Scaffolding, 8× B200): Stage 1 → 4 Pareto Frontier",
-      "subtitle": "DeepSeek-V4.1-Flash (NVFP4 + FP8 KV + 3-tok EAGLE MTP, 2× TEP=4 = 8× B200, Mooncake RDMA + HiCache Lustre)",
-      "stages": [grouped["stage1"], grouped["stage2"], grouped["stage3"], grouped["stage4"]],
+      "title": "NVIDIA Dynamo + SGLang (v0.5.10 Day-0 Scaffolding, 8× B200): Stage 1 → 5 Pareto Frontier",
+      "subtitle": "DeepSeek-V4.1-Flash (NVFP4 + FP8 KV + 5-tok DSpark MTP, Stage 4 SGLang HiCache DRAM + Stage 5 Mooncake Lustre)",
+      "stages": [grouped[k] for k in order],
       "x_meta": {
           "e2e_int": {"label": "P90 E2E Normalized Interactivity (tok/s/user — InferenceX X-Axis)  [→ Higher is Better]", "unit": "", "max": 160, "step": 20, "higherBetter": True},
           "e2e_lat_ms_tok": {"label": "P90 E2E Latency per Output Token (ms/tok)  [← Lower is Better]", "unit": "ms", "max": 70, "step": 10, "higherBetter": False},
@@ -449,7 +457,9 @@ def build_dynamo_dsv4_dataset():
 
 
 def build_llmd_glm53_dataset():
-  with open(os.path.join(RESULTS_DIR, "glm53_llmd_vllm_stage1_to_4_summary.json")) as f:
+  path_5 = os.path.join(RESULTS_DIR, "glm53_llmd_vllm_stage1_to_5_summary.json")
+  path_4 = os.path.join(RESULTS_DIR, "glm53_llmd_vllm_stage1_to_4_summary.json")
+  with open(path_5 if os.path.exists(path_5) else path_4) as f:
     rows = json.load(f)
   stage_meta = {
       1: (
@@ -475,10 +485,17 @@ def build_llmd_glm53_dataset():
       ),
       4: (
           "stage4",
-          "Stage 4: 1,000 MBps/TiB Lustre TieringOffloadingSpec + P/D + KV Routing",
+          "Stage 4: vLLM Native OffloadingConnector (Host DRAM Tier)",
+          "#a855f7",
+          False,
+          "vLLM Native OffloadingConnector (CPUOffloadingSpec /dev/shm Host DRAM tier) achieves 251.6 ms P90 TTFT and 110.19 tok/s/user at c=16 over PCIe Gen5 DMA, and 159.16 tok/s/GPU at c=256.",
+      ),
+      5: (
+          "stage5",
+          "Stage 5: Mooncake + 1,000 MBps/TiB Lustre KV Tier",
           "#06b6d4",
           False,
-          "Same-zone 1,000 MBps/TiB Managed Lustre TieringOffloadingSpec + 5-tok MTP reaches 96.1% KV hits, 187.27 tok/s/GPU (2,996.3 tok/s pool), and 100.52 tok/s/user interactivity.",
+          "Mooncake distributed KV store backed by same-zone 1,000 MBps/TiB Managed Lustre shares KV cache globally across all nodes, reaching 203.27 tok/s/GPU (3,252.3 tok/s pool) and 883.3 ms P90 TTFT at c=256.",
       ),
   }
   grouped = {}
@@ -510,10 +527,11 @@ def build_llmd_glm53_dataset():
         "kv_hit": f"{r['kv_hit_pct']:.2f}%",
         "note": note,
     })
+  order = [k for k in ["stage1", "stage2", "stage3", "stage4", "stage5"] if k in grouped]
   return {
-      "title": "zai-org/GLM-5.3 — llm-d + vLLM (v0.30.1rc1 Day-0 Scaffolding, 16× B200): Stage 1 → 4 Pareto Frontier",
-      "subtitle": "GLM-5.3 (743B MoE / 39B Active, FP8 + FP8 KV + 5-tok MTP + TRT-LLM Fused MoE + TieringOffloadingSpec, 2× TP=8 = 16× B200)",
-      "stages": [grouped["stage1"], grouped["stage2"], grouped["stage3"], grouped["stage4"]],
+      "title": "zai-org/GLM-5.3 — llm-d + vLLM (v0.30.1rc1 Day-0 Scaffolding, 16× B200): Stage 1 → 5 Pareto Frontier",
+      "subtitle": "GLM-5.3 (743B MoE / 39B Active, FP8 + 5-tok MTP, Stage 4 vLLM Native DRAM OffloadingConnector + Stage 5 Mooncake Lustre)",
+      "stages": [grouped[k] for k in order],
       "x_meta": {
           "e2e_int": {"label": "P90 E2E Normalized Interactivity (tok/s/user — InferenceX X-Axis)  [→ Higher is Better]", "unit": "", "max": 120, "step": 20, "higherBetter": True},
           "e2e_lat_ms_tok": {"label": "P90 E2E Latency per Output Token (ms/tok)  [← Lower is Better]", "unit": "ms", "max": 140, "step": 20, "higherBetter": False},
@@ -521,10 +539,102 @@ def build_llmd_glm53_dataset():
           "p90_ttft_ms": {"label": "P90 Time to First Token — TTFT (ms)  [← Lower is Better]", "unit": "ms", "max": 16000, "step": 4000, "higherBetter": False},
       },
       "y_meta": {
-          "out_tput_chip": {"label": "Output Throughput / GPU (tok/s/GPU)  [↑ Higher is Better]", "unit": "tok/s/GPU", "max": 200},
-          "out_tput_pool": {"label": "Pool Output Throughput (tok/s — 16× B200)  [↑ Higher is Better]", "unit": "tok/s", "max": 3200},
-          "tot_tput_chip": {"label": "Total Throughput / GPU (tok/s/GPU)  [↑ Higher is Better]", "unit": "tok/s/GPU", "max": 2400},
-          "tot_tput_pool": {"label": "Pool Total Throughput (tok/s — 16× B200)  [↑ Higher is Better]", "unit": "tok/s", "max": 36000},
+          "out_tput_chip": {"label": "Output Throughput / GPU (tok/s/GPU)  [↑ Higher is Better]", "unit": "tok/s/GPU", "max": 220},
+          "out_tput_pool": {"label": "Pool Output Throughput (tok/s — 16× B200)  [↑ Higher is Better]", "unit": "tok/s", "max": 3500},
+          "tot_tput_chip": {"label": "Total Throughput / GPU (tok/s/GPU)  [↑ Higher is Better]", "unit": "tok/s/GPU", "max": 2500},
+          "tot_tput_pool": {"label": "Pool Total Throughput (tok/s — 16× B200)  [↑ Higher is Better]", "unit": "tok/s", "max": 40000},
+      },
+  }
+
+
+def build_dynamo_glm53_dataset():
+  path_5 = os.path.join(RESULTS_DIR, "glm53_dynamo_sglang_stage1_to_5_summary.json")
+  if not os.path.exists(path_5):
+    return None
+  with open(path_5) as f:
+    rows = json.load(f)
+  stage_meta = {
+      1: (
+          "stage1",
+          "Stage 1: Naive L7 Round-Robin (Baseline)",
+          "#f43f5e",
+          True,
+          "Stateless L7 round-robin splits multi-turn sessions across 2× (TP=8, EP=8, DP=8) = 16× B200 SGLang workers without prefix affinity (1.8%–28.9% KV hit rate, 9,421.6 ms P90 TTFT at c=256).",
+      ),
+      2: (
+          "stage2",
+          "Stage 2: Dynamo KV-Cache-Aware Routing (Colocated P/D)",
+          "#10b981",
+          False,
+          "Dynamo prefix-aware routing pins multi-turn sessions to the TP=8, EP=8 worker holding cached prefix blocks (55.7%–77.2% KV hit rate, +83.3% output throughput at c=64).",
+      ),
+      3: (
+          "stage3",
+          "Stage 3: Dynamo Disaggregated P/D + KV Routing (HBM Only)",
+          "#f59e0b",
+          False,
+          "Mooncake RDMA 1P1D disaggregation isolates prefill bursts from decode steps across 16× B200 GPUs (74.7%–82.8% KV hit rate, 101.60 tok/s/GPU at c=256).",
+      ),
+      4: (
+          "stage4",
+          "Stage 4: SGLang HiCache Host DRAM Tier (--hicache-ratio 2.0)",
+          "#a855f7",
+          False,
+          "SGLang HiRadixCache + DSAIndexerPoolHost (--hicache-mem-layout page_first --hicache-io-backend kernel) tiers KV + DSA indexer pages to pinned Host DRAM over PCIe Gen5 (94.3%–99.0% KV hit rate, 359.9 ms P90 TTFT at c=16, 109.22 tok/s/GPU at c=256).",
+      ),
+      5: (
+          "stage5",
+          "Stage 5: Mooncake + 1,000 MBps/TiB Lustre KV Tier",
+          "#06b6d4",
+          False,
+          "Mooncake distributed KV store (--hicache-storage-backend mooncake) backed by same-zone 1,000 MBps/TiB Managed Lustre reaches 133.96 tok/s/GPU (2,143.3 tok/s pool, +134.4% vs Stage 1) at c=256 and 85.59 tok/s/user (357.3 ms P90 TTFT) at c=16.",
+      ),
+  }
+  grouped = {}
+  for r in rows:
+    sid, sname, col, dashed, note = stage_meta[r["stage"]]
+    if sid not in grouped:
+      grouped[sid] = {
+          "id": sid,
+          "name": sname,
+          "color": col,
+          "dashed": dashed,
+          "visible": True,
+          "points": [],
+      }
+    c = r["conc"]
+    grouped[sid]["points"].append({
+        "conc_rep": c // 2,
+        "conc_pool": c,
+        "label": f"c={c} pool ({c // 2}/rep)",
+        "tag": f"S{r['stage']} c={c}",
+        "out_tput_chip": r["out_tput_chip"],
+        "out_tput_pool": r["out_tput_pool"],
+        "tot_tput_chip": r["tot_tput_chip"],
+        "tot_tput_pool": r["tot_tput_pool"],
+        "p90_ttft_ms": r["ttft_p90_ms"],
+        "dec_tpot_ms": r["itl_p90_ms"],
+        "e2e_lat_ms_tok": r["e2e_lat_per_tok_ms"],
+        "e2e_int": r["e2e_interactivity_tok_s_u"],
+        "kv_hit": f"{r['kv_hit_pct']:.2f}%",
+        "note": note,
+    })
+  order = [k for k in ["stage1", "stage2", "stage3", "stage4", "stage5"] if k in grouped]
+  return {
+      "title": "zai-org/GLM-5.3 — NVIDIA Dynamo + SGLang (v0.5.10 Day-0 Scaffolding, 16× B200): Stage 1 → 5 Pareto Frontier",
+      "subtitle": "GLM-5.3 (743B MoE / 39B Active, FP8 + DeepEP + EAGLE MTP, Stage 4 SGLang HiCache DRAM + Stage 5 Mooncake Lustre)",
+      "stages": [grouped[k] for k in order],
+      "x_meta": {
+          "e2e_int": {"label": "P90 E2E Normalized Interactivity (tok/s/user — InferenceX X-Axis)  [→ Higher is Better]", "unit": "", "max": 100, "step": 20, "higherBetter": True},
+          "e2e_lat_ms_tok": {"label": "P90 E2E Latency per Output Token (ms/tok)  [← Lower is Better]", "unit": "ms", "max": 140, "step": 20, "higherBetter": False},
+          "dec_tpot_ms": {"label": "P90 Decode Inter-Token Latency / TPOT (ms/tok)  [← Lower is Better]", "unit": "ms", "max": 100, "step": 20, "higherBetter": False},
+          "p90_ttft_ms": {"label": "P90 Time to First Token — TTFT (ms)  [← Lower is Better]", "unit": "ms", "max": 10000, "step": 2000, "higherBetter": False},
+      },
+      "y_meta": {
+          "out_tput_chip": {"label": "Output Throughput / GPU (tok/s/GPU)  [↑ Higher is Better]", "unit": "tok/s/GPU", "max": 150},
+          "out_tput_pool": {"label": "Pool Output Throughput (tok/s — 16× B200)  [↑ Higher is Better]", "unit": "tok/s", "max": 2400},
+          "tot_tput_chip": {"label": "Total Throughput / GPU (tok/s/GPU)  [↑ Higher is Better]", "unit": "tok/s/GPU", "max": 1500},
+          "tot_tput_pool": {"label": "Pool Total Throughput (tok/s — 16× B200)  [↑ Higher is Better]", "unit": "tok/s", "max": 24000},
       },
   }
 
@@ -540,7 +650,7 @@ def write_html(path, datasets, default_key):
       .replace("__MAIN_TITLE__", ds["title"])
       .replace("__SUB_TITLE__", ds["subtitle"])
       .replace("__DATASET_OPTIONS__", "\n            ".join(opts))
-      .replace("__DATASETS_JSON__", json.dumps(datasets, indent=2))
+      .replace("__DATASETS_JSON__", json.dumps(datasets, separators=(",", ":")))
   )
   with open(path, "w") as f:
     f.write(html)
@@ -550,6 +660,7 @@ def write_html(path, datasets, default_key):
 def main():
   glm53_llmd_ds = build_llmd_glm53_dataset()
   glm53_llmd_ds["option_label"] = "GLM-5.3 (743B MoE, 16× B200) — llm-d + vLLM (v0.30.1rc1)"
+  glm53_dynamo_ds = build_dynamo_glm53_dataset()
   llmd_ds = build_llmd_dsv4_dataset()
   llmd_ds["option_label"] = "DeepSeek-V4.1-Flash (8× B200) — llm-d + vLLM (v0.30.1rc1)"
   dynamo_ds = build_dynamo_dsv4_dataset()
@@ -557,10 +668,17 @@ def main():
 
   all_datasets = {
       "llmd_glm53": glm53_llmd_ds,
-      "llmd_dsv4": llmd_ds,
-      "dynamo_dsv4": dynamo_ds,
   }
+  if glm53_dynamo_ds is not None:
+    glm53_dynamo_ds["option_label"] = "GLM-5.3 (743B MoE, 16× B200) — NVIDIA Dynamo + SGLang (v0.5.10)"
+    all_datasets["dynamo_glm53"] = glm53_dynamo_ds
+  all_datasets["llmd_dsv4"] = llmd_ds
+  all_datasets["dynamo_dsv4"] = dynamo_ds
+
   write_html(os.path.join(RESULTS_DIR, "glm53_stage1_to_4_pareto.html"), all_datasets, "llmd_glm53")
+  write_html(os.path.join(RESULTS_DIR, "glm53_stage1_to_5_pareto.html"), all_datasets, "llmd_glm53")
+  if "dynamo_glm53" in all_datasets:
+    write_html(os.path.join(RESULTS_DIR, "glm53_dynamo_stage1_to_5_pareto.html"), all_datasets, "dynamo_glm53")
   write_html(os.path.join(RESULTS_DIR, "llmd_stage1_to_4_pareto.html"), all_datasets, "llmd_dsv4")
   write_html(os.path.join(RESULTS_DIR, "dynamo_stage1_to_4_pareto.html"), all_datasets, "dynamo_dsv4")
 

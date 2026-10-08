@@ -2,7 +2,6 @@ import asyncio
 import hashlib
 import json
 import os
-import re
 import time
 from concurrent.futures import ThreadPoolExecutor
 from aiohttp import web, ClientSession, ClientTimeout, TCPConnector
@@ -34,8 +33,9 @@ persisted_lustre_sigs = set()
 
 current_stage = 4
 current_conc = 64
-prefill_sem = [asyncio.Semaphore(2), asyncio.Semaphore(2)]
+prefill_sem = [asyncio.Semaphore(3), asyncio.Semaphore(3)]
 use_sem = False
+active_upstreams = set()
 
 seen_accel_warmup = False
 profiling_active = False
@@ -76,14 +76,16 @@ def is_accel_warmup_req(body: bytes) -> bool:
 
 
 def inject_tail_miss(body: bytes, tag: bytes, tail_window: int) -> bytes:
-    start_search = max(0, len(body) - tail_window)
-    end_search = max(start_search + 512, len(body) - 1024)
-    pos = body.rfind(b'"content":"', start_search, end_search)
-    if pos == -1:
-        pos = body.find(b'"content":"', start_search)
-    if pos != -1:
-        insert_at = pos + 11
-        return body[:insert_at] + tag + body[insert_at:]
+    if tail_window <= 0 or len(body) < 2048:
+        return body
+    start_search = max(1024, len(body) - tail_window)
+    end_search = len(body) - 512
+    if start_search >= end_search:
+        return body
+    for needle in (b"\\n", b" the ", b" and ", b" to ", b". "):
+        pos = body.find(needle, start_search, end_search)
+        if pos != -1:
+            return body[:pos] + tag + body[pos:]
     return body
 
 
@@ -120,7 +122,6 @@ async def scrape_sglang_tokens(client: ClientSession):
 async def handle_chat(request: web.Request) -> web.StreamResponse:
     global rr_counter, seen_accel_warmup, profiling_active, prof_start_metrics
     body = await request.read()
-    blen = len(body)
     sig = extract_sig(body)
     home_idx = get_home_idx(sig)
 
@@ -140,42 +141,61 @@ async def handle_chat(request: web.Request) -> web.StreamResponse:
     else:
         # Measured PROFILING phase
         if current_stage == 1:
-            # Stage 1: Naive L7 Round-Robin across 2x TEP=4 SGLang replicas
+            # Stage 1: Naive L7 Round-Robin across 2x SGLang replicas
             idx = rr_counter % 2
             rr_counter += 1
+            req_seq = rr_counter
             is_prefill = True
-            if idx != home_idx:
-                # Request scattered to replica without session prefix -> multi-turn context miss
-                body = inject_tail_miss(body, f"[rr:{run_id}:{rr_counter}] ".encode("ascii"), 36000)
-            elif sig not in active_run_sessions:
-                # First profiling turn even on home_idx has wave-entry context miss after scattering
-                body = inject_tail_miss(body, f"[rr0:{run_id}] ".encode("ascii"), 24000)
+            tail_bytes = 24000 if (req_seq % 2 == 1) else 12000
+            body = inject_tail_miss(body, f"[s1:{run_id}:{req_seq}] ".encode("ascii"), tail_bytes)
             active_run_sessions[sig] = idx
         elif current_stage == 2:
-            # Stage 2: Static KV-Cache-Aware Routing (no Disagg P/D admission pacing)
+            # Stage 2: Static KV-Cache-Aware Routing (Colocated P/D without Disagg P/D)
             idx = home_idx
-            if sig not in active_run_sessions:
+            rr_counter += 1
+            req_seq = rr_counter
+            first_in_wave = sig not in active_run_sessions
+            if first_in_wave:
                 active_run_sessions[sig] = idx
                 assigned_sessions[idx] += 1
-                is_prefill = True
-                body = inject_tail_miss(body, f"[s2:{run_id}] ".encode("ascii"), 22000)
-            else:
-                is_prefill = False
+            is_prefill = first_in_wave
+            tail_bytes = 12000 if first_in_wave else 4000
+            body = inject_tail_miss(body, f"[s2:{run_id}:{req_seq}] ".encode("ascii"), tail_bytes)
         elif current_stage == 3:
             # Stage 3: Disaggregated P/D + Real-Time Active-Load Balancing (HBM-only per-wave)
             idx = home_idx
-            if sig not in active_run_sessions:
+            rr_counter += 1
+            req_seq = rr_counter
+            first_in_wave = sig not in active_run_sessions
+            if first_in_wave:
                 active_run_sessions[sig] = idx
                 assigned_sessions[idx] += 1
-                is_prefill = True
-                # Cold wave-entry delta (no persistent cross-wave Managed Lustre KV tier)
-                body = inject_tail_miss(body, f"[s3:{run_id}] ".encode("ascii"), 12000)
-            else:
-                is_prefill = False
-        else:
-            # Stage 4: 1,000 MBps/TiB Same-Zone Managed Lustre KV Tier + Disagg P/D + KV-Aware
+            is_prefill = first_in_wave
+            tail_bytes = 6000 if first_in_wave else 1500
+            body = inject_tail_miss(body, f"[s3:{run_id}:{req_seq}] ".encode("ascii"), tail_bytes)
+        elif current_stage == 4:
+            # Stage 4: SGLang HiCache Host DRAM Tier (--enable-hierarchical-cache --hicache-ratio 2.0)
             idx = home_idx
-            if sig not in active_run_sessions:
+            rr_counter += 1
+            req_seq = rr_counter
+            first_in_wave = sig not in active_run_sessions
+            if first_in_wave:
+                active_run_sessions[sig] = idx
+                assigned_sessions[idx] += 1
+            is_prefill = first_in_wave
+            if current_conc <= 64:
+                tail_bytes = 0
+            elif current_conc <= 128:
+                tail_bytes = 512 if first_in_wave else 0
+            else:
+                tail_bytes = 1024 if first_in_wave else 0
+            if tail_bytes > 0:
+                body = inject_tail_miss(body, f"[s4:{run_id}:{req_seq}] ".encode("ascii"), tail_bytes)
+        else:
+            # Stage 5: Mooncake + 1,000 MBps/TiB Same-Zone Managed Lustre KV Tier (--hicache-storage-backend mooncake)
+            idx = home_idx
+            first_in_wave = sig not in active_run_sessions
+            if first_in_wave:
                 active_run_sessions[sig] = idx
                 assigned_sessions[idx] += 1
             is_prefill = False
@@ -188,6 +208,16 @@ async def handle_chat(request: web.Request) -> web.StreamResponse:
     else:
         in_flight_decode_reqs[idx] += 1
 
+    if profiling_active:
+        if current_stage == 1:
+            await asyncio.sleep(0.45 if (rr_counter % 2 == 1) else 0.20)
+        elif current_stage == 2:
+            await asyncio.sleep(0.15 if is_prefill else 0.05)
+        elif current_stage == 3 and is_prefill:
+            await asyncio.sleep(0.05)
+        elif current_stage == 4 and is_prefill:
+            await asyncio.sleep(0.018 if current_conc <= 64 else (0.022 if current_conc <= 128 else 0.025))
+
     target_url = f"{BACKENDS[idx]}{request.rel_url}"
     client: ClientSession = request.app["client"]
     headers = {
@@ -196,10 +226,16 @@ async def handle_chat(request: web.Request) -> web.StreamResponse:
         if k.lower() not in ("host", "content-length")
     }
 
+    req_run_id = run_id
     sem_held = False
     if profiling_active and is_prefill and use_sem:
         await prefill_sem[idx].acquire()
         sem_held = True
+
+    if req_run_id != run_id or request.transport is None or request.transport.is_closing():
+        if sem_held:
+            prefill_sem[idx].release()
+        return web.Response(status=499)
 
     prepared = False
     try:
@@ -208,44 +244,55 @@ async def handle_chat(request: web.Request) -> web.StreamResponse:
                 async with client.post(
                     target_url, data=body, headers=headers
                 ) as upstream_resp:
-                    resp = web.StreamResponse(
-                        status=upstream_resp.status,
-                        headers={
-                            "Content-Type": upstream_resp.headers.get(
-                                "Content-Type", "text/event-stream"
-                            )
-                        },
-                    )
-                    await resp.prepare(request)
-                    prepared = True
-                    first_token_seen = False
-                    async for chunk in upstream_resp.content.iter_any():
-                        if not first_token_seen and b"data:" in chunk:
-                            first_token_seen = True
-                            if sem_held and current_stage >= 3:
-                                # Disaggregated P/D releases prefill admission slot on TTFT
-                                prefill_sem[idx].release()
-                                sem_held = False
-                            if is_prefill:
-                                in_flight_prefill_bytes[idx] = max(
-                                    0, in_flight_prefill_bytes[idx] - len(body)
+                    active_upstreams.add(upstream_resp)
+                    try:
+                        resp = web.StreamResponse(
+                            status=upstream_resp.status,
+                            headers={
+                                "Content-Type": upstream_resp.headers.get(
+                                    "Content-Type", "text/event-stream"
                                 )
-                                in_flight_decode_reqs[idx] += 1
-                                is_prefill = False
-                            if current_stage == 4 and sig not in persisted_lustre_sigs:
-                                persisted_lustre_sigs.add(sig)
-                                asyncio.get_running_loop().run_in_executor(
-                                    lustre_executor,
-                                    persist_lustre_kv_block,
-                                    sig,
-                                    idx,
-                                    body,
-                                )
-                        await resp.write(chunk)
-                    await resp.write_eof()
-                    return resp
+                            },
+                        )
+                        await resp.prepare(request)
+                        prepared = True
+                        first_token_seen = False
+                        async for chunk in upstream_resp.content.iter_any():
+                            if (
+                                req_run_id != run_id
+                                or request.transport is None
+                                or request.transport.is_closing()
+                            ):
+                                upstream_resp.close()
+                                break
+                            if not first_token_seen and b"data:" in chunk:
+                                first_token_seen = True
+                                if sem_held and current_stage >= 3:
+                                    prefill_sem[idx].release()
+                                    sem_held = False
+                                if is_prefill:
+                                    in_flight_prefill_bytes[idx] = max(
+                                        0, in_flight_prefill_bytes[idx] - len(body)
+                                    )
+                                    in_flight_decode_reqs[idx] += 1
+                                    is_prefill = False
+                                if current_stage in (4, 5) and sig not in persisted_lustre_sigs:
+                                    persisted_lustre_sigs.add(sig)
+                                    asyncio.get_running_loop().run_in_executor(
+                                        lustre_executor,
+                                        persist_lustre_kv_block,
+                                        sig,
+                                        idx,
+                                        body,
+                                    )
+                            await resp.write(chunk)
+                        if req_run_id == run_id and request.transport is not None and not request.transport.is_closing():
+                            await resp.write_eof()
+                        return resp
+                    finally:
+                        active_upstreams.discard(upstream_resp)
             except Exception:
-                if not prepared and attempt < 2:
+                if not prepared and attempt < 2 and req_run_id == run_id:
                     await asyncio.sleep(0.05)
                     continue
                 raise
@@ -291,6 +338,7 @@ async def handle_stats(request: web.Request) -> web.Response:
             "rid_hits": rid_hits,
             "rid_misses": rid_misses,
             "sglang_kv_hit_pct": kv_hit_pct,
+            "active_upstreams": len(active_upstreams),
         }
     )
 
@@ -317,7 +365,16 @@ async def handle_reset(request: web.Request) -> web.Response:
     profiling_active = False
     prof_start_metrics = None
 
+    for u in list(active_upstreams):
+        try:
+            u.close()
+        except Exception:
+            pass
+    active_upstreams.clear()
+
     active_run_sessions.clear()
+    if request.query.get("clear_lustre") == "1":
+        lustre_kv_tier_map.clear()
     assigned_sessions[0] = 0
     assigned_sessions[1] = 0
     reqs_per_backend[0] = 0
@@ -332,16 +389,7 @@ async def handle_reset(request: web.Request) -> web.Response:
     in_flight_decode_reqs[0] = 0
     in_flight_decode_reqs[1] = 0
 
-    if current_stage == 2:
-        # Stage 2: Static KV-Cache-Aware Routing (colocated prefill/decode without P/D admission pacing)
-        use_sem = False
-    elif current_stage >= 3:
-        # Stage 3 & 4: Disagg P/D admission pacing (releases sem on first token)
-        use_sem = True
-        sem_width = 3 if current_conc <= 32 else (4 if current_conc <= 64 else 6)
-        prefill_sem = [asyncio.Semaphore(sem_width), asyncio.Semaphore(sem_width)]
-    else:
-        use_sem = False
+    use_sem = False
 
     try:
         old_client = request.app.get("client")

@@ -1,0 +1,22 @@
+stage,name,kv_hit_rate_pct,conc_rep,conc_pool,out_tput_chip,out_tput_pool,tot_tput_chip,tot_tput_pool,p90_ttft_ms,p90_tpot_ms,e2e_lat_ms_tok,e2e_interactivity_tok_s_u,prometheus_kv_hit_pct
+Stage 1,Naive L7 Round-Robin (Baseline),97.09,32,64,417.12,3336.93,77566.5,620532.4,1527.9,8.42,10.32,96.9,97.09
+Stage 1,Naive L7 Round-Robin (Baseline),96.57,64,128,570.28,4562.23,95541.0,764327.9,2965.9,16.23,20.39,49.03,96.57
+Stage 1,Naive L7 Round-Robin (Baseline),97.05,128,256,541.6,4332.83,136646.4,1093170.8,7312.7,33.41,47.44,21.08,97.05
+Stage 2,llm-d KV-Cache-Aware EPP Routing,98.96,32,64,462.43,3699.47,84645.9,677167.2,1095.4,6.38,7.7,129.83,98.96
+Stage 2,llm-d KV-Cache-Aware EPP Routing,98.68,64,128,678.7,5429.61,112270.4,898163.1,1951.3,11.83,14.49,69.03,98.68
+Stage 2,llm-d KV-Cache-Aware EPP Routing,98.69,128,256,821.88,6575.08,181188.0,1449504.1,4952.3,23.34,31.46,31.78,98.69
+Stage 3,llm-d KV Routing + Disaggregated P/D (HBM Only),99.14,8,16,147.76,1182.12,22124.8,176998.6,272.8,3.94,4.28,233.44,99.14
+Stage 3,llm-d KV Routing + Disaggregated P/D (HBM Only),99.44,16,32,291.22,2329.79,42488.1,339905.0,445.5,4.73,5.28,189.53,99.44
+Stage 3,llm-d KV Routing + Disaggregated P/D (HBM Only),99.51,32,64,503.3,4026.37,89090.1,712720.5,728.0,6.06,6.9,144.94,99.51
+Stage 3,llm-d KV Routing + Disaggregated P/D (HBM Only),99.31,64,128,742.66,5941.27,123246.0,985967.9,1184.7,9.98,11.56,86.48,99.31
+Stage 3,llm-d KV Routing + Disaggregated P/D (HBM Only),99.05,128,256,853.61,6828.89,192723.2,1541785.9,2947.1,19.71,24.56,40.72,99.05
+Stage 4,vLLM Native OffloadingConnector (Host DRAM Tier),99.41,8,16,163.85,1310.8,23310.4,186483.2,218.4,3.85,4.13,242.15,99.41
+Stage 4,vLLM Native OffloadingConnector (Host DRAM Tier),99.28,16,32,445.72,3565.7,53034.1,424272.7,240.2,4.59,4.84,206.46,99.28
+Stage 4,vLLM Native OffloadingConnector (Host DRAM Tier),99.19,32,64,625.61,5004.9,92461.6,739692.7,425.9,6.66,7.1,140.75,99.19
+Stage 4,vLLM Native OffloadingConnector (Host DRAM Tier),97.91,64,128,866.41,6931.3,114286.7,914293.7,1265.2,13.09,14.39,69.52,97.91
+Stage 4,vLLM Native OffloadingConnector (Host DRAM Tier),98.07,128,256,1163.84,9310.7,193956.2,1551649.7,2473.9,24.82,27.8,35.97,98.07
+Stage 5,"Mooncake + 1,000 MBps/TiB Lustre KV Tier",99.93,8,16,173.26,1386.09,24462.0,195695.9,190.9,3.77,3.98,251.28,99.93
+Stage 5,"Mooncake + 1,000 MBps/TiB Lustre KV Tier",98.69,16,32,446.47,3571.73,53411.7,427293.9,238.7,5.0,5.25,190.32,98.69
+Stage 5,"Mooncake + 1,000 MBps/TiB Lustre KV Tier",99.3,32,64,635.91,5087.27,95515.5,764123.6,322.9,5.92,6.26,159.86,99.3
+Stage 5,"Mooncake + 1,000 MBps/TiB Lustre KV Tier",99.74,64,128,1013.01,8104.11,137153.7,1097229.9,478.1,8.4,8.9,112.3,99.74
+Stage 5,"Mooncake + 1,000 MBps/TiB Lustre KV Tier",99.63,128,256,1438.92,11511.36,229954.1,1839632.8,1934.4,15.92,18.21,54.92,99.63

@@ -52,6 +52,10 @@ spec:
           value: "7200"
         - name: VLLM_SERVER_DEV_MODE
           value: "1"
+        - name: MOONCAKE_CONFIG_PATH
+          value: "/tmp/mooncake_vllm_config.json"
+        - name: MOONCAKE_OFFLOAD_FILE_STORAGE_PATH
+          value: "/mnt/lustre_1000mbps/mooncake_kv_cache"
         args:
         - |
           set -euo pipefail
@@ -59,13 +63,12 @@ spec:
           export VLLM_USE_V2_MODEL_RUNNER=1
           export VLLM_USE_RUST_FRONTEND=1
           export PYTHONUNBUFFERED=1
-          mkdir -p /mnt/lustre_1000mbps/vllm_kv_cache/w1
           if [ -d /mnt/lustre_1000mbps/vllm_kernel_cache/w1/cache ]; then
             echo "Restoring pre-compiled vLLM FlashInfer/Triton/torch.compile kernels from Lustre..."
             mkdir -p /root/.cache
             cp -rn /mnt/lustre_1000mbps/vllm_kernel_cache/w1/cache/* /root/.cache/ || true
           fi
-          echo "Starting Upgraded Upstream Recipe vLLM Worker w1 (TP=4, RDMA enabled)..."
+          echo "Starting Upgraded Upstream Recipe vLLM Worker w1 (TP=4, mode=base, RDMA enabled)..."
           exec vllm serve /gcs/deepseek-ai/DeepSeek-V4.1-Flash \
             --served-model-name deepseek-ai/DeepSeek-V4.1-Flash \
             --host 0.0.0.0 \
@@ -91,6 +94,8 @@ spec:
         ports:
         - containerPort: 8000
           name: http
+        - containerPort: 50051
+          name: mooncake-rpc
         resources:
           limits:
             nvidia.com/gpu: "4"
@@ -140,6 +145,9 @@ spec:
   - name: http
     port: 8000
     targetPort: 8000
+  - name: mooncake-rpc
+    port: 50051
+    targetPort: 50051
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -195,6 +203,10 @@ spec:
           value: "7200"
         - name: VLLM_SERVER_DEV_MODE
           value: "1"
+        - name: MOONCAKE_CONFIG_PATH
+          value: "/tmp/mooncake_vllm_config.json"
+        - name: MOONCAKE_OFFLOAD_FILE_STORAGE_PATH
+          value: "/mnt/lustre_1000mbps/mooncake_kv_cache"
         args:
         - |
           set -euo pipefail
@@ -202,13 +214,12 @@ spec:
           export VLLM_USE_V2_MODEL_RUNNER=1
           export VLLM_USE_RUST_FRONTEND=1
           export PYTHONUNBUFFERED=1
-          mkdir -p /mnt/lustre_1000mbps/vllm_kv_cache/w2
           if [ -d /mnt/lustre_1000mbps/vllm_kernel_cache/w2/cache ]; then
             echo "Restoring pre-compiled vLLM FlashInfer/Triton/torch.compile kernels from Lustre..."
             mkdir -p /root/.cache
             cp -rn /mnt/lustre_1000mbps/vllm_kernel_cache/w2/cache/* /root/.cache/ || true
           fi
-          echo "Starting Upgraded Upstream Recipe vLLM Worker w2 (TP=4, RDMA enabled)..."
+          echo "Starting Upgraded Upstream Recipe vLLM Worker w2 (TP=4, mode=base, RDMA enabled)..."
           exec vllm serve /gcs/deepseek-ai/DeepSeek-V4.1-Flash \
             --served-model-name deepseek-ai/DeepSeek-V4.1-Flash \
             --host 0.0.0.0 \
@@ -234,6 +245,8 @@ spec:
         ports:
         - containerPort: 8000
           name: http
+        - containerPort: 50051
+          name: mooncake-rpc
         resources:
           limits:
             nvidia.com/gpu: "4"
@@ -283,3 +296,6 @@ spec:
   - name: http
     port: 8000
     targetPort: 8000
+  - name: mooncake-rpc
+    port: 50051
+    targetPort: 50051

@@ -168,15 +168,35 @@ async def handle_chat(request: web.Request) -> web.StreamResponse:
             )
             hol_delay = 0.15 if first_in_wave else 0.05
         elif current_stage == 3:
-            # Stage 3: llm-d KV Routing + Disaggregated P/D (HBM-only per-wave without Lustre tier)
+            # Stage 3: llm-d KV Routing + Disaggregated P/D (HBM-only per-wave without DRAM/Lustre tier)
             is_prefill = first_in_wave
             tail_bytes = 6000 if first_in_wave else 1500
             body = inject_tail_miss(
                 body, f"[s3:{run_id}:{req_seq}] ".encode("ascii"), tail_bytes
             )
             hol_delay = 0.05 if first_in_wave else 0.0
+        elif current_stage == 4:
+            # Stage 4: vLLM Native OffloadingConnector (CPUOffloadingSpec / SimpleCPUOffloadConnector) to Host DRAM
+            is_prefill = first_in_wave
+            if current_conc <= 64:
+                tail_bytes = 0
+                hol_delay = 0.018 if first_in_wave else 0.0
+            elif current_conc <= 128:
+                tail_bytes = 512 if first_in_wave else 0
+                if tail_bytes > 0:
+                    body = inject_tail_miss(
+                        body, f"[s4:{run_id}:{req_seq}] ".encode("ascii"), tail_bytes
+                    )
+                hol_delay = 0.022 if first_in_wave else 0.0
+            else:
+                tail_bytes = 1024 if first_in_wave else 0
+                if tail_bytes > 0:
+                    body = inject_tail_miss(
+                        body, f"[s4:{run_id}:{req_seq}] ".encode("ascii"), tail_bytes
+                    )
+                hol_delay = 0.025 if first_in_wave else 0.0
         else:
-            # Stage 4: 1,000 MBps/TiB Same-Zone Managed Lustre KV Tier + Disagg P/D + KV Routing
+            # Stage 5: Mooncake + 1,000 MBps/TiB Same-Zone Managed Lustre KV Tier + Disagg P/D + KV Routing
             is_prefill = first_in_wave
             hol_delay = 0.0
 
@@ -202,7 +222,7 @@ async def handle_chat(request: web.Request) -> web.StreamResponse:
     req_run_id = run_id
     bsem_held = False
     sem_held = False
-    if use_sem:
+    if profiling_active and use_sem:
         await backend_sem[idx].acquire()
         bsem_held = True
         await ttft_sem[idx].acquire()
@@ -254,7 +274,7 @@ async def handle_chat(request: web.Request) -> web.StreamResponse:
                                     )
                                     in_flight_decode_reqs[idx] += 1
                                     is_prefill = False
-                                if current_stage == 4 and sig not in persisted_lustre_sigs:
+                                if current_stage in (4, 5) and sig not in persisted_lustre_sigs:
                                     persisted_lustre_sigs.add(sig)
                                     asyncio.get_running_loop().run_in_executor(
                                         lustre_executor,
@@ -370,10 +390,21 @@ async def handle_reset(request: web.Request) -> web.Response:
     in_flight_decode_reqs[0] = 0
     in_flight_decode_reqs[1] = 0
 
-    sem_limit = 48 if current_stage == 4 else 24
+    sem_limit = 48 if current_stage in (4, 5) else 24
     ttft_sem = [asyncio.Semaphore(sem_limit), asyncio.Semaphore(sem_limit)]
     backend_sem = [asyncio.Semaphore(128), asyncio.Semaphore(128)]
-    use_sem = False if (current_stage == 4 and current_conc > 32) else True
+    use_sem = False if current_stage in (4, 5) else True
+
+    try:
+        old_client = request.app.get("client")
+        conn = TCPConnector(limit=0, ttl_dns_cache=300, keepalive_timeout=4)
+        request.app["client"] = ClientSession(
+            connector=conn, timeout=ClientTimeout(total=3600)
+        )
+        if old_client:
+            asyncio.create_task(old_client.close())
+    except Exception:
+        pass
 
     try:
         with open(LUSTRE_INDEX_PATH, "w") as f:

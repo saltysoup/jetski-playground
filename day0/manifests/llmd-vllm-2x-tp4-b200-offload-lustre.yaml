@@ -52,6 +52,10 @@ spec:
           value: "7200"
         - name: VLLM_SERVER_DEV_MODE
           value: "1"
+        - name: MOONCAKE_CONFIG_PATH
+          value: "/tmp/mooncake_vllm_config.json"
+        - name: MOONCAKE_OFFLOAD_FILE_STORAGE_PATH
+          value: "/mnt/lustre_1000mbps/mooncake_kv_cache"
         args:
         - |
           set -euo pipefail
@@ -59,13 +63,19 @@ spec:
           export VLLM_USE_V2_MODEL_RUNNER=1
           export VLLM_USE_RUST_FRONTEND=1
           export PYTHONUNBUFFERED=1
-          mkdir -p /mnt/lustre_1000mbps/vllm_kv_cache/w1
+          mkdir -p /mnt/lustre_1000mbps/mooncake_kv_cache
+          cat <<'EOF' > /tmp/mooncake_vllm_config.json
+{"mode": "standalone-store", "metadata_server": "P2PHANDSHAKE", "master_server_address": "llmd-vllm-w1.ubench-llmd.svc.cluster.local:50051", "global_segment_size": "0GB", "local_buffer_size": "4GB", "protocol": "rdma", "device_name": "mlx5_0,mlx5_1,mlx5_2,mlx5_3,mlx5_4,mlx5_5,mlx5_6,mlx5_7", "enable_offload": true}
+EOF
+          nohup mooncake_master -rpc_port=50051 -rpc_thread_num=8 -default_kv_lease_ttl=30000 -eviction_high_watermark_ratio=0.95 -eviction_ratio=0.1 -enable_offload=true -enable_disk_eviction=true -root_fs_dir=/mnt/lustre_1000mbps/mooncake_kv_cache -logtostderr > /tmp/mooncake_master.log 2>&1 < /dev/null &
+          sleep 1
+          MOONCAKE_OFFLOAD_FILE_STORAGE_PATH=/mnt/lustre_1000mbps/mooncake_kv_cache nohup mooncake_client -host=127.0.0.1 -port=50052 -global_segment_size='64GB' -local_buffer_size='4GB' -metadata_server='P2PHANDSHAKE' -master_server_address='llmd-vllm-w1.ubench-llmd.svc.cluster.local:50051' -protocol='rdma' -device_names='mlx5_0,mlx5_1,mlx5_2,mlx5_3,mlx5_4,mlx5_5,mlx5_6,mlx5_7' -enable_offload=true -start_offload_rpc_server=true -logtostderr > /tmp/mooncake_client.log 2>&1 < /dev/null &
           if [ -d /mnt/lustre_1000mbps/vllm_kernel_cache/w1/cache ]; then
             echo "Restoring pre-compiled vLLM FlashInfer/Triton/torch.compile kernels from Lustre..."
             mkdir -p /root/.cache
             cp -rn /mnt/lustre_1000mbps/vllm_kernel_cache/w1/cache/* /root/.cache/ || true
           fi
-          echo "Starting Upgraded Upstream Recipe vLLM Worker w1 (TP=4, RDMA enabled)..."
+          echo "Starting Upgraded Upstream Recipe vLLM Worker w1 (TP=4, mode=stage5_mooncake_lustre, RDMA enabled)..."
           exec vllm serve /gcs/deepseek-ai/DeepSeek-V4.1-Flash \
             --served-model-name deepseek-ai/DeepSeek-V4.1-Flash \
             --host 0.0.0.0 \
@@ -88,10 +98,12 @@ spec:
             --enable-prompt-tokens-details \
             --disable-uvicorn-access-log \
             --trust-remote-code \
-            --kv-transfer-config '{"kv_connector": "OffloadingConnector", "kv_role": "kv_both", "kv_connector_extra_config": {"spec_name": "TieringOffloadingSpec", "cpu_bytes_to_use": 8589934592, "blocks_per_chunk": 1, "eviction_policy": "lru", "secondary_tiers": [{"type": "fs", "root_dir": "/mnt/lustre_1000mbps/vllm_kv_cache", "n_read_threads": 16, "n_write_threads": 16}]}}'
+            --kv-transfer-config '{"kv_connector": "MooncakeStoreConnector", "kv_role": "kv_both", "kv_connector_extra_config": {"load_async": true, "lookup_async": true}}'
         ports:
         - containerPort: 8000
           name: http
+        - containerPort: 50051
+          name: mooncake-rpc
         resources:
           limits:
             nvidia.com/gpu: "4"
@@ -141,6 +153,9 @@ spec:
   - name: http
     port: 8000
     targetPort: 8000
+  - name: mooncake-rpc
+    port: 50051
+    targetPort: 50051
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -196,6 +211,10 @@ spec:
           value: "7200"
         - name: VLLM_SERVER_DEV_MODE
           value: "1"
+        - name: MOONCAKE_CONFIG_PATH
+          value: "/tmp/mooncake_vllm_config.json"
+        - name: MOONCAKE_OFFLOAD_FILE_STORAGE_PATH
+          value: "/mnt/lustre_1000mbps/mooncake_kv_cache"
         args:
         - |
           set -euo pipefail
@@ -203,13 +222,17 @@ spec:
           export VLLM_USE_V2_MODEL_RUNNER=1
           export VLLM_USE_RUST_FRONTEND=1
           export PYTHONUNBUFFERED=1
-          mkdir -p /mnt/lustre_1000mbps/vllm_kv_cache/w2
+          mkdir -p /mnt/lustre_1000mbps/mooncake_kv_cache
+          cat <<'EOF' > /tmp/mooncake_vllm_config.json
+{"mode": "standalone-store", "metadata_server": "P2PHANDSHAKE", "master_server_address": "llmd-vllm-w1.ubench-llmd.svc.cluster.local:50051", "global_segment_size": "0GB", "local_buffer_size": "4GB", "protocol": "rdma", "device_name": "mlx5_0,mlx5_1,mlx5_2,mlx5_3,mlx5_4,mlx5_5,mlx5_6,mlx5_7", "enable_offload": true}
+EOF
+          MOONCAKE_OFFLOAD_FILE_STORAGE_PATH=/mnt/lustre_1000mbps/mooncake_kv_cache nohup mooncake_client -host=127.0.0.1 -port=50052 -global_segment_size='64GB' -local_buffer_size='4GB' -metadata_server='P2PHANDSHAKE' -master_server_address='llmd-vllm-w1.ubench-llmd.svc.cluster.local:50051' -protocol='rdma' -device_names='mlx5_0,mlx5_1,mlx5_2,mlx5_3,mlx5_4,mlx5_5,mlx5_6,mlx5_7' -enable_offload=true -start_offload_rpc_server=true -logtostderr > /tmp/mooncake_client.log 2>&1 < /dev/null &
           if [ -d /mnt/lustre_1000mbps/vllm_kernel_cache/w2/cache ]; then
             echo "Restoring pre-compiled vLLM FlashInfer/Triton/torch.compile kernels from Lustre..."
             mkdir -p /root/.cache
             cp -rn /mnt/lustre_1000mbps/vllm_kernel_cache/w2/cache/* /root/.cache/ || true
           fi
-          echo "Starting Upgraded Upstream Recipe vLLM Worker w2 (TP=4, RDMA enabled)..."
+          echo "Starting Upgraded Upstream Recipe vLLM Worker w2 (TP=4, mode=stage5_mooncake_lustre, RDMA enabled)..."
           exec vllm serve /gcs/deepseek-ai/DeepSeek-V4.1-Flash \
             --served-model-name deepseek-ai/DeepSeek-V4.1-Flash \
             --host 0.0.0.0 \
@@ -232,10 +255,12 @@ spec:
             --enable-prompt-tokens-details \
             --disable-uvicorn-access-log \
             --trust-remote-code \
-            --kv-transfer-config '{"kv_connector": "OffloadingConnector", "kv_role": "kv_both", "kv_connector_extra_config": {"spec_name": "TieringOffloadingSpec", "cpu_bytes_to_use": 8589934592, "blocks_per_chunk": 1, "eviction_policy": "lru", "secondary_tiers": [{"type": "fs", "root_dir": "/mnt/lustre_1000mbps/vllm_kv_cache", "n_read_threads": 16, "n_write_threads": 16}]}}'
+            --kv-transfer-config '{"kv_connector": "MooncakeStoreConnector", "kv_role": "kv_both", "kv_connector_extra_config": {"load_async": true, "lookup_async": true}}'
         ports:
         - containerPort: 8000
           name: http
+        - containerPort: 50051
+          name: mooncake-rpc
         resources:
           limits:
             nvidia.com/gpu: "4"
@@ -285,3 +310,6 @@ spec:
   - name: http
     port: 8000
     targetPort: 8000
+  - name: mooncake-rpc
+    port: 50051
+    targetPort: 50051

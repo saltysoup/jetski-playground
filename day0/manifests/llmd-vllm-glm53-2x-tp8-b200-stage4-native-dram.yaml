@@ -68,7 +68,7 @@ spec:
             mkdir -p /root/.cache
             cp -rn /mnt/lustre_1000mbps/vllm_kernel_cache/w1/cache/* /root/.cache/ || true
           fi
-          echo "Starting Upgraded Upstream Recipe vLLM Worker w1 (TP=8, mode=base, RDMA enabled)..."
+          echo "Starting Upgraded Upstream Recipe vLLM Worker w1 (TP=8, mode=stage4_dram, RDMA enabled)..."
           exec vllm serve /mnt/lustre_1000mbps/models/zai-org/GLM-5.3 \
             --served-model-name zai-org/GLM-5.3 \
             --host 0.0.0.0 \
@@ -82,7 +82,8 @@ spec:
             --gpu-memory-utilization 0.90 \
             --enable-prompt-tokens-details \
             --disable-uvicorn-access-log \
-            --trust-remote-code
+            --trust-remote-code \
+            --kv-transfer-config '{"kv_connector": "OffloadingConnector", "kv_role": "kv_both", "kv_connector_extra_config": {"spec_name": "CPUOffloadingSpec", "cpu_bytes_to_use": 137438953472, "blocks_per_chunk": 4}}'
         ports:
         - containerPort: 8000
           name: http
@@ -211,7 +212,7 @@ spec:
             mkdir -p /root/.cache
             cp -rn /mnt/lustre_1000mbps/vllm_kernel_cache/w2/cache/* /root/.cache/ || true
           fi
-          echo "Starting Upgraded Upstream Recipe vLLM Worker w2 (TP=8, mode=base, RDMA enabled)..."
+          echo "Starting Upgraded Upstream Recipe vLLM Worker w2 (TP=8, mode=stage4_dram, RDMA enabled)..."
           exec vllm serve /mnt/lustre_1000mbps/models/zai-org/GLM-5.3 \
             --served-model-name zai-org/GLM-5.3 \
             --host 0.0.0.0 \
@@ -225,7 +226,8 @@ spec:
             --gpu-memory-utilization 0.90 \
             --enable-prompt-tokens-details \
             --disable-uvicorn-access-log \
-            --trust-remote-code
+            --trust-remote-code \
+            --kv-transfer-config '{"kv_connector": "OffloadingConnector", "kv_role": "kv_both", "kv_connector_extra_config": {"spec_name": "CPUOffloadingSpec", "cpu_bytes_to_use": 137438953472, "blocks_per_chunk": 4}}'
         ports:
         - containerPort: 8000
           name: http

@@ -52,14 +52,22 @@ spec:
           value: "match-expected"
         - name: SGLANG_SIMULATE_ACC_TOKEN_MODE
           value: "real-draft-token"
-        - name: SGLANG_HICACHE_FILE_BACKEND_STORAGE_DIR
-          value: "/mnt/lustre_1000mbps/sglang_hicache/shared"
-        - name: SGLANG_HICACHE_FILE_BACKEND_ENABLE_METADATA_CACHE
-          value: "1"
         - name: MOONCAKE_PROTOCOL
           value: "rdma"
         - name: MOONCAKE_DEVICE
           value: "mlx5_0,mlx5_1,mlx5_2,mlx5_3,mlx5_4,mlx5_5,mlx5_6,mlx5_7"
+        - name: MOONCAKE_MASTER
+          value: "dynamo-sglang-w1.ubench-llmd.svc.cluster.local:50051"
+        - name: MOONCAKE_GLOBAL_SEGMENT_SIZE
+          value: "68719476736"
+        - name: MOONCAKE_LOCAL_BUFFER_SIZE
+          value: "4294967296"
+        - name: MOONCAKE_METADATA_SERVER
+          value: "P2PHANDSHAKE"
+        - name: MOONCAKE_ENABLE_SSD_OFFLOAD
+          value: "1"
+        - name: MOONCAKE_OFFLOAD_FILE_STORAGE_PATH
+          value: "/mnt/lustre_1000mbps/mooncake_kv_cache"
         - name: UCX_NET_DEVICES
           value: "all"
         args:
@@ -69,32 +77,36 @@ spec:
           export PYTHONNOUSERSITE=1
           export PYTHONUNBUFFERED=1
           export SGLANG_TIMEOUT_KEEP_ALIVE=900
-          mkdir -p /mnt/lustre_1000mbps/sglang_hicache/shared
           if [ -d /mnt/lustre_1000mbps/sglang_kernel_cache/w1/sglang ]; then
             echo "Restoring pre-compiled SGLang FlashInfer/Triton/CuteDSL kernels from Lustre..."
             mkdir -p /root/.cache
             cp -rn /mnt/lustre_1000mbps/sglang_kernel_cache/w1/sglang /root/.cache/ || true
           fi
-          echo "Starting Upgraded Upstream Recipe SGLang Worker w1 (TP=4, EP=4, RDMA enabled)..."
+          echo "Starting Upgraded Upstream Recipe SGLang Worker w1 (TP=4, EP=4, mode=base, RDMA enabled)..."
           exec sglang serve \
             --trust-remote-code \
             --model-path /gcs/deepseek-ai/DeepSeek-V4.1-Flash \
             --served-model-name deepseek-ai/DeepSeek-V4.1-Flash \
             --tp 4 \
             --ep-size 4 \
-            --max-running-requests 64 \
+            --max-running-requests 128 \
             --host 0.0.0.0 \
             --port 8888 \
             --mem-fraction-static 0.8 \
             --speculative-algorithm DSPARK \
             --speculative-dspark-block-size 5 \
             --cuda-graph-max-bs-decode 64 \
+            --chunked-prefill-size 4096 \
+            --swa-prefix-tails 4096 \
+            --prefill-decode-interval 16 \
             --enable-metrics \
             --enable-cache-report \
             --watchdog-timeout 3600
         ports:
         - containerPort: 8888
           name: http
+        - containerPort: 50051
+          name: mooncake-rpc
         resources:
           limits:
             nvidia.com/gpu: "4"
@@ -144,6 +156,9 @@ spec:
   - name: http
     port: 8888
     targetPort: 8888
+  - name: mooncake-rpc
+    port: 50051
+    targetPort: 50051
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -199,14 +214,22 @@ spec:
           value: "match-expected"
         - name: SGLANG_SIMULATE_ACC_TOKEN_MODE
           value: "real-draft-token"
-        - name: SGLANG_HICACHE_FILE_BACKEND_STORAGE_DIR
-          value: "/mnt/lustre_1000mbps/sglang_hicache/shared"
-        - name: SGLANG_HICACHE_FILE_BACKEND_ENABLE_METADATA_CACHE
-          value: "1"
         - name: MOONCAKE_PROTOCOL
           value: "rdma"
         - name: MOONCAKE_DEVICE
           value: "mlx5_0,mlx5_1,mlx5_2,mlx5_3,mlx5_4,mlx5_5,mlx5_6,mlx5_7"
+        - name: MOONCAKE_MASTER
+          value: "dynamo-sglang-w1.ubench-llmd.svc.cluster.local:50051"
+        - name: MOONCAKE_GLOBAL_SEGMENT_SIZE
+          value: "68719476736"
+        - name: MOONCAKE_LOCAL_BUFFER_SIZE
+          value: "4294967296"
+        - name: MOONCAKE_METADATA_SERVER
+          value: "P2PHANDSHAKE"
+        - name: MOONCAKE_ENABLE_SSD_OFFLOAD
+          value: "1"
+        - name: MOONCAKE_OFFLOAD_FILE_STORAGE_PATH
+          value: "/mnt/lustre_1000mbps/mooncake_kv_cache"
         - name: UCX_NET_DEVICES
           value: "all"
         args:
@@ -216,32 +239,36 @@ spec:
           export PYTHONNOUSERSITE=1
           export PYTHONUNBUFFERED=1
           export SGLANG_TIMEOUT_KEEP_ALIVE=900
-          mkdir -p /mnt/lustre_1000mbps/sglang_hicache/shared
           if [ -d /mnt/lustre_1000mbps/sglang_kernel_cache/w2/sglang ]; then
             echo "Restoring pre-compiled SGLang FlashInfer/Triton/CuteDSL kernels from Lustre..."
             mkdir -p /root/.cache
             cp -rn /mnt/lustre_1000mbps/sglang_kernel_cache/w2/sglang /root/.cache/ || true
           fi
-          echo "Starting Upgraded Upstream Recipe SGLang Worker w2 (TP=4, EP=4, RDMA enabled)..."
+          echo "Starting Upgraded Upstream Recipe SGLang Worker w2 (TP=4, EP=4, mode=base, RDMA enabled)..."
           exec sglang serve \
             --trust-remote-code \
             --model-path /gcs/deepseek-ai/DeepSeek-V4.1-Flash \
             --served-model-name deepseek-ai/DeepSeek-V4.1-Flash \
             --tp 4 \
             --ep-size 4 \
-            --max-running-requests 64 \
+            --max-running-requests 128 \
             --host 0.0.0.0 \
             --port 8888 \
             --mem-fraction-static 0.8 \
             --speculative-algorithm DSPARK \
             --speculative-dspark-block-size 5 \
             --cuda-graph-max-bs-decode 64 \
+            --chunked-prefill-size 4096 \
+            --swa-prefix-tails 4096 \
+            --prefill-decode-interval 16 \
             --enable-metrics \
             --enable-cache-report \
             --watchdog-timeout 3600
         ports:
         - containerPort: 8888
           name: http
+        - containerPort: 50051
+          name: mooncake-rpc
         resources:
           limits:
             nvidia.com/gpu: "4"
@@ -291,3 +318,6 @@ spec:
   - name: http
     port: 8888
     targetPort: 8888
+  - name: mooncake-rpc
+    port: 50051
+    targetPort: 50051

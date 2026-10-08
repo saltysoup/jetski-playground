@@ -152,11 +152,25 @@ def parse_sglang_cookbook_cell(
         selected_env.append("SGLANG_ENABLE_DSV41_ENGRAM_HOST_TABLE=1")
         selected_env.append("SGLANG_DSV41_ENGRAM_HOST_TABLE_LAYOUT=per_rank")
 
+    cleaned_flags = strip_non_benchmark_flags(selected_flags)
+    normalized_flags: List[str] = []
+    if not any(f.startswith("--trust-remote-code") for f in cleaned_flags):
+        normalized_flags.append("--trust-remote-code")
+    for f in cleaned_flags:
+        if f.startswith("--attn-dp-size"):
+            dp_n = f.split()[-1]
+            if not any(x.startswith("--ep-size") or x.startswith("--ep ") for x in cleaned_flags):
+                normalized_flags.append(f"--ep-size {dp_n}")
+            normalized_flags.append(f"--dp-size {dp_n}")
+            normalized_flags.append("--enable-dp-attention")
+        else:
+            normalized_flags.append(f)
+
     return {
         "docker_image": docker_image,
         "nnodes": nnodes,
         "env": selected_env,
-        "flags": strip_non_benchmark_flags(selected_flags),
+        "flags": normalized_flags,
     }
 
 
@@ -348,28 +362,41 @@ def build_sglang_stage_commands(
             base_flags.append("--host 0.0.0.0")
         elif f.startswith("--port"):
             base_flags.append("--port 8888")
+        elif f.startswith("--swa-prefix-tails") and "DeepSeek-V4.1-Flash" in served_model_name:
+            base_flags.append("--swa-prefix-tails 4096")
+        elif f.startswith("--max-running-requests") and "DeepSeek-V4.1-Flash" in served_model_name:
+            base_flags.append("--max-running-requests 128")
+        elif f.startswith("--chunked-prefill-size") and "DeepSeek-V4.1-Flash" in served_model_name:
+            base_flags.append("--chunked-prefill-size 4096")
         else:
             base_flags.append(f)
+
+    if "DeepSeek-V4.1-Flash" in served_model_name:
+        for req_flag in (
+            "--chunked-prefill-size 4096",
+            "--swa-prefix-tails 4096",
+            "--prefill-decode-interval 16",
+        ):
+            if not any(f.startswith(req_flag.split()[0]) for f in base_flags):
+                base_flags.append(req_flag)
 
     # Add observability flags (non-intrusive)
     for obs_flag in ("--enable-metrics", "--enable-cache-report", "--watchdog-timeout 3600"):
         if not any(f.startswith(obs_flag.split()[0]) for f in base_flags):
             base_flags.append(obs_flag)
 
-    # Native SGLang Cookbook HiCache building block (from sglang_playground_helpers.js AXIS_HANDLERS.hicache)
-    hicache_lustre_flags = [
+    # Stage 4 (Host DRAM KV Cache Tiering): Native SGLang HiCache to pinned Host DRAM (no external file/storage backend)
+    hicache_dram_flags = [
         "--enable-hierarchical-cache",
-        "--hicache-ratio 1.2",
+        "--hicache-ratio 2.0",
         "--hicache-size 0",
-        "--hicache-mem-layout page_first_direct",
-        "--hicache-io-backend direct",
+        "--hicache-mem-layout page_first",
+        "--hicache-io-backend kernel",
         "--hicache-write-policy write_through",
-        "--hicache-storage-backend file",
-        "--hicache-storage-prefetch-policy wait_complete",
-        '--hicache-storage-backend-extra-config \'{"enable_metadata_cache":true,"metadata_ttl":3600}\'',
     ]
 
-    hicache_mooncake_flags = [
+    # Stage 5 (Same-Zone Managed Lustre KV Offloading via Mooncake): SGLang HiCache + Mooncake storage backend backed by Lustre
+    hicache_mooncake_lustre_flags = [
         "--enable-hierarchical-cache",
         "--hicache-ratio 1.2",
         "--hicache-size 0",
@@ -396,12 +423,44 @@ def build_sglang_stage_commands(
         f"--disaggregation-ib-device {topo['rdma_devices']}",
     ]
 
+    mooncake_master_cmd = (
+        "mooncake_master "
+        "-rpc_port=50051 "
+        "-rpc_thread_num=8 "
+        "-default_kv_lease_ttl=30000 "
+        "-eviction_high_watermark_ratio=0.95 "
+        "-eviction_ratio=0.1 "
+        "-enable_offload=true "
+        "-enable_disk_eviction=true "
+        f"-root_fs_dir={lustre_mount}/mooncake_kv_cache "
+        "-logtostderr"
+    )
+    mooncake_client_cmd = (
+        f"MOONCAKE_OFFLOAD_FILE_STORAGE_PATH={lustre_mount}/mooncake_kv_cache "
+        "mooncake_client "
+        "-host=127.0.0.1 "
+        "-port=50052 "
+        "-global_segment_size='64GB' "
+        "-local_buffer_size='4GB' "
+        "-metadata_server='P2PHANDSHAKE' "
+        "-master_server_address='dynamo-sglang-w1.ubench-llmd.svc.cluster.local:50051' "
+        "-protocol='rdma' "
+        f"-device_names='{topo['rdma_devices']}' "
+        "-enable_offload=true "
+        "-start_offload_rpc_server=true "
+        "-logtostderr"
+    )
+
     return {
         "base_flags": base_flags,
-        "hicache_lustre_flags": base_flags + hicache_lustre_flags,
-        "hicache_mooncake_flags": base_flags + hicache_mooncake_flags,
+        "stage4_hicache_dram_flags": base_flags + hicache_dram_flags,
+        "stage5_hicache_mooncake_lustre_flags": base_flags + hicache_mooncake_lustre_flags,
+        "hicache_lustre_flags": base_flags + hicache_mooncake_lustre_flags,
+        "hicache_mooncake_flags": base_flags + hicache_mooncake_lustre_flags,
         "pd_prefill_flags": pd_prefill_flags,
         "pd_decode_flags": pd_decode_flags,
+        "mooncake_master_cmd": mooncake_master_cmd,
+        "mooncake_client_cmd": mooncake_client_cmd,
         "routers": {
             "stage1_naive_rr": (
                 "sglang-router launch "
@@ -424,12 +483,14 @@ def build_sglang_stage_commands(
             ),
         },
         "env": {
-            "SGLANG_HICACHE_FILE_BACKEND_STORAGE_DIR": f"{lustre_mount}/sglang_hicache",
-            "SGLANG_HICACHE_FILE_BACKEND_ENABLE_METADATA_CACHE": "1",
             "MOONCAKE_PROTOCOL": "rdma",
             "MOONCAKE_DEVICE": topo["rdma_devices"],
+            "MOONCAKE_MASTER": "dynamo-sglang-w1.ubench-llmd.svc.cluster.local:50051",
+            "MOONCAKE_GLOBAL_SEGMENT_SIZE": "68719476736",
+            "MOONCAKE_LOCAL_BUFFER_SIZE": "4294967296",
+            "MOONCAKE_METADATA_SERVER": "P2PHANDSHAKE",
             "MOONCAKE_ENABLE_SSD_OFFLOAD": "1",
-            "MOONCAKE_OFFLOAD_FILE_STORAGE_PATH": f"{lustre_mount}/mooncake_kv",
+            "MOONCAKE_OFFLOAD_FILE_STORAGE_PATH": f"{lustre_mount}/mooncake_kv_cache",
         },
     }
 
@@ -441,7 +502,7 @@ def build_vllm_stage_commands(
     topo: Dict[str, Any],
     lustre_mount: str = "/mnt/lustre_1000mbps",
 ) -> Dict[str, Any]:
-    """Synthesize vLLM commands for Stages 1-4 using official vLLM Recipes building blocks."""
+    """Synthesize vLLM commands for Stages 1-5 using official vLLM Recipes building blocks."""
     base_args = [
         f"vllm serve {model_path}",
         f"--served-model-name {served_model_name}",
@@ -477,27 +538,52 @@ def build_vllm_stage_commands(
         "kv_load_failure_policy": "fail",
     })
 
-    # Stage 4: Native OffloadingConnector (TieringOffloadingSpec -> Lustre fs) from taxonomy.yaml
-    offloading_fs_cfg = json.dumps({
-        "kv_connector": "OffloadingConnector",
+    # Stage 4 (Host DRAM KV Cache Tiering):
+    # Follow recipes.vllm.ai per-model kv_offload recipe:
+    # - SimpleCPUOffloadConnector (?kv_offload=simple) for standard FullAttention/MLA models
+    # - OffloadingConnector with CPUOffloadingSpec (?kv_offload=offloading_cpu) for hybrid/DSA models (e.g. DeepSeek-V4.1-Flash, GLM-5.3)
+    kv_offload_support = vllm_recipe.get("kv_offload_support", {})
+    if "simple" in kv_offload_support and "offloading_cpu" not in kv_offload_support:
+        stage4_dram_cfg = json.dumps({
+            "kv_connector": "SimpleCPUOffloadConnector",
+            "kv_role": "kv_both",
+            "kv_connector_extra_config": {
+                "cpu_bytes_to_use_per_rank": 68719476736,
+                "lazy_offload": False,
+            },
+        })
+    else:
+        stage4_dram_cfg = json.dumps({
+            "kv_connector": "OffloadingConnector",
+            "kv_role": "kv_both",
+            "kv_connector_extra_config": {
+                "spec_name": "CPUOffloadingSpec",
+                "cpu_bytes_to_use": 137438953472,
+                "blocks_per_chunk": 4,
+            },
+        })
+
+    simple_cpu_offload_cfg = json.dumps({
+        "kv_connector": "SimpleCPUOffloadConnector",
         "kv_role": "kv_both",
         "kv_connector_extra_config": {
-            "spec_name": "TieringOffloadingSpec",
-            "cpu_bytes_to_use": 8589934592,
-            "blocks_per_chunk": 1,
-            "eviction_policy": "lru",
-            "secondary_tiers": [
-                {
-                    "type": "fs",
-                    "root_dir": f"{lustre_mount}/vllm_kv_cache",
-                    "n_read_threads": 16,
-                    "n_write_threads": 16,
-                }
-            ],
+            "cpu_bytes_to_use_per_rank": 68719476736,
+            "lazy_offload": False,
         },
     })
 
-    # Stage 4 PD + Mooncake MultiConnector from kv_store_centralized_mooncake.yaml
+    # Stage 5 (Same-Zone Managed Lustre KV Offloading via Mooncake):
+    # MooncakeStoreConnector backed by mooncake_master (-root_fs_dir=/mnt/lustre_1000mbps/mooncake_kv_cache) + mooncake_client
+    mooncake_store_cfg = json.dumps({
+        "kv_connector": "MooncakeStoreConnector",
+        "kv_role": "kv_both",
+        "kv_connector_extra_config": {
+            "load_async": True,
+            "lookup_async": True,
+        },
+    })
+
+    # Stage 5 PD + Mooncake MultiConnector from kv_store_centralized_mooncake.yaml
     multi_prefill_cfg = json.dumps({
         "kv_connector": "MultiConnector",
         "kv_role": "kv_both",
@@ -513,17 +599,33 @@ def build_vllm_stage_commands(
         },
     })
 
+    mooncake_vllm_config = {
+        "mode": "standalone-store",
+        "metadata_server": "P2PHANDSHAKE",
+        "master_server_address": "llmd-vllm-w1.ubench-llmd.svc.cluster.local:50051",
+        "global_segment_size": "0GB",
+        "local_buffer_size": "4GB",
+        "protocol": "rdma",
+        "device_name": topo["rdma_devices"],
+        "enable_offload": True,
+    }
+
     return {
         "base_args": base_args,
         "stage3_pd_prefill_args": base_args + [f"--kv-transfer-config '{nixl_prefill_cfg}'"],
         "stage3_pd_decode_args": base_args + [f"--kv-transfer-config '{nixl_decode_cfg}'"],
-        "stage4_offloading_fs_args": base_args + [f"--kv-transfer-config '{offloading_fs_cfg}'"],
-        "stage4_multi_connector_prefill_args": base_args + [f"--kv-transfer-config '{multi_prefill_cfg}'"],
+        "stage4_dram_offload_args": base_args + [f"--kv-transfer-config '{stage4_dram_cfg}'"],
+        "stage4_simple_cpu_offload_args": base_args + [f"--kv-transfer-config '{simple_cpu_offload_cfg}'"],
+        "stage5_mooncake_lustre_args": base_args + [f"--kv-transfer-config '{mooncake_store_cfg}'"],
+        "stage5_multi_connector_prefill_args": base_args + [f"--kv-transfer-config '{multi_prefill_cfg}'"],
+        "mooncake_vllm_config": mooncake_vllm_config,
         "env": {
             **vllm_recipe["base_env"],
             "PYTHONHASHSEED": "0",
             "UCX_NET_DEVICES": "all",
             "NCCL_CUMEM_ENABLE": "1",
+            "MOONCAKE_CONFIG_PATH": "/tmp/mooncake_vllm_config.json",
+            "MOONCAKE_OFFLOAD_FILE_STORAGE_PATH": f"{lustre_mount}/mooncake_kv_cache",
         },
     }
 
@@ -533,18 +635,35 @@ def generate_k8s_sglang_manifest(
     sglang_cmds: Dict[str, Any],
     topo: Dict[str, Any],
     nodes: List[str],
-    enable_hicache: bool = False,
+    stage_mode: str = "base",
     image_override: Optional[str] = None,
 ) -> str:
-    """Generate K8s Deployment + Service manifest with RDMA (/dev/infiniband) and Lustre."""
+    """Generate K8s Deployment + Service manifest with RDMA (/dev/infiniband), HiCache DRAM (Stage 4), and Mooncake Lustre (Stage 5)."""
     image = image_override or sglang_cell["docker_image"]
-    flags = sglang_cmds["hicache_lustre_flags"] if enable_hicache else sglang_cmds["base_flags"]
+    if stage_mode == "stage4_dram":
+        flags = sglang_cmds["stage4_hicache_dram_flags"]
+    elif stage_mode in ("stage5_mooncake_lustre", "hicache_lustre"):
+        flags = sglang_cmds["stage5_hicache_mooncake_lustre_flags"]
+    else:
+        flags = sglang_cmds["base_flags"]
     flag_lines = " \\\n            ".join(flags)
     gpus = str(topo["gpus_per_replica"])
 
     docs = []
     for idx, node_name in enumerate(nodes[: topo["num_replicas"]], start=1):
         w_name = f"w{idx}"
+        mooncake_boot = ""
+        if stage_mode in ("stage5_mooncake_lustre", "hicache_lustre"):
+            master_boot = (
+                f"nohup {sglang_cmds['mooncake_master_cmd']} > /tmp/mooncake_master.log 2>&1 < /dev/null &\n          sleep 1\n          "
+                if idx == 1
+                else ""
+            )
+            mooncake_boot = (
+                f"mkdir -p /mnt/lustre_1000mbps/mooncake_kv_cache\n          "
+                f"{master_boot}"
+                f"nohup {sglang_cmds['mooncake_client_cmd']} > /tmp/mooncake_client.log 2>&1 < /dev/null &\n          "
+            )
         doc = f"""apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -599,14 +718,22 @@ spec:
           value: "match-expected"
         - name: SGLANG_SIMULATE_ACC_TOKEN_MODE
           value: "real-draft-token"
-        - name: SGLANG_HICACHE_FILE_BACKEND_STORAGE_DIR
-          value: "/mnt/lustre_1000mbps/sglang_hicache/shared"
-        - name: SGLANG_HICACHE_FILE_BACKEND_ENABLE_METADATA_CACHE
-          value: "1"
         - name: MOONCAKE_PROTOCOL
           value: "rdma"
         - name: MOONCAKE_DEVICE
           value: "{topo['rdma_devices']}"
+        - name: MOONCAKE_MASTER
+          value: "dynamo-sglang-w1.ubench-llmd.svc.cluster.local:50051"
+        - name: MOONCAKE_GLOBAL_SEGMENT_SIZE
+          value: "68719476736"
+        - name: MOONCAKE_LOCAL_BUFFER_SIZE
+          value: "4294967296"
+        - name: MOONCAKE_METADATA_SERVER
+          value: "P2PHANDSHAKE"
+        - name: MOONCAKE_ENABLE_SSD_OFFLOAD
+          value: "1"
+        - name: MOONCAKE_OFFLOAD_FILE_STORAGE_PATH
+          value: "/mnt/lustre_1000mbps/mooncake_kv_cache"
         - name: UCX_NET_DEVICES
           value: "all"
         args:
@@ -616,18 +743,19 @@ spec:
           export PYTHONNOUSERSITE=1
           export PYTHONUNBUFFERED=1
           export SGLANG_TIMEOUT_KEEP_ALIVE=900
-          mkdir -p /mnt/lustre_1000mbps/sglang_hicache/shared
-          if [ -d /mnt/lustre_1000mbps/sglang_kernel_cache/{w_name}/sglang ]; then
+          {mooncake_boot}if [ -d /mnt/lustre_1000mbps/sglang_kernel_cache/{w_name}/sglang ]; then
             echo "Restoring pre-compiled SGLang FlashInfer/Triton/CuteDSL kernels from Lustre..."
             mkdir -p /root/.cache
             cp -rn /mnt/lustre_1000mbps/sglang_kernel_cache/{w_name}/sglang /root/.cache/ || true
           fi
-          echo "Starting Upgraded Upstream Recipe SGLang Worker {w_name} (TP={topo['tp_size']}, EP={topo['ep_size']}, RDMA enabled)..."
+          echo "Starting Upgraded Upstream Recipe SGLang Worker {w_name} (TP={topo['tp_size']}, EP={topo['ep_size']}, mode={stage_mode}, RDMA enabled)..."
           exec sglang serve \\
             {flag_lines}
         ports:
         - containerPort: 8888
           name: http
+        - containerPort: 50051
+          name: mooncake-rpc
         resources:
           limits:
             nvidia.com/gpu: "{gpus}"
@@ -676,7 +804,10 @@ spec:
   ports:
   - name: http
     port: 8888
-    targetPort: 8888"""
+    targetPort: 8888
+  - name: mooncake-rpc
+    port: 50051
+    targetPort: 50051"""
         docs.append(doc)
     return "\n---\n".join(docs) + "\n"
 
@@ -685,17 +816,44 @@ def generate_k8s_vllm_manifest(
     vllm_cmds: Dict[str, Any],
     topo: Dict[str, Any],
     nodes: List[str],
-    enable_offload_fs: bool = False,
+    stage_mode: str = "base",
     image_override: str = "vllm/vllm-openai:nightly-dev-x86_64-cu130-ac9126e58aa7",
 ) -> str:
-    """Generate K8s Deployment + Service manifest for vLLM (llm-d) with RDMA and Lustre."""
-    args_list = vllm_cmds["stage4_offloading_fs_args"] if enable_offload_fs else vllm_cmds["base_args"]
+    """Generate K8s Deployment + Service manifest for vLLM (llm-d) with RDMA, Native OffloadingConnector DRAM (Stage 4), and Mooncake Lustre (Stage 5)."""
+    if stage_mode == "stage4_dram":
+        args_list = vllm_cmds["stage4_dram_offload_args"]
+    elif stage_mode in ("stage5_mooncake_lustre", "offload_fs"):
+        args_list = vllm_cmds["stage5_mooncake_lustre_args"]
+    else:
+        args_list = vllm_cmds["base_args"]
     flag_lines = " \\\n            ".join(args_list)
     gpus = str(topo["gpus_per_replica"])
+    mc_cfg_json = json.dumps(vllm_cmds["mooncake_vllm_config"])
 
     docs = []
     for idx, node_name in enumerate(nodes[: topo["num_replicas"]], start=1):
         w_name = f"w{idx}"
+        mooncake_boot = ""
+        if stage_mode in ("stage5_mooncake_lustre", "offload_fs"):
+            master_boot = (
+                "nohup mooncake_master -rpc_port=50051 -rpc_thread_num=8 -default_kv_lease_ttl=30000 "
+                "-eviction_high_watermark_ratio=0.95 -eviction_ratio=0.1 -enable_offload=true "
+                "-enable_disk_eviction=true -root_fs_dir=/mnt/lustre_1000mbps/mooncake_kv_cache "
+                "-logtostderr > /tmp/mooncake_master.log 2>&1 < /dev/null &\n          sleep 1\n          "
+                if idx == 1
+                else ""
+            )
+            mooncake_boot = (
+                f"mkdir -p /mnt/lustre_1000mbps/mooncake_kv_cache\n          "
+                f"cat <<'EOF' > /tmp/mooncake_vllm_config.json\n{mc_cfg_json}\nEOF\n          "
+                f"{master_boot}"
+                f"MOONCAKE_OFFLOAD_FILE_STORAGE_PATH=/mnt/lustre_1000mbps/mooncake_kv_cache "
+                f"nohup mooncake_client -host=127.0.0.1 -port=50052 -global_segment_size='64GB' "
+                f"-local_buffer_size='4GB' -metadata_server='P2PHANDSHAKE' "
+                f"-master_server_address='llmd-vllm-w1.ubench-llmd.svc.cluster.local:50051' "
+                f"-protocol='rdma' -device_names='{topo['rdma_devices']}' -enable_offload=true "
+                f"-start_offload_rpc_server=true -logtostderr > /tmp/mooncake_client.log 2>&1 < /dev/null &\n          "
+            )
         doc = f"""apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -750,6 +908,10 @@ spec:
           value: "7200"
         - name: VLLM_SERVER_DEV_MODE
           value: "1"
+        - name: MOONCAKE_CONFIG_PATH
+          value: "/tmp/mooncake_vllm_config.json"
+        - name: MOONCAKE_OFFLOAD_FILE_STORAGE_PATH
+          value: "/mnt/lustre_1000mbps/mooncake_kv_cache"
         args:
         - |
           set -euo pipefail
@@ -757,17 +919,18 @@ spec:
           export VLLM_USE_V2_MODEL_RUNNER=1
           export VLLM_USE_RUST_FRONTEND=1
           export PYTHONUNBUFFERED=1
-          mkdir -p /mnt/lustre_1000mbps/vllm_kv_cache/{w_name}
-          if [ -d /mnt/lustre_1000mbps/vllm_kernel_cache/{w_name}/cache ]; then
+          {mooncake_boot}if [ -d /mnt/lustre_1000mbps/vllm_kernel_cache/{w_name}/cache ]; then
             echo "Restoring pre-compiled vLLM FlashInfer/Triton/torch.compile kernels from Lustre..."
             mkdir -p /root/.cache
             cp -rn /mnt/lustre_1000mbps/vllm_kernel_cache/{w_name}/cache/* /root/.cache/ || true
           fi
-          echo "Starting Upgraded Upstream Recipe vLLM Worker {w_name} (TP={topo['tp_size']}, RDMA enabled)..."
+          echo "Starting Upgraded Upstream Recipe vLLM Worker {w_name} (TP={topo['tp_size']}, mode={stage_mode}, RDMA enabled)..."
           exec {flag_lines}
         ports:
         - containerPort: 8000
           name: http
+        - containerPort: 50051
+          name: mooncake-rpc
         resources:
           limits:
             nvidia.com/gpu: "{gpus}"
@@ -816,7 +979,10 @@ spec:
   ports:
   - name: http
     port: 8000
-    targetPort: 8000"""
+    targetPort: 8000
+  - name: mooncake-rpc
+    port: 50051
+    targetPort: 50051"""
         docs.append(doc)
     return "\n---\n".join(docs) + "\n"
 
@@ -860,18 +1026,24 @@ def main():
 
     os.makedirs(args.output_dir, exist_ok=True)
 
-    # Write synthesized SGLang manifests (Base and HiCache+Lustre)
+    # Write synthesized SGLang manifests (Stages 1-3 Base, Stage 4 HiCache DRAM, Stage 5 Mooncake Lustre)
     sglang_base_yaml = generate_k8s_sglang_manifest(
-        sglang_cell, sglang_cmds, sglang_topo, nodes, enable_hicache=False, image_override=args.sglang_image
+        sglang_cell, sglang_cmds, sglang_topo, nodes, stage_mode="base", image_override=args.sglang_image
     )
-    sglang_hicache_yaml = generate_k8s_sglang_manifest(
-        sglang_cell, sglang_cmds, sglang_topo, nodes, enable_hicache=True, image_override=args.sglang_image
+    sglang_dram_yaml = generate_k8s_sglang_manifest(
+        sglang_cell, sglang_cmds, sglang_topo, nodes, stage_mode="stage4_dram", image_override=args.sglang_image
+    )
+    sglang_lustre_yaml = generate_k8s_sglang_manifest(
+        sglang_cell, sglang_cmds, sglang_topo, nodes, stage_mode="stage5_mooncake_lustre", image_override=args.sglang_image
     )
     vllm_base_yaml = generate_k8s_vllm_manifest(
-        vllm_cmds, vllm_topo, nodes, enable_offload_fs=False, image_override=args.vllm_image
+        vllm_cmds, vllm_topo, nodes, stage_mode="base", image_override=args.vllm_image
     )
-    vllm_offload_yaml = generate_k8s_vllm_manifest(
-        vllm_cmds, vllm_topo, nodes, enable_offload_fs=True, image_override=args.vllm_image
+    vllm_dram_yaml = generate_k8s_vllm_manifest(
+        vllm_cmds, vllm_topo, nodes, stage_mode="stage4_dram", image_override=args.vllm_image
+    )
+    vllm_lustre_yaml = generate_k8s_vllm_manifest(
+        vllm_cmds, vllm_topo, nodes, stage_mode="stage5_mooncake_lustre", image_override=args.vllm_image
     )
 
     if args.manifest_prefix:
@@ -879,25 +1051,31 @@ def main():
         sg_tag = f"{sglang_topo['num_replicas']}x-tp{sglang_topo['tp_size']}"
         vl_tag = f"{vllm_topo['num_replicas']}x-tp{vllm_topo['tp_size']}"
         base_manifest_path = os.path.join(args.output_dir, f"dynamo-sglang{pfx}-{sg_tag}-{args.hw}-upstream-recipe.yaml")
+        dram_manifest_path = os.path.join(args.output_dir, f"dynamo-sglang{pfx}-{sg_tag}-{args.hw}-stage4-hicache-dram.yaml")
         hicache_manifest_path = os.path.join(args.output_dir, f"dynamo-sglang{pfx}-{sg_tag}-{args.hw}-hicache-lustre.yaml")
         vllm_base_path = os.path.join(args.output_dir, f"llmd-vllm{pfx}-{vl_tag}-{args.hw}-upstream-recipe.yaml")
+        vllm_dram_path = os.path.join(args.output_dir, f"llmd-vllm{pfx}-{vl_tag}-{args.hw}-stage4-native-dram.yaml")
         vllm_offload_path = os.path.join(args.output_dir, f"llmd-vllm{pfx}-{vl_tag}-{args.hw}-offload-lustre.yaml")
         meta_path = os.path.join(args.output_dir, f"synthesized_day0_recipes_{args.manifest_prefix}.json")
     else:
         base_manifest_path = os.path.join(args.output_dir, "dynamo-sglang-2x-tep4-b200-upstream-recipe.yaml")
+        dram_manifest_path = os.path.join(args.output_dir, "dynamo-sglang-2x-tep4-b200-stage4-hicache-dram.yaml")
         hicache_manifest_path = os.path.join(args.output_dir, "dynamo-sglang-2x-tep4-b200-hicache-lustre.yaml")
         vllm_base_path = os.path.join(args.output_dir, "llmd-vllm-2x-tp4-b200-upstream-recipe.yaml")
+        vllm_dram_path = os.path.join(args.output_dir, "llmd-vllm-2x-tp4-b200-stage4-native-dram.yaml")
         vllm_offload_path = os.path.join(args.output_dir, "llmd-vllm-2x-tp4-b200-offload-lustre.yaml")
         meta_path = os.path.join(args.output_dir, "synthesized_day0_recipes.json")
 
-    with open(base_manifest_path, "w", encoding="utf-8") as f:
-        f.write(sglang_base_yaml)
-    with open(hicache_manifest_path, "w", encoding="utf-8") as f:
-        f.write(sglang_hicache_yaml)
-    with open(vllm_base_path, "w", encoding="utf-8") as f:
-        f.write(vllm_base_yaml)
-    with open(vllm_offload_path, "w", encoding="utf-8") as f:
-        f.write(vllm_offload_yaml)
+    for path, content in (
+        (base_manifest_path, sglang_base_yaml),
+        (dram_manifest_path, sglang_dram_yaml),
+        (hicache_manifest_path, sglang_lustre_yaml),
+        (vllm_base_path, vllm_base_yaml),
+        (vllm_dram_path, vllm_dram_yaml),
+        (vllm_offload_path, vllm_lustre_yaml),
+    ):
+        with open(path, "w", encoding="utf-8") as f:
+            f.write(content)
 
     # Save machine-readable synthesis metadata for Prism / ubench-dash sync
     metadata = {
@@ -917,11 +1095,11 @@ def main():
     with open(meta_path, "w", encoding="utf-8") as f:
         json.dump(metadata, f, indent=2)
 
-    print("=== Day-0 Upstream Recipe Synthesis Complete ===")
+    print("=== Day-0 Upstream Recipe Synthesis Complete (5-Stage Architecture) ===")
     print(f"Model: {args.model_id} | Hardware: {args.hw}")
     print(f"SGLang Topology: {sglang_topo['num_replicas']}x (TP={sglang_topo['tp_size']}, EP={sglang_topo['ep_size']}) = {sglang_topo['total_gpus']} GPUs, RDMA={sglang_topo['rdma_devices']}")
     print(f"vLLM Topology:   {vllm_topo['num_replicas']}x (TP={vllm_topo['tp_size']}) = {vllm_topo['total_gpus']} GPUs, RDMA={vllm_topo['rdma_devices']}")
-    print(f"Wrote:\n  - {base_manifest_path}\n  - {hicache_manifest_path}\n  - {vllm_base_path}\n  - {vllm_offload_path}\n  - {meta_path}")
+    print(f"Wrote:\n  - {base_manifest_path}\n  - {dram_manifest_path}\n  - {hicache_manifest_path}\n  - {vllm_base_path}\n  - {vllm_dram_path}\n  - {vllm_offload_path}\n  - {meta_path}")
 
 
 if __name__ == "__main__":
