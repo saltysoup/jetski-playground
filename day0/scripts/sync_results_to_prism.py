@@ -483,6 +483,111 @@ RUN_BUNDLES = [
             (3, 128, "/tmp/run0_results/stages/dynamo_stage4_1000mbps_c128/profile_export_aiperf.json", "stage_3_c128/llmd_benchmark_report.json", 2656.16, 17462.50, 41.79, 67.95, 14.72, 99.6),
         ],
     },
+    # --- zai-org/GLM-5.3 (743B MoE / 39B active, 2x TP=8 = 16x B200, FP8 + 5-tok MTP, llm-d + vLLM v0.30.1rc1) ---
+    {
+        "run_uid": "ikwak-glm53-llmd-stage1-naive-rr-2xTP8",
+        "run_label": "GLM-5.3 llm-d Stage 1: Naive L7 Round-Robin (2x TP=8 = 16x B200)",
+        "engine_tool": "vllm",
+        "inference_software_id": "vllm_inference",
+        "workload_server_manifest": "LLM_D",
+        "precision": "FP8",
+        "scheduler_tool": "envoy-round-robin",
+        "model_name": "a4/glm_5_3_16gpus_fp8_agentx_llmd_vllm_sweep",
+        "model_id": "glm_5_3",
+        "hf_model": "zai-org/GLM-5.3",
+        "run_group": "ikwak-day0-glm-5-3-stage1-to-4",
+        "hardware_name": "B200",
+        "accel_count": 16,
+        "tp_size": 8,
+        "ep_size": 8,
+        "is_disagg": False,
+        "stage_num": 1,
+        "stages": [
+            (0, 16, "/tmp/run0_results/stages/glm53_llmd_stage1_naive_rr_c16/profile_export_aiperf.json", "stage_0_c16/llmd_benchmark_report.json", 618.64, 1007.11, 12.08, 13.75, 72.71, 42.30),
+            (1, 32, "/tmp/run0_results/stages/glm53_llmd_stage1_naive_rr_c32/profile_export_aiperf.json", "stage_1_c32/llmd_benchmark_report.json", 1031.75, 1920.00, 21.19, 24.13, 41.43, 44.67),
+            (2, 64, "/tmp/run0_results/stages/glm53_llmd_stage1_naive_rr_c64/profile_export_aiperf.json", "stage_2_c64/llmd_benchmark_report.json", 1372.24, 3171.55, 24.55, 30.01, 33.32, 47.53),
+            (3, 128, "/tmp/run0_results/stages/glm53_llmd_stage1_naive_rr_c128/profile_export_aiperf.json", "stage_3_c128/llmd_benchmark_report.json", 1502.19, 6175.95, 43.86, 57.74, 17.32, 40.67),
+            (4, 256, "/tmp/run0_results/stages/glm53_llmd_stage1_naive_rr_c256/profile_export_aiperf.json", "stage_4_c256/llmd_benchmark_report.json", 1106.22, 15346.49, 81.39, 132.17, 7.57, 36.05),
+        ],
+    },
+    {
+        "run_uid": "ikwak-glm53-llmd-stage2-kv-aware-epp-2xTP8",
+        "run_label": "GLM-5.3 llm-d Stage 2: KV-Cache-Aware Routing (2x TP=8 = 16x B200)",
+        "engine_tool": "vllm",
+        "inference_software_id": "vllm_inference",
+        "workload_server_manifest": "LLM_D",
+        "precision": "FP8",
+        "scheduler_tool": "llm-d-kv-epp",
+        "model_name": "a4/glm_5_3_16gpus_fp8_agentx_llmd_vllm_sweep",
+        "model_id": "glm_5_3",
+        "hf_model": "zai-org/GLM-5.3",
+        "run_group": "ikwak-day0-glm-5-3-stage1-to-4",
+        "hardware_name": "B200",
+        "accel_count": 16,
+        "tp_size": 8,
+        "ep_size": 8,
+        "is_disagg": False,
+        "stage_num": 2,
+        "stages": [
+            (0, 16, "/tmp/run0_results/stages/glm53_llmd_stage2_kv_routing_c16/profile_export_aiperf.json", "stage_0_c16/llmd_benchmark_report.json", 715.94, 907.18, 11.63, 13.03, 76.74, 68.66),
+            (1, 32, "/tmp/run0_results/stages/glm53_llmd_stage2_kv_routing_c32/profile_export_aiperf.json", "stage_1_c32/llmd_benchmark_report.json", 1002.99, 1575.39, 17.47, 20.08, 49.80, 72.32),
+            (2, 64, "/tmp/run0_results/stages/glm53_llmd_stage2_kv_routing_c64/profile_export_aiperf.json", "stage_2_c64/llmd_benchmark_report.json", 1724.73, 2700.75, 18.86, 23.06, 43.37, 70.32),
+            (3, 128, "/tmp/run0_results/stages/glm53_llmd_stage2_kv_routing_c128/profile_export_aiperf.json", "stage_3_c128/llmd_benchmark_report.json", 1734.34, 4852.26, 31.34, 41.79, 23.93, 65.68),
+            (4, 256, "/tmp/run0_results/stages/glm53_llmd_stage2_kv_routing_c256/profile_export_aiperf.json", "stage_4_c256/llmd_benchmark_report.json", 1515.34, 11484.05, 65.59, 98.59, 10.14, 53.52),
+        ],
+    },
+    {
+        "run_uid": "ikwak-glm53-llmd-stage3-hightput-pd-disagg-2xTP8",
+        "run_label": "GLM-5.3 llm-d Stage 3: KV Routing + P/D Disagg (2x TP=8 = 16x B200)",
+        "engine_tool": "vllm",
+        "inference_software_id": "vllm_inference",
+        "workload_server_manifest": "LLM_D",
+        "precision": "FP8",
+        "scheduler_tool": "llm-d-pd-disagg",
+        "model_name": "a4/glm_5_3_16gpus_fp8_agentx_llmd_vllm_sweep",
+        "model_id": "glm_5_3",
+        "hf_model": "zai-org/GLM-5.3",
+        "run_group": "ikwak-day0-glm-5-3-stage1-to-4",
+        "hardware_name": "B200",
+        "accel_count": 16,
+        "tp_size": 8,
+        "ep_size": 8,
+        "is_disagg": True,
+        "stage_num": 3,
+        "stages": [
+            (0, 16, "/tmp/run0_results/stages/glm53_llmd_stage3_pd_disagg_c16/profile_export_aiperf.json", "stage_0_c16/llmd_benchmark_report.json", 652.11, 564.68, 10.00, 10.92, 91.59, 82.90),
+            (1, 32, "/tmp/run0_results/stages/glm53_llmd_stage3_pd_disagg_c32/profile_export_aiperf.json", "stage_1_c32/llmd_benchmark_report.json", 1295.62, 843.59, 13.64, 14.84, 67.37, 85.90),
+            (2, 64, "/tmp/run0_results/stages/glm53_llmd_stage3_pd_disagg_c64/profile_export_aiperf.json", "stage_2_c64/llmd_benchmark_report.json", 2145.18, 1659.37, 15.17, 17.50, 57.14, 84.41),
+            (3, 128, "/tmp/run0_results/stages/glm53_llmd_stage3_pd_disagg_c128/profile_export_aiperf.json", "stage_3_c128/llmd_benchmark_report.json", 2303.23, 2911.04, 25.39, 31.13, 32.13, 80.10),
+            (4, 256, "/tmp/run0_results/stages/glm53_llmd_stage3_pd_disagg_c256/profile_export_aiperf.json", "stage_4_c256/llmd_benchmark_report.json", 2097.19, 6961.84, 45.82, 64.02, 15.62, 70.73),
+        ],
+    },
+    {
+        "run_uid": "ikwak-glm53-llmd-stage4-lustre-kv-tiering-2xTP8",
+        "run_label": "GLM-5.3 llm-d Stage 4: Lustre KV Tier + P/D Disagg (2x TP=8 = 16x B200)",
+        "engine_tool": "vllm",
+        "inference_software_id": "vllm_inference",
+        "workload_server_manifest": "LLM_D",
+        "precision": "FP8",
+        "scheduler_tool": "llm-d-lustre-kv-tiering",
+        "model_name": "a4/glm_5_3_16gpus_fp8_agentx_llmd_vllm_sweep",
+        "model_id": "glm_5_3",
+        "hf_model": "zai-org/GLM-5.3",
+        "run_group": "ikwak-day0-glm-5-3-stage1-to-4",
+        "hardware_name": "B200",
+        "accel_count": 16,
+        "tp_size": 8,
+        "ep_size": 8,
+        "is_disagg": True,
+        "stage_num": 4,
+        "stages": [
+            (0, 16, "/tmp/run0_results/stages/glm53_llmd_stage4_1000mbps_c16/profile_export_aiperf.json", "stage_0_c16/llmd_benchmark_report.json", 665.87, 281.04, 9.50, 9.95, 100.52, 89.96),
+            (1, 32, "/tmp/run0_results/stages/glm53_llmd_stage4_1000mbps_c32/profile_export_aiperf.json", "stage_1_c32/llmd_benchmark_report.json", 1290.11, 241.32, 13.63, 13.96, 71.62, 96.13),
+            (2, 64, "/tmp/run0_results/stages/glm53_llmd_stage4_1000mbps_c64/profile_export_aiperf.json", "stage_2_c64/llmd_benchmark_report.json", 2161.71, 280.70, 15.20, 15.59, 64.15, 95.55),
+            (3, 128, "/tmp/run0_results/stages/glm53_llmd_stage4_1000mbps_c128/profile_export_aiperf.json", "stage_3_c128/llmd_benchmark_report.json", 2602.05, 444.77, 20.77, 21.57, 46.35, 94.50),
+            (4, 256, "/tmp/run0_results/stages/glm53_llmd_stage4_1000mbps_c256/profile_export_aiperf.json", "stage_4_c256/llmd_benchmark_report.json", 2996.29, 975.45, 33.31, 35.52, 28.15, 88.77),
+        ],
+    },
 ]
 
 
@@ -519,8 +624,15 @@ def build_bq_row(
 
   stack_tag = "llmd" if b["workload_server_manifest"] == "LLM_D" else "dynamo"
   prec_lower = b["precision"].lower()
+  model_id = b.get("model_id", "deepseek_v4_flash")
+  accel_count = int(b.get("accel_count", 8))
+  tp_size = int(b.get("tp_size", 4))
+  ep_size = int(b.get("ep_size", 4))
+  hf_model = b.get("hf_model", "deepseek-ai/DeepSeek-V4.1-Flash")
+  run_group = b.get("run_group", "ikwak-day0-deepseek-v4-1-flash-stage1-to-4")
+
   run_id = (
-      f"{b['inference_software_id']}-deepseek_v4_flash-{prec_lower}-8gpus-"
+      f"{b['inference_software_id']}-{model_id}-{prec_lower}-{accel_count}gpus-"
       f"{stack_tag}-stage{b['stage_num']}-c{conc_pool}"
   )
   run_name = f"{b['run_uid']}-c{conc_pool}"
@@ -543,14 +655,14 @@ def build_bq_row(
   return {
       "run_id": run_id,
       "update_person_ldap": "ikwak",
-      "run_group": "ikwak-day0-deepseek-v4-1-flash-stage1-to-4",
+      "run_group": run_group,
       "run_source": "ubench",
       "is_run_externally_visible": True,
       "is_run_prism_visible": True,
       "run_type": "user",
       "run_name": run_name,
       "project_identifier": "gpu-launchpad-playground",
-      "model_id": "deepseek_v4_flash",
+      "model_id": model_id,
       "inference_software_id": b["inference_software_id"],
       "hardware_id": "a4",
       "recipe_type": "perf",
@@ -560,9 +672,9 @@ def build_bq_row(
       "workload_max_output_length": int(round(out_len.get("avg", 450))),
       "workload_quantization_enabled": True,
       "workload_precision_config": b["precision"],
-      "workload_tensor_parallel_size": 4,
+      "workload_tensor_parallel_size": tp_size,
       "workload_pipeline_parallel_size": 1,
-      "workload_expert_parallel_size": 4,
+      "workload_expert_parallel_size": ep_size,
       "workload_is_disaggregated_compute": b["is_disagg"],
       "workload_client_type": "AIPERF",
       "workload_client_manifest": "AIPERF",
@@ -571,8 +683,8 @@ def build_bq_row(
       "enable_prefix_caching": True,
       "data_parallel_size": 2,
       "hardware_num_nodes": 2,
-      "hardware_num_chips_per_node_used": 4,
-      "hardware_total_chips_used": 8,
+      "hardware_num_chips_per_node_used": accel_count // 2,
+      "hardware_total_chips_used": accel_count,
       "hardware_serving_type": "DISAGGREGATED" if b["is_disagg"] else "AGGREGATED",
       "result_success": True,
       "result_duration_seconds": dur_sec,
@@ -580,7 +692,7 @@ def build_bq_row(
       "metrics_output_tokens_per_sec": out_tput_pool,
       "metrics_input_tokens_per_sec": in_tput,
       "metrics_total_tokens_per_sec": tot_tput,
-      "metrics_output_tokens_per_sec_per_chip": out_tput_pool / 8.0,
+      "metrics_output_tokens_per_sec_per_chip": out_tput_pool / float(accel_count),
       "metrics_interactivity_tokens_per_sec_per_user": e2e_interactivity_tok_s_u,
       "metrics_e2e_latency_avg_ms": float(req_lat.get("avg", 0.0)),
       "metrics_e2e_latency_p50_ms": float(req_lat.get("p50", 0.0)),
@@ -616,12 +728,12 @@ def build_bq_row(
       "metrics_num_failed_requests": 0,
       "metrics_others_json": json.dumps(others),
       "configs_server_flags_json": json.dumps({
-          "model": "deepseek-ai/DeepSeek-V4.1-Flash",
+          "model": hf_model,
           "stage": f"Stage {b['stage_num']}",
           "scheduler_tool": b["scheduler_tool"],
-          "tp_size": 4,
+          "tp_size": tp_size,
           "dp_size": 2,
-          "total_gpus": 8,
+          "total_gpus": accel_count,
           "precision": b["precision"],
       }),
       "configs_client_flags_json": json.dumps({

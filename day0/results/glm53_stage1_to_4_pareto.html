@@ -2,7 +2,7 @@
 <html>
 <head>
   <meta charset="utf-8" />
-  <title>llm-d + vLLM (v0.30.1rc1 Day-0 Scaffolding, 8× B200): Stage 1 → 4 Pareto Frontier</title>
+  <title>zai-org/GLM-5.3 — llm-d + vLLM (v0.30.1rc1 Day-0 Scaffolding, 16× B200): Stage 1 → 4 Pareto Frontier</title>
   <script src="https://www.gstatic.com/antigravity/web/dev/tailwindcss.min.js"></script>
   <style>
     .tooltip-card {
@@ -17,10 +17,10 @@
     <div class="flex flex-wrap items-center justify-between gap-2 pb-2.5 border-b border-[var(--border)]">
       <div>
         <h2 id="chartMainTitle" class="text-sm font-semibold text-[var(--foreground)]">
-          llm-d + vLLM (v0.30.1rc1 Day-0 Scaffolding, 8× B200): Stage 1 → 4 Pareto Frontier
+          zai-org/GLM-5.3 — llm-d + vLLM (v0.30.1rc1 Day-0 Scaffolding, 16× B200): Stage 1 → 4 Pareto Frontier
         </h2>
         <p id="chartSubTitle" class="text-xs text-[var(--muted-foreground)]">
-          DeepSeek-V4.1-Flash (MXFP4 + FP8 KV + 5-tok DSpark MTP, V2 Runner + Rust Frontend, 2× TP=4 = 8× B200)
+          GLM-5.3 (743B MoE / 39B Active, FP8 + FP8 KV + 5-tok MTP + TRT-LLM Fused MoE + TieringOffloadingSpec, 2× TP=8 = 16× B200)
         </p>
       </div>
 
@@ -28,8 +28,8 @@
         <div class="flex items-center gap-1" id="datasetWrap">
           <span class="text-[var(--muted-foreground)] font-medium">Stack / Model:</span>
           <select id="datasetSel" class="bg-[var(--background)] text-[var(--foreground)] rounded border border-[var(--border)] px-2 py-1 text-xs font-medium">
-            <option value="llmd_glm53">GLM-5.3 (743B MoE, 16× B200) — llm-d + vLLM (v0.30.1rc1)</option>
-            <option value="llmd_dsv4" selected>DeepSeek-V4.1-Flash (8× B200) — llm-d + vLLM (v0.30.1rc1)</option>
+            <option value="llmd_glm53" selected>GLM-5.3 (743B MoE, 16× B200) — llm-d + vLLM (v0.30.1rc1)</option>
+            <option value="llmd_dsv4">DeepSeek-V4.1-Flash (8× B200) — llm-d + vLLM (v0.30.1rc1)</option>
             <option value="dynamo_dsv4">DeepSeek-V4.1-Flash (8× B200) — NVIDIA Dynamo + SGLang (v0.5.10)</option>
           </select>
         </div>

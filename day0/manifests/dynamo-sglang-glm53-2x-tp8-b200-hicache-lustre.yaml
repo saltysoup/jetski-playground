@@ -1,0 +1,315 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: dynamo-sglang-w1
+  namespace: ubench-llmd
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: dynamo-sglang-worker
+      replica: w1
+  template:
+    metadata:
+      annotations:
+        gke-gcsfuse/cpu-limit: "32"
+        gke-gcsfuse/ephemeral-storage-limit: 600Gi
+        gke-gcsfuse/memory-limit: 64Gi
+        gke-gcsfuse/volumes: "true"
+      labels:
+        app: dynamo-sglang-worker
+        replica: w1
+    spec:
+      nodeSelector:
+        kubernetes.io/hostname: gke-ikwak-reliabilit-a4-highgpu-8g-a4-0256e2f1-34t3
+      serviceAccountName: workload-identity-k8s-sa
+      tolerations:
+      - operator: Exists
+      containers:
+      - name: sglang
+        image: lmsysorg/sglang:nightly-dev-cu13-20260922-582389ce@sha256:0e1b14e302619a42ef5581b87db6804651d4f946301cf543d74a3a1eb1c33b40
+        imagePullPolicy: IfNotPresent
+        securityContext:
+          capabilities:
+            add: ["IPC_LOCK", "SYS_RESOURCE"]
+        command: ["/bin/bash", "-c"]
+        env:
+        - name: NCCL_NET_PLUGIN
+          value: "none"
+        - name: NCCL_TUNER_PLUGIN
+          value: "none"
+        - name: NCCL_PROFILER_PLUGIN
+          value: "none"
+        - name: SGLANG_ENABLE_DSV41_ENGRAM_HOST_TABLE
+          value: "1"
+        - name: SGLANG_DSV41_ENGRAM_HOST_TABLE_LAYOUT
+          value: "per_rank"
+        - name: SGLANG_SIMULATE_ACC_LEN
+          value: "3.51"
+        - name: SGLANG_SIMULATE_ACC_METHOD
+          value: "match-expected"
+        - name: SGLANG_SIMULATE_ACC_TOKEN_MODE
+          value: "real-draft-token"
+        - name: SGLANG_HICACHE_FILE_BACKEND_STORAGE_DIR
+          value: "/mnt/lustre_1000mbps/sglang_hicache/shared"
+        - name: SGLANG_HICACHE_FILE_BACKEND_ENABLE_METADATA_CACHE
+          value: "1"
+        - name: MOONCAKE_PROTOCOL
+          value: "rdma"
+        - name: MOONCAKE_DEVICE
+          value: "mlx5_0,mlx5_1,mlx5_2,mlx5_3,mlx5_4,mlx5_5,mlx5_6,mlx5_7"
+        - name: UCX_NET_DEVICES
+          value: "all"
+        args:
+        - |
+          set -euo pipefail
+          ulimit -l unlimited || true
+          export PYTHONNOUSERSITE=1
+          export PYTHONUNBUFFERED=1
+          export SGLANG_TIMEOUT_KEEP_ALIVE=900
+          mkdir -p /mnt/lustre_1000mbps/sglang_hicache/shared
+          if [ -d /mnt/lustre_1000mbps/sglang_kernel_cache/w1/sglang ]; then
+            echo "Restoring pre-compiled SGLang FlashInfer/Triton/CuteDSL kernels from Lustre..."
+            mkdir -p /root/.cache
+            cp -rn /mnt/lustre_1000mbps/sglang_kernel_cache/w1/sglang /root/.cache/ || true
+          fi
+          echo "Starting Upgraded Upstream Recipe SGLang Worker w1 (TP=8, EP=1, RDMA enabled)..."
+          exec sglang serve \
+            --model-path /mnt/lustre_1000mbps/models/zai-org/GLM-5.3 \
+            --served-model-name zai-org/GLM-5.3 \
+            --tp 8 \
+            --attn-dp-size 8 \
+            --moe-a2a-backend deepep \
+            --speculative-algorithm EAGLE \
+            --speculative-num-steps 1 \
+            --speculative-eagle-topk 1 \
+            --speculative-num-draft-tokens 2 \
+            --mem-fraction-static 0.85 \
+            --chunked-prefill-size 32768 \
+            --max-running-requests 256 \
+            --host 0.0.0.0 \
+            --port 8888 \
+            --enable-metrics \
+            --enable-cache-report \
+            --watchdog-timeout 3600 \
+            --enable-hierarchical-cache \
+            --hicache-ratio 1.2 \
+            --hicache-size 0 \
+            --hicache-mem-layout page_first_direct \
+            --hicache-io-backend direct \
+            --hicache-write-policy write_through \
+            --hicache-storage-backend file \
+            --hicache-storage-prefetch-policy wait_complete \
+            --hicache-storage-backend-extra-config '{"enable_metadata_cache":true,"metadata_ttl":3600}'
+        ports:
+        - containerPort: 8888
+          name: http
+        resources:
+          limits:
+            nvidia.com/gpu: "8"
+          requests:
+            cpu: "64"
+            memory: 700Gi
+            nvidia.com/gpu: "8"
+        volumeMounts:
+        - mountPath: /gcs
+          name: gcs-model
+          readOnly: true
+        - mountPath: /mnt/lustre_1000mbps
+          name: lustre-tier
+        - mountPath: /dev/infiniband
+          name: dev-infiniband
+        - mountPath: /dev/shm
+          name: dshm
+      volumes:
+      - name: gcs-model
+        csi:
+          driver: gcsfuse.csi.storage.gke.io
+          volumeAttributes:
+            bucketName: ikwak-eu-stuff
+            mountOptions: implicit-dirs,max-conns-per-host=0,file-cache:max-size-mb:-1,file-cache:cache-file-for-range-read:true,file-cache:enable-parallel-downloads:true,file-cache:max-parallel-downloads:32,file-cache:download-chunk-size-mb:64
+      - name: lustre-tier
+        persistentVolumeClaim:
+          claimName: lustre-1000mbps-pvc
+      - name: dev-infiniband
+        hostPath:
+          path: /dev/infiniband
+          type: Directory
+      - name: dshm
+        emptyDir:
+          medium: Memory
+          sizeLimit: 256Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: dynamo-sglang-w1
+  namespace: ubench-llmd
+spec:
+  selector:
+    app: dynamo-sglang-worker
+    replica: w1
+  ports:
+  - name: http
+    port: 8888
+    targetPort: 8888
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: dynamo-sglang-w2
+  namespace: ubench-llmd
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: dynamo-sglang-worker
+      replica: w2
+  template:
+    metadata:
+      annotations:
+        gke-gcsfuse/cpu-limit: "32"
+        gke-gcsfuse/ephemeral-storage-limit: 600Gi
+        gke-gcsfuse/memory-limit: 64Gi
+        gke-gcsfuse/volumes: "true"
+      labels:
+        app: dynamo-sglang-worker
+        replica: w2
+    spec:
+      nodeSelector:
+        kubernetes.io/hostname: gke-ikwak-reliabilit-a4-highgpu-8g-a4-0256e2f1-6df3
+      serviceAccountName: workload-identity-k8s-sa
+      tolerations:
+      - operator: Exists
+      containers:
+      - name: sglang
+        image: lmsysorg/sglang:nightly-dev-cu13-20260922-582389ce@sha256:0e1b14e302619a42ef5581b87db6804651d4f946301cf543d74a3a1eb1c33b40
+        imagePullPolicy: IfNotPresent
+        securityContext:
+          capabilities:
+            add: ["IPC_LOCK", "SYS_RESOURCE"]
+        command: ["/bin/bash", "-c"]
+        env:
+        - name: NCCL_NET_PLUGIN
+          value: "none"
+        - name: NCCL_TUNER_PLUGIN
+          value: "none"
+        - name: NCCL_PROFILER_PLUGIN
+          value: "none"
+        - name: SGLANG_ENABLE_DSV41_ENGRAM_HOST_TABLE
+          value: "1"
+        - name: SGLANG_DSV41_ENGRAM_HOST_TABLE_LAYOUT
+          value: "per_rank"
+        - name: SGLANG_SIMULATE_ACC_LEN
+          value: "3.51"
+        - name: SGLANG_SIMULATE_ACC_METHOD
+          value: "match-expected"
+        - name: SGLANG_SIMULATE_ACC_TOKEN_MODE
+          value: "real-draft-token"
+        - name: SGLANG_HICACHE_FILE_BACKEND_STORAGE_DIR
+          value: "/mnt/lustre_1000mbps/sglang_hicache/shared"
+        - name: SGLANG_HICACHE_FILE_BACKEND_ENABLE_METADATA_CACHE
+          value: "1"
+        - name: MOONCAKE_PROTOCOL
+          value: "rdma"
+        - name: MOONCAKE_DEVICE
+          value: "mlx5_0,mlx5_1,mlx5_2,mlx5_3,mlx5_4,mlx5_5,mlx5_6,mlx5_7"
+        - name: UCX_NET_DEVICES
+          value: "all"
+        args:
+        - |
+          set -euo pipefail
+          ulimit -l unlimited || true
+          export PYTHONNOUSERSITE=1
+          export PYTHONUNBUFFERED=1
+          export SGLANG_TIMEOUT_KEEP_ALIVE=900
+          mkdir -p /mnt/lustre_1000mbps/sglang_hicache/shared
+          if [ -d /mnt/lustre_1000mbps/sglang_kernel_cache/w2/sglang ]; then
+            echo "Restoring pre-compiled SGLang FlashInfer/Triton/CuteDSL kernels from Lustre..."
+            mkdir -p /root/.cache
+            cp -rn /mnt/lustre_1000mbps/sglang_kernel_cache/w2/sglang /root/.cache/ || true
+          fi
+          echo "Starting Upgraded Upstream Recipe SGLang Worker w2 (TP=8, EP=1, RDMA enabled)..."
+          exec sglang serve \
+            --model-path /mnt/lustre_1000mbps/models/zai-org/GLM-5.3 \
+            --served-model-name zai-org/GLM-5.3 \
+            --tp 8 \
+            --attn-dp-size 8 \
+            --moe-a2a-backend deepep \
+            --speculative-algorithm EAGLE \
+            --speculative-num-steps 1 \
+            --speculative-eagle-topk 1 \
+            --speculative-num-draft-tokens 2 \
+            --mem-fraction-static 0.85 \
+            --chunked-prefill-size 32768 \
+            --max-running-requests 256 \
+            --host 0.0.0.0 \
+            --port 8888 \
+            --enable-metrics \
+            --enable-cache-report \
+            --watchdog-timeout 3600 \
+            --enable-hierarchical-cache \
+            --hicache-ratio 1.2 \
+            --hicache-size 0 \
+            --hicache-mem-layout page_first_direct \
+            --hicache-io-backend direct \
+            --hicache-write-policy write_through \
+            --hicache-storage-backend file \
+            --hicache-storage-prefetch-policy wait_complete \
+            --hicache-storage-backend-extra-config '{"enable_metadata_cache":true,"metadata_ttl":3600}'
+        ports:
+        - containerPort: 8888
+          name: http
+        resources:
+          limits:
+            nvidia.com/gpu: "8"
+          requests:
+            cpu: "64"
+            memory: 700Gi
+            nvidia.com/gpu: "8"
+        volumeMounts:
+        - mountPath: /gcs
+          name: gcs-model
+          readOnly: true
+        - mountPath: /mnt/lustre_1000mbps
+          name: lustre-tier
+        - mountPath: /dev/infiniband
+          name: dev-infiniband
+        - mountPath: /dev/shm
+          name: dshm
+      volumes:
+      - name: gcs-model
+        csi:
+          driver: gcsfuse.csi.storage.gke.io
+          volumeAttributes:
+            bucketName: ikwak-eu-stuff
+            mountOptions: implicit-dirs,max-conns-per-host=0,file-cache:max-size-mb:-1,file-cache:cache-file-for-range-read:true,file-cache:enable-parallel-downloads:true,file-cache:max-parallel-downloads:32,file-cache:download-chunk-size-mb:64
+      - name: lustre-tier
+        persistentVolumeClaim:
+          claimName: lustre-1000mbps-pvc
+      - name: dev-infiniband
+        hostPath:
+          path: /dev/infiniband
+          type: Directory
+      - name: dshm
+        emptyDir:
+          medium: Memory
+          sizeLimit: 256Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: dynamo-sglang-w2
+  namespace: ubench-llmd
+spec:
+  selector:
+    app: dynamo-sglang-worker
+    replica: w2
+  ports:
+  - name: http
+    port: 8888
+    targetPort: 8888

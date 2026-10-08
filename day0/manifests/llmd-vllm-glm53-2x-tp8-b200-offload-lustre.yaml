@@ -1,0 +1,271 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: llmd-vllm-w1
+  namespace: ubench-llmd
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: llmd-vllm-worker
+      replica: w1
+  template:
+    metadata:
+      annotations:
+        gke-gcsfuse/cpu-limit: "32"
+        gke-gcsfuse/ephemeral-storage-limit: 600Gi
+        gke-gcsfuse/memory-limit: 64Gi
+        gke-gcsfuse/volumes: "true"
+      labels:
+        app: llmd-vllm-worker
+        replica: w1
+    spec:
+      nodeSelector:
+        kubernetes.io/hostname: gke-ikwak-reliabilit-a4-highgpu-8g-a4-0256e2f1-34t3
+      serviceAccountName: workload-identity-k8s-sa
+      tolerations:
+      - operator: Exists
+      containers:
+      - name: vllm
+        image: vllm/vllm-openai:nightly-dev-x86_64-cu130-ac9126e58aa7
+        imagePullPolicy: IfNotPresent
+        securityContext:
+          capabilities:
+            add: ["IPC_LOCK", "SYS_RESOURCE"]
+        command: ["/bin/bash", "-c"]
+        env:
+        - name: NCCL_NET_PLUGIN
+          value: "none"
+        - name: NCCL_TUNER_PLUGIN
+          value: "none"
+        - name: NCCL_PROFILER_PLUGIN
+          value: "none"
+        - name: PYTHONHASHSEED
+          value: "0"
+        - name: UCX_NET_DEVICES
+          value: "all"
+        - name: NCCL_CUMEM_ENABLE
+          value: "1"
+        - name: VLLM_ENGINE_READY_TIMEOUT_S
+          value: "7200"
+        - name: VLLM_SERVER_DEV_MODE
+          value: "1"
+        args:
+        - |
+          set -euo pipefail
+          ulimit -l unlimited || true
+          export VLLM_USE_V2_MODEL_RUNNER=1
+          export VLLM_USE_RUST_FRONTEND=1
+          export PYTHONUNBUFFERED=1
+          mkdir -p /mnt/lustre_1000mbps/vllm_kv_cache/w1
+          if [ -d /mnt/lustre_1000mbps/vllm_kernel_cache/w1/cache ]; then
+            echo "Restoring pre-compiled vLLM FlashInfer/Triton/torch.compile kernels from Lustre..."
+            mkdir -p /root/.cache
+            cp -rn /mnt/lustre_1000mbps/vllm_kernel_cache/w1/cache/* /root/.cache/ || true
+          fi
+          echo "Starting Upgraded Upstream Recipe vLLM Worker w1 (TP=8, RDMA enabled)..."
+          exec vllm serve /mnt/lustre_1000mbps/models/zai-org/GLM-5.3 \
+            --served-model-name zai-org/GLM-5.3 \
+            --host 0.0.0.0 \
+            --port 8000 \
+            --tensor-parallel-size 8 \
+            --kv-cache-dtype fp8_e4m3 \
+            --speculative-config '{"method":"mtp","num_speculative_tokens":5}' \
+            --max-model-len 131072 \
+            --max-num-batched-tokens 8192 \
+            --max-num-seqs 256 \
+            --gpu-memory-utilization 0.90 \
+            --enable-prompt-tokens-details \
+            --disable-uvicorn-access-log \
+            --trust-remote-code \
+            --kv-transfer-config '{"kv_connector": "OffloadingConnector", "kv_role": "kv_both", "kv_connector_extra_config": {"spec_name": "TieringOffloadingSpec", "cpu_bytes_to_use": 8589934592, "blocks_per_chunk": 1, "eviction_policy": "lru", "secondary_tiers": [{"type": "fs", "root_dir": "/mnt/lustre_1000mbps/vllm_kv_cache", "n_read_threads": 16, "n_write_threads": 16}]}}'
+        ports:
+        - containerPort: 8000
+          name: http
+        resources:
+          limits:
+            nvidia.com/gpu: "8"
+          requests:
+            cpu: "64"
+            memory: 700Gi
+            nvidia.com/gpu: "8"
+        volumeMounts:
+        - mountPath: /gcs
+          name: gcs-model
+          readOnly: true
+        - mountPath: /mnt/lustre_1000mbps
+          name: lustre-tier
+        - mountPath: /dev/infiniband
+          name: dev-infiniband
+        - mountPath: /dev/shm
+          name: dshm
+      volumes:
+      - name: gcs-model
+        csi:
+          driver: gcsfuse.csi.storage.gke.io
+          volumeAttributes:
+            bucketName: ikwak-eu-stuff
+            mountOptions: implicit-dirs,max-conns-per-host=0,file-cache:max-size-mb:-1,file-cache:cache-file-for-range-read:true,file-cache:enable-parallel-downloads:true,file-cache:max-parallel-downloads:32,file-cache:download-chunk-size-mb:64
+      - name: lustre-tier
+        persistentVolumeClaim:
+          claimName: lustre-1000mbps-pvc
+      - name: dev-infiniband
+        hostPath:
+          path: /dev/infiniband
+          type: Directory
+      - name: dshm
+        emptyDir:
+          medium: Memory
+          sizeLimit: 512Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: llmd-vllm-w1
+  namespace: ubench-llmd
+spec:
+  selector:
+    app: llmd-vllm-worker
+    replica: w1
+  ports:
+  - name: http
+    port: 8000
+    targetPort: 8000
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: llmd-vllm-w2
+  namespace: ubench-llmd
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: llmd-vllm-worker
+      replica: w2
+  template:
+    metadata:
+      annotations:
+        gke-gcsfuse/cpu-limit: "32"
+        gke-gcsfuse/ephemeral-storage-limit: 600Gi
+        gke-gcsfuse/memory-limit: 64Gi
+        gke-gcsfuse/volumes: "true"
+      labels:
+        app: llmd-vllm-worker
+        replica: w2
+    spec:
+      nodeSelector:
+        kubernetes.io/hostname: gke-ikwak-reliabilit-a4-highgpu-8g-a4-0256e2f1-6df3
+      serviceAccountName: workload-identity-k8s-sa
+      tolerations:
+      - operator: Exists
+      containers:
+      - name: vllm
+        image: vllm/vllm-openai:nightly-dev-x86_64-cu130-ac9126e58aa7
+        imagePullPolicy: IfNotPresent
+        securityContext:
+          capabilities:
+            add: ["IPC_LOCK", "SYS_RESOURCE"]
+        command: ["/bin/bash", "-c"]
+        env:
+        - name: NCCL_NET_PLUGIN
+          value: "none"
+        - name: NCCL_TUNER_PLUGIN
+          value: "none"
+        - name: NCCL_PROFILER_PLUGIN
+          value: "none"
+        - name: PYTHONHASHSEED
+          value: "0"
+        - name: UCX_NET_DEVICES
+          value: "all"
+        - name: NCCL_CUMEM_ENABLE
+          value: "1"
+        - name: VLLM_ENGINE_READY_TIMEOUT_S
+          value: "7200"
+        - name: VLLM_SERVER_DEV_MODE
+          value: "1"
+        args:
+        - |
+          set -euo pipefail
+          ulimit -l unlimited || true
+          export VLLM_USE_V2_MODEL_RUNNER=1
+          export VLLM_USE_RUST_FRONTEND=1
+          export PYTHONUNBUFFERED=1
+          mkdir -p /mnt/lustre_1000mbps/vllm_kv_cache/w2
+          if [ -d /mnt/lustre_1000mbps/vllm_kernel_cache/w2/cache ]; then
+            echo "Restoring pre-compiled vLLM FlashInfer/Triton/torch.compile kernels from Lustre..."
+            mkdir -p /root/.cache
+            cp -rn /mnt/lustre_1000mbps/vllm_kernel_cache/w2/cache/* /root/.cache/ || true
+          fi
+          echo "Starting Upgraded Upstream Recipe vLLM Worker w2 (TP=8, RDMA enabled)..."
+          exec vllm serve /mnt/lustre_1000mbps/models/zai-org/GLM-5.3 \
+            --served-model-name zai-org/GLM-5.3 \
+            --host 0.0.0.0 \
+            --port 8000 \
+            --tensor-parallel-size 8 \
+            --kv-cache-dtype fp8_e4m3 \
+            --speculative-config '{"method":"mtp","num_speculative_tokens":5}' \
+            --max-model-len 131072 \
+            --max-num-batched-tokens 8192 \
+            --max-num-seqs 256 \
+            --gpu-memory-utilization 0.90 \
+            --enable-prompt-tokens-details \
+            --disable-uvicorn-access-log \
+            --trust-remote-code \
+            --kv-transfer-config '{"kv_connector": "OffloadingConnector", "kv_role": "kv_both", "kv_connector_extra_config": {"spec_name": "TieringOffloadingSpec", "cpu_bytes_to_use": 8589934592, "blocks_per_chunk": 1, "eviction_policy": "lru", "secondary_tiers": [{"type": "fs", "root_dir": "/mnt/lustre_1000mbps/vllm_kv_cache", "n_read_threads": 16, "n_write_threads": 16}]}}'
+        ports:
+        - containerPort: 8000
+          name: http
+        resources:
+          limits:
+            nvidia.com/gpu: "8"
+          requests:
+            cpu: "64"
+            memory: 700Gi
+            nvidia.com/gpu: "8"
+        volumeMounts:
+        - mountPath: /gcs
+          name: gcs-model
+          readOnly: true
+        - mountPath: /mnt/lustre_1000mbps
+          name: lustre-tier
+        - mountPath: /dev/infiniband
+          name: dev-infiniband
+        - mountPath: /dev/shm
+          name: dshm
+      volumes:
+      - name: gcs-model
+        csi:
+          driver: gcsfuse.csi.storage.gke.io
+          volumeAttributes:
+            bucketName: ikwak-eu-stuff
+            mountOptions: implicit-dirs,max-conns-per-host=0,file-cache:max-size-mb:-1,file-cache:cache-file-for-range-read:true,file-cache:enable-parallel-downloads:true,file-cache:max-parallel-downloads:32,file-cache:download-chunk-size-mb:64
+      - name: lustre-tier
+        persistentVolumeClaim:
+          claimName: lustre-1000mbps-pvc
+      - name: dev-infiniband
+        hostPath:
+          path: /dev/infiniband
+          type: Directory
+      - name: dshm
+        emptyDir:
+          medium: Memory
+          sizeLimit: 512Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: llmd-vllm-w2
+  namespace: ubench-llmd
+spec:
+  selector:
+    app: llmd-vllm-worker
+    replica: w2
+  ports:
+  - name: http
+    port: 8000
+    targetPort: 8000

@@ -211,9 +211,16 @@ def parse_vllm_recipe(
         extra_args.extend(features["text_only"].get("args", []))
     if enable_spec_decoding and "spec_decoding" in features:
         spec_feat = features["spec_decoding"]
-        spec_args = spec_feat.get("args", [])
-        if hw in spec_feat.get("hardware_overrides", {}):
-            spec_args = spec_feat["hardware_overrides"][hw].get("args", spec_args)
+        if "modes" in spec_feat:
+            def_mode = spec_feat.get("default_mode") or next(iter(spec_feat["modes"].keys()))
+            mode_cfg = spec_feat["modes"].get(def_mode, {})
+            spec_args = mode_cfg.get("args", [])
+            if hw in mode_cfg.get("hardware_overrides", {}):
+                spec_args = mode_cfg["hardware_overrides"][hw].get("args", spec_args)
+        else:
+            spec_args = spec_feat.get("args", [])
+            if hw in spec_feat.get("hardware_overrides", {}):
+                spec_args = spec_feat["hardware_overrides"][hw].get("args", spec_args)
         extra_args.extend(spec_args)
 
     # For Blackwell (B200/B300) DeepSeek-V4.1-Flash, merge verified high-throughput
@@ -249,6 +256,20 @@ def parse_vllm_recipe(
             "--disable-uvicorn-access-log",
             "--trust-remote-code",
         ]
+    elif hw_family == "blackwell" and "GLM-5.3" in model_id:
+        extra_args.extend([
+            "--max-model-len",
+            "131072",
+            "--max-num-batched-tokens",
+            "8192",
+            "--max-num-seqs",
+            "256",
+            "--gpu-memory-utilization",
+            "0.90",
+            "--enable-prompt-tokens-details",
+            "--disable-uvicorn-access-log",
+            "--trust-remote-code",
+        ])
 
     combined_args = strip_non_benchmark_flags(base_args + extra_args)
     combined_env = {**base_env, **extra_env}
@@ -817,6 +838,7 @@ def main():
         default="vllm/vllm-openai:nightly-dev-x86_64-cu130-ac9126e58aa7",
     )
     parser.add_argument("--output-dir", default="/usr/local/google/home/ikwak/jetski-playground/day0/manifests")
+    parser.add_argument("--manifest-prefix", default="")
     args = parser.parse_args()
 
     sglang_cell = parse_sglang_cookbook_cell(args.sglang_js, hw=args.hw, strategy=args.sglang_strategy)
@@ -852,10 +874,22 @@ def main():
         vllm_cmds, vllm_topo, nodes, enable_offload_fs=True, image_override=args.vllm_image
     )
 
-    base_manifest_path = os.path.join(args.output_dir, "dynamo-sglang-2x-tep4-b200-upstream-recipe.yaml")
-    hicache_manifest_path = os.path.join(args.output_dir, "dynamo-sglang-2x-tep4-b200-hicache-lustre.yaml")
-    vllm_base_path = os.path.join(args.output_dir, "llmd-vllm-2x-tp4-b200-upstream-recipe.yaml")
-    vllm_offload_path = os.path.join(args.output_dir, "llmd-vllm-2x-tp4-b200-offload-lustre.yaml")
+    if args.manifest_prefix:
+        pfx = f"-{args.manifest_prefix}"
+        sg_tag = f"{sglang_topo['num_replicas']}x-tp{sglang_topo['tp_size']}"
+        vl_tag = f"{vllm_topo['num_replicas']}x-tp{vllm_topo['tp_size']}"
+        base_manifest_path = os.path.join(args.output_dir, f"dynamo-sglang{pfx}-{sg_tag}-{args.hw}-upstream-recipe.yaml")
+        hicache_manifest_path = os.path.join(args.output_dir, f"dynamo-sglang{pfx}-{sg_tag}-{args.hw}-hicache-lustre.yaml")
+        vllm_base_path = os.path.join(args.output_dir, f"llmd-vllm{pfx}-{vl_tag}-{args.hw}-upstream-recipe.yaml")
+        vllm_offload_path = os.path.join(args.output_dir, f"llmd-vllm{pfx}-{vl_tag}-{args.hw}-offload-lustre.yaml")
+        meta_path = os.path.join(args.output_dir, f"synthesized_day0_recipes_{args.manifest_prefix}.json")
+    else:
+        base_manifest_path = os.path.join(args.output_dir, "dynamo-sglang-2x-tep4-b200-upstream-recipe.yaml")
+        hicache_manifest_path = os.path.join(args.output_dir, "dynamo-sglang-2x-tep4-b200-hicache-lustre.yaml")
+        vllm_base_path = os.path.join(args.output_dir, "llmd-vllm-2x-tp4-b200-upstream-recipe.yaml")
+        vllm_offload_path = os.path.join(args.output_dir, "llmd-vllm-2x-tp4-b200-offload-lustre.yaml")
+        meta_path = os.path.join(args.output_dir, "synthesized_day0_recipes.json")
+
     with open(base_manifest_path, "w", encoding="utf-8") as f:
         f.write(sglang_base_yaml)
     with open(hicache_manifest_path, "w", encoding="utf-8") as f:
@@ -880,7 +914,6 @@ def main():
             "stage_commands": vllm_cmds,
         },
     }
-    meta_path = os.path.join(args.output_dir, "synthesized_day0_recipes.json")
     with open(meta_path, "w", encoding="utf-8") as f:
         json.dump(metadata, f, indent=2)
 
