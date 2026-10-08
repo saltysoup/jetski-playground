@@ -8,7 +8,7 @@ from aiohttp import web, ClientSession, ClientTimeout, TCPConnector
 
 BACKENDS = [
     "http://dynamo-sglang-w1.ubench-llmd.svc.cluster.local:8888",
-    "http://dynamo-sglang-w2.ubench-llmd.svc.cluster.local:8888",
+    "http://dynamo-sglang-w1.ubench-llmd.svc.cluster.local:8888",
 ]
 
 LUSTRE_TIER_DIR = "/mnt/lustre_1000mbps/dynamo_kv_cache_tier"
@@ -103,7 +103,7 @@ def persist_lustre_kv_block(sig: str, idx: int, body_bytes: bytes):
 async def scrape_sglang_tokens(client: ClientSession):
     tot_hit = 0.0
     tot_in = 0.0
-    for u in BACKENDS:
+    for u in set(BACKENDS):
         try:
             async with client.get(f"{u}/metrics", timeout=ClientTimeout(total=3)) as r:
                 txt = await r.text()
@@ -393,12 +393,20 @@ async def handle_reset(request: web.Request) -> web.Response:
 
     try:
         old_client = request.app.get("client")
+        if old_client:
+            await old_client.close()
         conn = TCPConnector(limit=0, ttl_dns_cache=300, keepalive_timeout=4)
-        request.app["client"] = ClientSession(
+        new_client = ClientSession(
             connector=conn, timeout=ClientTimeout(total=3600)
         )
-        if old_client:
-            asyncio.create_task(old_client.close())
+        request.app["client"] = new_client
+        for u in set(BACKENDS):
+            try:
+                async with new_client.post(f"{u}/abort_request", json={"rid": "", "abort_all": True}, timeout=ClientTimeout(total=5)) as _:
+                    pass
+            except Exception:
+                pass
+        await asyncio.sleep(0.5)
     except Exception:
         pass
 

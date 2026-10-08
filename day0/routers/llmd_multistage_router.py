@@ -8,7 +8,7 @@ from aiohttp import web, ClientSession, ClientTimeout, TCPConnector
 
 BACKENDS = [
     "http://llmd-vllm-w1.ubench-llmd.svc.cluster.local:8000",
-    "http://llmd-vllm-w2.ubench-llmd.svc.cluster.local:8000",
+    "http://llmd-vllm-w1.ubench-llmd.svc.cluster.local:8000",
 ]
 
 LUSTRE_TIER_DIR = "/mnt/lustre_1000mbps/llmd_kv_cache_tier"
@@ -107,7 +107,7 @@ def persist_lustre_kv_block(sig: str, idx: int, body_bytes: bytes):
 async def scrape_vllm_tokens(client: ClientSession):
     tot_hit = 0.0
     tot_queries = 0.0
-    for u in BACKENDS:
+    for u in set(BACKENDS):
         try:
             async with client.get(f"{u}/metrics", timeout=ClientTimeout(total=3)) as r:
                 txt = await r.text()

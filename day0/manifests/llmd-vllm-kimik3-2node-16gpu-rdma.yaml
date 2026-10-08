@@ -1,0 +1,211 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: llmd-vllm-w1
+  namespace: ubench-llmd
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: llmd-vllm-worker
+      replica: w1
+  template:
+    metadata:
+      annotations:
+        networking.gke.io/default-interface: 'eth0'
+        networking.gke.io/interfaces: |
+          [
+            {"interfaceName":"eth0","network":"default"},
+            {"interfaceName":"eth1","network":"gvnic-1"},
+            {"interfaceName":"eth2","network":"rdma-0"},
+            {"interfaceName":"eth3","network":"rdma-1"},
+            {"interfaceName":"eth4","network":"rdma-2"},
+            {"interfaceName":"eth5","network":"rdma-3"},
+            {"interfaceName":"eth6","network":"rdma-4"},
+            {"interfaceName":"eth7","network":"rdma-5"},
+            {"interfaceName":"eth8","network":"rdma-6"},
+            {"interfaceName":"eth9","network":"rdma-7"}
+          ]
+      labels:
+        app: llmd-vllm-worker
+        replica: w1
+    spec:
+      nodeSelector:
+        kubernetes.io/hostname: gke-ikwak-reliabilit-a4-highgpu-8g-a4-0256e2f1-34t3
+      serviceAccountName: workload-identity-k8s-sa
+      tolerations:
+      - operator: Exists
+      containers:
+      - name: vllm
+        image: vllm/vllm-openai:nightly-dev-x86_64-cu130-ac9126e58aa7
+        imagePullPolicy: IfNotPresent
+        securityContext:
+          privileged: true
+          capabilities:
+            add:
+            - IPC_LOCK
+            - SYS_RESOURCE
+        command: ["/bin/bash", "-c"]
+        args:
+        - |
+          ulimit -l unlimited || true
+          echo "RDMA-enabled vLLM Node 0 (w1) container ready."
+          exec sleep infinity
+        env:
+        - name: LD_LIBRARY_PATH
+          value: /usr/local/nvidia/lib64:/usr/local/cuda/lib64
+        - name: PYTHONNOUSERSITE
+          value: "1"
+        - name: PYTHONUNBUFFERED
+          value: "1"
+        ports:
+        - containerPort: 8000
+          name: http
+        - containerPort: 29500
+          name: dist
+        - containerPort: 50051
+          name: mooncake-rpc
+        resources:
+          requests:
+            cpu: "64"
+            memory: 1400Gi
+            nvidia.com/gpu: "8"
+          limits:
+            nvidia.com/gpu: "8"
+        volumeMounts:
+        - name: library-dir-host
+          mountPath: /usr/local/nvidia
+        - name: gib
+          mountPath: /usr/local/gib
+        - name: dev-infiniband
+          mountPath: /dev/infiniband
+        - name: lustre-tier
+          mountPath: /mnt/lustre_1000mbps
+        - name: dshm
+          mountPath: /dev/shm
+      volumes:
+      - name: library-dir-host
+        hostPath:
+          path: /home/kubernetes/bin/nvidia
+      - name: gib
+        hostPath:
+          path: /home/kubernetes/bin/gib
+      - name: dev-infiniband
+        hostPath:
+          path: /dev/infiniband
+          type: Directory
+      - name: lustre-tier
+        persistentVolumeClaim:
+          claimName: lustre-1000mbps-pvc
+      - name: dshm
+        emptyDir:
+          medium: Memory
+          sizeLimit: 512Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: llmd-vllm-w2
+  namespace: ubench-llmd
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: llmd-vllm-worker
+      replica: w2
+  template:
+    metadata:
+      annotations:
+        networking.gke.io/default-interface: 'eth0'
+        networking.gke.io/interfaces: |
+          [
+            {"interfaceName":"eth0","network":"default"},
+            {"interfaceName":"eth1","network":"gvnic-1"},
+            {"interfaceName":"eth2","network":"rdma-0"},
+            {"interfaceName":"eth3","network":"rdma-1"},
+            {"interfaceName":"eth4","network":"rdma-2"},
+            {"interfaceName":"eth5","network":"rdma-3"},
+            {"interfaceName":"eth6","network":"rdma-4"},
+            {"interfaceName":"eth7","network":"rdma-5"},
+            {"interfaceName":"eth8","network":"rdma-6"},
+            {"interfaceName":"eth9","network":"rdma-7"}
+          ]
+      labels:
+        app: llmd-vllm-worker
+        replica: w2
+    spec:
+      nodeSelector:
+        kubernetes.io/hostname: gke-ikwak-reliabilit-a4-highgpu-8g-a4-0256e2f1-6df3
+      serviceAccountName: workload-identity-k8s-sa
+      tolerations:
+      - operator: Exists
+      containers:
+      - name: vllm
+        image: vllm/vllm-openai:nightly-dev-x86_64-cu130-ac9126e58aa7
+        imagePullPolicy: IfNotPresent
+        securityContext:
+          privileged: true
+          capabilities:
+            add:
+            - IPC_LOCK
+            - SYS_RESOURCE
+        command: ["/bin/bash", "-c"]
+        args:
+        - |
+          ulimit -l unlimited || true
+          echo "RDMA-enabled vLLM Node 1 (w2) container ready."
+          exec sleep infinity
+        env:
+        - name: LD_LIBRARY_PATH
+          value: /usr/local/nvidia/lib64:/usr/local/cuda/lib64
+        - name: PYTHONNOUSERSITE
+          value: "1"
+        - name: PYTHONUNBUFFERED
+          value: "1"
+        ports:
+        - containerPort: 8000
+          name: http
+        - containerPort: 29500
+          name: dist
+        - containerPort: 50051
+          name: mooncake-rpc
+        resources:
+          requests:
+            cpu: "64"
+            memory: 1400Gi
+            nvidia.com/gpu: "8"
+          limits:
+            nvidia.com/gpu: "8"
+        volumeMounts:
+        - name: library-dir-host
+          mountPath: /usr/local/nvidia
+        - name: gib
+          mountPath: /usr/local/gib
+        - name: dev-infiniband
+          mountPath: /dev/infiniband
+        - name: lustre-tier
+          mountPath: /mnt/lustre_1000mbps
+        - name: dshm
+          mountPath: /dev/shm
+      volumes:
+      - name: library-dir-host
+        hostPath:
+          path: /home/kubernetes/bin/nvidia
+      - name: gib
+        hostPath:
+          path: /home/kubernetes/bin/gib
+      - name: dev-infiniband
+        hostPath:
+          path: /dev/infiniband
+          type: Directory
+      - name: lustre-tier
+        persistentVolumeClaim:
+          claimName: lustre-1000mbps-pvc
+      - name: dshm
+        emptyDir:
+          medium: Memory
+          sizeLimit: 512Gi

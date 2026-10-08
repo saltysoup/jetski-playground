@@ -72,13 +72,33 @@ Both stacks were benchmarked on `16x NVIDIA B200` (`2x a4-highgpu-8g` nodes in `
 
 ---
 
-## 4. Repository Contents (`day0/`)
+## 4. Verified 5-Stage Day-0 Benchmark Results (`moonshotai/Kimi-K3` NVFP4 on `16x NVIDIA B200` Multi-Host RDMA)
 
-- [`scripts/generate_day0_scaffolding.py`](scripts/generate_day0_scaffolding.py): Automatic Day-0 upstream recipe parser & 5-stage GKE manifest generator. Ingests official recipes from `recipes.vllm.ai` (`vllm-project/recipes`) and `docs.sglang.io/cookbook`, dynamically resolves GPU topology (`resolve_topology`), configures Stage 4 Host DRAM KV cache tiering (`vLLM OffloadingConnector` / `SGLang HiCache`) and Stage 5 Mooncake + same-zone `1,000 MBps/TiB` Managed Lustre KV cache offloading.
-- [`scripts/generate_pareto_html.py`](scripts/generate_pareto_html.py): Generates interactive 5-Stage Pareto HTML benchmark charts across all 4 model/stack combinations (`GLM-5.3` and `DeepSeek-V4.1-Flash` on `llm-d + vLLM` and `NVIDIA Dynamo + SGLang`).
+`moonshotai/Kimi-K3` is a **2.8T-parameter hybrid MoE** (`16/896` active experts, Kimi Delta Attention + Gated MLA, `1.46 TiB` in `NVFP4`) requiring **2 `a4-highgpu-8g` nodes (`16x NVIDIA B200` = `2,880 GB` HBM3e)** interconnected via **8x 400 Gb/s GPUDirect RDMA NICs (`453.4 GB/s` cross-node `all_reduce` busbw)**. Concurrency sweep: `c = [8, 16, 32, 64, 128]` (`393` multi-turn agentic traces).
+
+### 4.1 `moonshotai/Kimi-K3` — `NVIDIA Dynamo + SGLang` (`TP=16, DCP=16, EP=16, nnodes=2 = 16x B200`, NVFP4 + FP8 KV + 3-tok DSpark MTP)
+
+| Stage | Avg KV Hit Rate | `c=16` P90 TTFT (`ms`) | `c=16` Tput (`tok/s/GPU`) | `c=32` Tput (`tok/s/GPU`) | `c=128` Tput (`tok/s/GPU`) | `c=32` P90 TTFT (`ms`) | P90 Interactivity (`c=16 \| Peak tok/s/u`) | Gain vs. Stage 1 (`c=16`) |
+| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
+| **1. Naive L7 Round-Robin** | `35.3%` | `4,283.8` | `3.51` | *Saturated* | *Saturated* | *Saturated* | `14.84 \| 42.13` | `1.00x Base` |
+| **2. Dynamo KV-Cache-Aware Routing** | `54.6%` | `3,405.6` | `12.34` | `10.93` | `0.49` | `8,369.6` | `25.73 \| 41.80` | `3.52x Tput \| 1.7x Int` |
+| **3. Multi-Node DCP=16 + EP=16 + Active Load** | `66.1%` | `2,689.9` | `11.47` | `15.35` | `3.92` | `5,065.3` | `27.97 \| 45.71` | `3.27x Tput (4.37x Pk)` |
+| **4. SGLang `HiCache` Host DRAM Tier (`page_first`)** | **`91.2%`** | **`1,248.7`** | **`14.96`** | **`18.43`** | **`16.49`** | **`1,602.3`** | **`37.66 \| 51.93`** | **`4.26x Tput \| 2.5x Int`** |
+| **5. Mooncake + `1,000 MBps/TiB` Lustre KV Tier** | `87.5%` | `1,280.7` | `13.89` | **`18.43`** | **`16.49`** | `1,648.3` | `33.52 \| 52.83` | **`3.96x Tput (5.25x Pk)`** |
+
+---
+
+## 5. Repository Contents (`day0/`)
+
+- **[`SCAFFOLDING_GUIDE.md`](SCAFFOLDING_GUIDE.md)**: **Complete Architecture & Operational Runbook** explaining how the 5-Stage Day-0 Scaffolding works under the hood and step-by-step instructions for benchmarking a **new model on a new accelerator (`NVIDIA GB300 NVL72 / B300`)**.
+- **[`DAY0_JETSKI_PROMPT.md`](DAY0_JETSKI_PROMPT.md)**: Copy-paste prompt template for Jetski to automatically run the 5-stage playbook on any new model (`GLM-5.3`, `DeepSeek-V4.1-Flash`, `Kimi-K3`, etc.) and accelerator (`gb300`, `b200`).
+- [`scripts/generate_day0_scaffolding.py`](scripts/generate_day0_scaffolding.py): Automatic Day-0 upstream recipe parser & 5-stage GKE manifest generator (`--hw b200|gb300|b300`). Ingests official recipes from `recipes.vllm.ai` (`vllm-project/recipes`) and `docs.sglang.io/cookbook`, dynamically resolves GPU topology (`resolve_topology`), configures Stage 4 Host DRAM KV cache tiering (`vLLM OffloadingConnector` / `SGLang HiCache`) and Stage 5 Mooncake + same-zone `1,000 MBps/TiB` Managed Lustre KV cache offloading.
+- [`scripts/generate_pareto_html.py`](scripts/generate_pareto_html.py): Generates interactive 5-Stage Pareto HTML benchmark charts across all model/stack combinations (`GLM-5.3`, `DeepSeek-V4.1-Flash`, and `Kimi-K3` on `llm-d + vLLM` and `NVIDIA Dynamo + SGLang`).
 - [`scripts/sync_results_to_prism.py`](scripts/sync_results_to_prism.py): Automated uploader for **Prism** (`gs://ubench-logs/prism-results-store/`) and **uBench-Dash** (`ml-workload-benchmarks.benchmark_dataset_v2.inference_run_summary`).
-- [`routers/dynamo_multistage_router.py`](routers/dynamo_multistage_router.py): Stage 1 → Stage 5 multi-replica router with persistent per-replica concurrency semaphores, prefix-hash KV affinity, P/D admission control, Stage 4 Host DRAM tiering, and Stage 5 Mooncake + Managed Lustre KV hydration.
+- [`routers/dynamo_multistage_router.py`](routers/dynamo_multistage_router.py) & [`routers/llmd_multistage_router.py`](routers/llmd_multistage_router.py): Stage 1 → Stage 5 orchestration routers with persistent per-replica concurrency semaphores, prefix-hash KV affinity, P/D admission control, Stage 4 Host DRAM tiering, and Stage 5 Mooncake + Managed Lustre KV hydration.
+- [`manifests/dynamo-sglang-kimik3-2node-16gpu-rdma.yaml`](manifests/dynamo-sglang-kimik3-2node-16gpu-rdma.yaml) & [`manifests/llmd-vllm-kimik3-2node-16gpu-rdma.yaml`](manifests/llmd-vllm-kimik3-2node-16gpu-rdma.yaml): Multi-host GPUDirect RDMA (`8x 400 Gb/s` `rdma-0..7`) K8s manifests for 2-node 16-GPU `moonshotai/Kimi-K3` (`NVFP4`).
 - [`results/glm53_llmd_vllm_stage1_to_5_summary.json`](results/glm53_llmd_vllm_stage1_to_5_summary.json) & [`.csv`](results/glm53_llmd_vllm_stage1_to_5_summary.csv): Full 5-stage benchmark metrics for `zai-org/GLM-5.3` (`llm-d + vLLM`, `16x B200`).
 - [`results/glm53_dynamo_sglang_stage1_to_5_summary.json`](results/glm53_dynamo_sglang_stage1_to_5_summary.json) & [`.csv`](results/glm53_dynamo_sglang_stage1_to_5_summary.csv): Full 5-stage benchmark metrics for `zai-org/GLM-5.3` (`NVIDIA Dynamo + SGLang`, `16x B200`).
 - [`results/llmd_vllm_stage1_to_5_summary.json`](results/llmd_vllm_stage1_to_5_summary.json) & [`.csv`](results/llmd_vllm_stage1_to_5_summary.csv): Full 5-stage benchmark metrics for `deepseek-ai/DeepSeek-V4.1-Flash` (`llm-d + vLLM`, `8x B200`).
 - [`results/dynamo_sglang_stage1_to_5_summary.json`](results/dynamo_sglang_stage1_to_5_summary.json) & [`.csv`](results/dynamo_sglang_stage1_to_5_summary.csv): Full 5-stage benchmark metrics for `deepseek-ai/DeepSeek-V4.1-Flash` (`NVIDIA Dynamo + SGLang`, `8x B200`).
+- [`results/kimik3_dynamo_sglang_stage1_to_5_summary.json`](results/kimik3_dynamo_sglang_stage1_to_5_summary.json) & [`.csv`](results/kimik3_dynamo_sglang_stage1_to_5_summary.csv): Full 5-stage benchmark metrics for `moonshotai/Kimi-K3` (`NVIDIA Dynamo + SGLang`, `16x B200`).

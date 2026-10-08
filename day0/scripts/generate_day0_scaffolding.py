@@ -284,6 +284,31 @@ def parse_vllm_recipe(
             "--disable-uvicorn-access-log",
             "--trust-remote-code",
         ])
+    elif hw_family == "blackwell" and "Kimi-K3" in model_id:
+        # On B200 (180GB/GPU), 1.46 TiB NVFP4 requires 16 GPUs across 2 nodes (TP=16, DCP=16, EP=16).
+        # On GB300/B300 (288GB/GPU), 8x GB300 = 2,304 GB HBM3e fits 1.46 TiB in 8 GPUs (or 16 GPUs across 4 trays).
+        tp_size = 8 if hw in ("gb300", "b300") and recipe_tp <= 8 else 16
+        extra_args.extend([
+            "--decode-context-parallel-size",
+            str(tp_size),
+            "--enable-expert-parallel",
+            "--disable-custom-all-reduce",
+            "--attention-backend",
+            "FLASHINFER_MLA",
+            "--moe-backend",
+            "flashinfer_trtllm",
+            "--kv-cache-dtype",
+            "fp8_e4m3",
+            "--gpu-memory-utilization",
+            "0.84",
+            "--max-num-seqs",
+            "128",
+            "--max-num-batched-tokens",
+            "8192",
+            "--enable-prefix-caching",
+            "--enable-prompt-tokens-details",
+            "--trust-remote-code",
+        ])
 
     combined_args = strip_non_benchmark_flags(base_args + extra_args)
     combined_env = {**base_env, **extra_env}
@@ -306,7 +331,7 @@ def resolve_topology(
     gpus_per_node: int = 8,
     num_nodes: int = 2,
 ) -> Dict[str, Any]:
-    """Dynamically resolve replica GPU count, TP, EP, DP, and placement across nodes."""
+    """Dynamically resolve replica GPU count, TP, EP, DP, and placement across nodes (including B200 & GB300)."""
     if engine == "sglang":
         flags = parsed_recipe["flags"]
         tp, ep, dp = 1, 1, 1
@@ -319,7 +344,7 @@ def resolve_topology(
                     ep = int(parts[1])
                 elif parts[0] in ("--dp", "--dp-size", "--data-parallel-size", "--attn-dp-size"):
                     dp = int(parts[1])
-        gpus_per_replica = max(tp, ep, dp) * parsed_recipe.get("nnodes", 1)
+        gpus_per_replica = max(tp, ep, dp)
     else:
         tp = parsed_recipe["tp_size"]
         ep = tp
@@ -327,20 +352,29 @@ def resolve_topology(
         gpus_per_replica = tp
 
     total_cluster_gpus = gpus_per_node * num_nodes
-    # Use 2 replicas for Stage 1 -> Stage 4 multi-replica scale-out & P/D disaggregation
-    num_replicas = 2
+    # If a single instance spans multiple nodes (e.g. Kimi-K3 TP=16 across 2x 8-GPU B200 nodes),
+    # num_replicas = max(1, total_cluster_gpus // gpus_per_replica).
+    num_replicas = max(1, min(2, total_cluster_gpus // gpus_per_replica))
+    nnodes_per_replica = max(1, (gpus_per_replica + gpus_per_node - 1) // gpus_per_node)
     total_benchmark_gpus = gpus_per_replica * num_replicas
 
     return {
         "hw": hw,
+        "vram_per_gpu_gb": HARDWARE_VRAM_GB.get(hw, 180),
         "tp_size": tp,
         "ep_size": ep,
         "dp_size": dp,
+        "gpus_per_node": gpus_per_node,
+        "nnodes_per_replica": nnodes_per_replica,
         "gpus_per_replica": gpus_per_replica,
         "num_replicas": num_replicas,
         "total_gpus": total_benchmark_gpus,
         "total_cluster_gpus": total_cluster_gpus,
-        "rdma_devices": "mlx5_0,mlx5_1,mlx5_2,mlx5_3,mlx5_4,mlx5_5,mlx5_6,mlx5_7",
+        "rdma_devices": (
+            "mlx5_0,mlx5_1,mlx5_2,mlx5_3"
+            if hw == "gb300" and gpus_per_node == 4
+            else "mlx5_0,mlx5_1,mlx5_2,mlx5_3,mlx5_4,mlx5_5,mlx5_6,mlx5_7"
+        ),
     }
 
 
@@ -991,7 +1025,9 @@ def main():
     parser = argparse.ArgumentParser(description="Generate Day-0 Scaffolding from Upstream vLLM & SGLang Recipes")
     parser.add_argument("--model-id", default="deepseek-ai/DeepSeek-V4.1-Flash")
     parser.add_argument("--model-path", default="/gcs/deepseek-ai/DeepSeek-V4.1-Flash")
-    parser.add_argument("--hw", default="b200")
+    parser.add_argument("--hw", default="b200", help="Target accelerator SKU (e.g., b200, gb300, b300, h200, mi355x)")
+    parser.add_argument("--gpus-per-node", type=int, default=0, help="GPUs per node/tray (default: 4 for gb300/gb200, 8 otherwise)")
+    parser.add_argument("--num-nodes", type=int, default=2, help="Number of nodes/trays in benchmark pool")
     parser.add_argument("--sglang-strategy", default="high-throughput")
     parser.add_argument("--sglang-js", default="/tmp/sglang_dsv41_config.js")
     parser.add_argument("--vllm-yaml", default="/tmp/vllm_dsv41_flash.yaml")
@@ -1007,14 +1043,16 @@ def main():
     parser.add_argument("--manifest-prefix", default="")
     args = parser.parse_args()
 
+    gpus_per_node = args.gpus_per_node or (4 if args.hw in ("gb300", "gb200") else 8)
+
     sglang_cell = parse_sglang_cookbook_cell(args.sglang_js, hw=args.hw, strategy=args.sglang_strategy)
-    sglang_topo = resolve_topology("sglang", sglang_cell, hw=args.hw)
+    sglang_topo = resolve_topology("sglang", sglang_cell, hw=args.hw, gpus_per_node=gpus_per_node, num_nodes=args.num_nodes)
     sglang_cmds = build_sglang_stage_commands(
         args.model_path, args.model_id, sglang_cell, sglang_topo
     )
 
     vllm_recipe = parse_vllm_recipe(args.vllm_yaml, hw=args.hw)
-    vllm_topo = resolve_topology("vllm", vllm_recipe, hw=args.hw)
+    vllm_topo = resolve_topology("vllm", vllm_recipe, hw=args.hw, gpus_per_node=gpus_per_node, num_nodes=args.num_nodes)
     vllm_cmds = build_vllm_stage_commands(
         args.model_path, args.model_id, vllm_recipe, vllm_topo
     )
