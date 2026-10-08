@@ -189,7 +189,10 @@ Before launching the pods on a new GKE cluster (`GB300` or `B200`), verify three
      ```
 
 3. **Critical Engine Stability Guardrails Discovered During Benchmarking**:
-   - **Multi-Node Custom AllReduce**: Always pass `--disable-custom-all-reduce` when running multi-node `TP=16` (`nnodes >= 2`) in both SGLang and vLLM so collectives use GPUDirect RDMA NCCL (`453+ GB/s` busbw) instead of hanging on intra-node CUDA IPC handle exchange across restarts.
+   - **Multi-Node Custom & FlashInfer MNNVL AllReduce (`B200` RoCEv2 vs. `GB300 NVL72` MNNVL)**:
+     - Always pass `--disable-custom-all-reduce` when running multi-node `TP=16` (`nnodes >= 2`) in both SGLang and vLLM.
+     - In **vLLM** on multi-node RoCEv2 clusters (`B200` / `B300` HGX without Multi-Node NVLink), also set `export VLLM_ALLREDUCE_USE_FLASHINFER=0` and `export VLLM_ALLREDUCE_USE_SYMM_MEM=0` so `tp:0` uses `PyNCCL` over GPUDirect RDMA (`453+ GB/s` busbw) instead of hanging in `flashinfer_comm.create_allreduce_fusion_workspace(backend="mnnvl")` waiting on a local IMEX Unix socket. On **GB300 NVL72** (`a4x`), where all 72 GPUs share a single Multi-Node NVLink (MNNVL) domain with IMEX enabled, leave `VLLM_ALLREDUCE_USE_FLASHINFER=1` enabled for hardware multicast all-reduce fusion!
+     - In **vLLM** multi-node `TP/DCP/EP` (`nnodes >= 2` with `DP=1`), always pass `--headless` on worker nodes (`--node-rank >= 1`) so only rank 0 launches the API server and worker nodes run `MultiprocExecutor` in headless mode.
    - **Speculative Decoding + Hybrid Attention Memory Headroom**: When enabling `DSpark` or `EAGLE/MTP` speculative decoding on massive MoE models (`Kimi-K3`, `GLM-5.3`), set `--mem-fraction-static 0.84` (SGLang) or `--gpu-memory-utilization 0.84` (vLLM) with `PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True`. Using `0.90` leaves insufficient scratchpad VRAM (`< 1.5 GiB`) after draft CUDA graph capture for `flashinfer::FP4BlockScaleLauncher::prepare_moe` (`1.92 GiB` workspace).
    - **Never Call `/abort_request` Mid-Decode on Hybrid Mamba/KDA + Speculative Requests**: Let each concurrency wave drain naturally via router drain polling (`in_flight_decode_reqs == 0`).
 
