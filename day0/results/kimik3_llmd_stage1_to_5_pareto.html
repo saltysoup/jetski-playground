@@ -2,7 +2,7 @@
 <html>
 <head>
   <meta charset="utf-8" />
-  <title>NVIDIA Dynamo + SGLang (v0.5.10 Day-0 Scaffolding, 8× B200): Stage 1 → 5 Pareto Frontier</title>
+  <title>moonshotai/Kimi-K3 (NVFP4, 2.8T MoE) — llm-d + vLLM (16× B200 Multi-Node RDMA): Stage 1 → 5 Pareto Frontier</title>
   <script src="https://www.gstatic.com/antigravity/web/dev/tailwindcss.min.js"></script>
   <style>
     .tooltip-card {
@@ -17,10 +17,10 @@
     <div class="flex flex-wrap items-center justify-between gap-2 pb-2.5 border-b border-[var(--border)]">
       <div>
         <h2 id="chartMainTitle" class="text-sm font-semibold text-[var(--foreground)]">
-          NVIDIA Dynamo + SGLang (v0.5.10 Day-0 Scaffolding, 8× B200): Stage 1 → 5 Pareto Frontier
+          moonshotai/Kimi-K3 (NVFP4, 2.8T MoE) — llm-d + vLLM (16× B200 Multi-Node RDMA): Stage 1 → 5 Pareto Frontier
         </h2>
         <p id="chartSubTitle" class="text-xs text-[var(--muted-foreground)]">
-          DeepSeek-V4.1-Flash (NVFP4 + FP8 KV + 5-tok DSpark MTP, Stage 4 SGLang HiCache DRAM + Stage 5 Mooncake Lustre)
+          Kimi-K3 (TP=16, DCP=16, EP=16, nnodes=2, TOKENSPEED_MLA + TRTLLM_RAGGED + 8-tok DSpark MTP, Stage 4 Host DRAM + Stage 5 Mooncake Lustre)
         </p>
       </div>
 
@@ -31,8 +31,8 @@
             <option value="llmd_glm53">GLM-5.3 (743B MoE, 16× B200) — llm-d + vLLM (v0.30.1rc1)</option>
             <option value="dynamo_glm53">GLM-5.3 (743B MoE, 16× B200) — NVIDIA Dynamo + SGLang (v0.5.10)</option>
             <option value="llmd_dsv4">DeepSeek-V4.1-Flash (8× B200) — llm-d + vLLM (v0.30.1rc1)</option>
-            <option value="dynamo_dsv4" selected>DeepSeek-V4.1-Flash (8× B200) — NVIDIA Dynamo + SGLang (v0.5.10)</option>
-            <option value="llmd_kimik3">Kimi-K3 (2.8T MoE NVFP4, 16× B200) — llm-d + vLLM</option>
+            <option value="dynamo_dsv4">DeepSeek-V4.1-Flash (8× B200) — NVIDIA Dynamo + SGLang (v0.5.10)</option>
+            <option value="llmd_kimik3" selected>Kimi-K3 (2.8T MoE NVFP4, 16× B200) — llm-d + vLLM</option>
             <option value="dynamo_kimik3">Kimi-K3 (2.8T MoE NVFP4, 16× B200) — NVIDIA Dynamo + SGLang</option>
           </select>
         </div>

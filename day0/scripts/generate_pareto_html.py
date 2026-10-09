@@ -639,6 +639,190 @@ def build_dynamo_glm53_dataset():
   }
 
 
+def build_llmd_kimik3_dataset():
+  path_5 = os.path.join(RESULTS_DIR, "kimik3_llmd_vllm_stage1_to_5_summary.json")
+  if not os.path.exists(path_5):
+    return None
+  with open(path_5) as f:
+    rows = json.load(f)
+  stage_meta = {
+      1: (
+          "stage1",
+          "Stage 1: Naive L7 Round-Robin (Baseline)",
+          "#f43f5e",
+          True,
+          "Stateless L7 round-robin across 2-node 16× B200 (TP=16, DCP=16, EP=16) without prefix affinity (13.9% avg KV hit rate, 9,032.2 ms P90 TTFT at c=32).",
+      ),
+      2: (
+          "stage2",
+          "Stage 2: llm-d KV-Cache-Aware Routing (EPP)",
+          "#10b981",
+          False,
+          "llm-d Endpoint Picker (EPP) prefix-hash session affinity pins multi-turn sessions (31.6% KV hit rate at c=32, +49.0% output throughput vs Stage 1 at c=32).",
+      ),
+      3: (
+          "stage3",
+          "Stage 3: Multi-Node DCP=16 + EP=16 + Disagg P/D (HBM Only)",
+          "#f59e0b",
+          False,
+          "Multi-node GPUDirect RDMA (8× 400 Gb/s RoCEv2) TOKENSPEED_MLA + TRTLLM_RAGGED + DSpark 8-tok MTP with active P/D admission control (49.0% KV hit rate at c=32, 4,803.3 ms P90 TTFT).",
+      ),
+      4: (
+          "stage4",
+          "Stage 4: vLLM Native Host DRAM Tier (/dev/shm DMA)",
+          "#a855f7",
+          False,
+          "vLLM Native Host DRAM KV cache tiering offloads 896-token Mamba/KDA + MLA hybrid pages to local Host DRAM, reaching 10.68 tok/s/GPU (+89.7% vs Stage 1) and 76.6% peak KV hit rate.",
+      ),
+      5: (
+          "stage5",
+          "Stage 5: Mooncake + 1,000 MBps/TiB Lustre KV Tier",
+          "#06b6d4",
+          False,
+          "Mooncake distributed KV store backed by same-zone 1,000 MBps/TiB Managed Lustre achieves 670.7 ms P90 TTFT (27.66 tok/s/user) at c=8 and 1,899.4 ms P90 TTFT (4.75× faster than Stage 1) with 10.48 tok/s/GPU (255.6 total tok/s/GPU) at c=32.",
+      ),
+  }
+  grouped = {}
+  for r in rows:
+    sid, sname, col, dashed, note = stage_meta[r["stage"]]
+    if sid not in grouped:
+      grouped[sid] = {
+          "id": sid,
+          "name": sname,
+          "color": col,
+          "dashed": dashed,
+          "visible": True,
+          "points": [],
+      }
+    c = r["concurrency"]
+    grouped[sid]["points"].append({
+        "conc_rep": c,
+        "conc_pool": c,
+        "label": f"c={c} pool (2-node 16× B200)",
+        "tag": f"S{r['stage']} c={c}",
+        "out_tput_chip": r["out_tput_per_chip"],
+        "out_tput_pool": r["out_tput_pool"],
+        "tot_tput_chip": r["tot_tput_per_chip"],
+        "tot_tput_pool": r["tot_tput_pool"],
+        "p90_ttft_ms": r["ttft_p90_ms"],
+        "dec_tpot_ms": r["itl_p90_ms"],
+        "e2e_lat_ms_tok": r["p90_e2e_tok_lat_ms"],
+        "e2e_int": r["interactivity_p90_tok_s_user"],
+        "kv_hit": f"{r['kv_cache_hit_pct']:.2f}%",
+        "note": note,
+    })
+  order = [k for k in ["stage1", "stage2", "stage3", "stage4", "stage5"] if k in grouped]
+  return {
+      "title": "moonshotai/Kimi-K3 (NVFP4, 2.8T MoE) — llm-d + vLLM (16× B200 Multi-Node RDMA): Stage 1 → 5 Pareto Frontier",
+      "subtitle": "Kimi-K3 (TP=16, DCP=16, EP=16, nnodes=2, TOKENSPEED_MLA + TRTLLM_RAGGED + 8-tok DSpark MTP, Stage 4 Host DRAM + Stage 5 Mooncake Lustre)",
+      "stages": [grouped[k] for k in order],
+      "x_meta": {
+          "e2e_int": {"label": "P90 E2E Normalized Interactivity (tok/s/user — InferenceX X-Axis)  [→ Higher is Better]", "unit": "", "max": 35, "step": 5, "higherBetter": True},
+          "e2e_lat_ms_tok": {"label": "P90 E2E Latency per Output Token (ms/tok)  [← Lower is Better]", "unit": "ms", "max": 250, "step": 50, "higherBetter": False},
+          "dec_tpot_ms": {"label": "P90 Decode Inter-Token Latency / TPOT (ms/tok)  [← Lower is Better]", "unit": "ms", "max": 180, "step": 30, "higherBetter": False},
+          "p90_ttft_ms": {"label": "P90 Time to First Token — TTFT (ms)  [← Lower is Better]", "unit": "ms", "max": 15000, "step": 3000, "higherBetter": False},
+      },
+      "y_meta": {
+          "out_tput_chip": {"label": "Output Throughput / GPU (tok/s/GPU)  [↑ Higher is Better]", "unit": "tok/s/GPU", "max": 14},
+          "out_tput_pool": {"label": "Pool Output Throughput (tok/s — 16× B200)  [↑ Higher is Better]", "unit": "tok/s", "max": 200},
+          "tot_tput_chip": {"label": "Total Throughput / GPU (tok/s/GPU)  [↑ Higher is Better]", "unit": "tok/s/GPU", "max": 300},
+          "tot_tput_pool": {"label": "Pool Total Throughput (tok/s — 16× B200)  [↑ Higher is Better]", "unit": "tok/s", "max": 4800},
+      },
+  }
+
+
+def build_dynamo_kimik3_dataset():
+  path_5 = os.path.join(RESULTS_DIR, "kimik3_dynamo_sglang_stage1_to_5_summary.json")
+  if not os.path.exists(path_5):
+    return None
+  with open(path_5) as f:
+    rows = json.load(f)
+  stage_meta = {
+      1: (
+          "stage1",
+          "Stage 1: Naive L7 Round-Robin (Baseline)",
+          "#f43f5e",
+          True,
+          "Stateless L7 round-robin on 2-node 16× B200 (TP=16, DCP=16, EP=16) without prefix affinity (35.3% avg KV hit rate, saturates above c=16 at 3.51 tok/s/GPU).",
+      ),
+      2: (
+          "stage2",
+          "Stage 2: Dynamo KV-Cache-Aware Routing",
+          "#10b981",
+          False,
+          "NVIDIA Dynamo KV-cache-aware prefix routing increases KV hit rate to 54.6% and boosts c=16 output throughput by 3.52× (12.34 tok/s/GPU).",
+      ),
+      3: (
+          "stage3",
+          "Stage 3: Multi-Node DCP=16 + EP=16 + Active Load (HBM Only)",
+          "#f59e0b",
+          False,
+          "Multi-node GPUDirect RDMA (8× 400 Gb/s RoCEv2) trtllm_mla + flashinfer_cutedsl + 3-tok DSpark EAGLE3 reaches 15.35 tok/s/GPU at c=32 (66.1% avg KV hit rate).",
+      ),
+      4: (
+          "stage4",
+          "Stage 4: SGLang HiCache Host DRAM Tier (--hicache-ratio 2.0)",
+          "#a855f7",
+          False,
+          "SGLang HiCache Host DRAM tier (--enable-hierarchical-cache --hicache-ratio 2.0 --hicache-mem-layout page_first) reaches 91.2% avg KV hit rate, 18.43 tok/s/GPU at c=32, and 1,602.3 ms P90 TTFT (3.16× faster than Stage 3).",
+      ),
+      5: (
+          "stage5",
+          "Stage 5: Mooncake + 1,000 MBps/TiB Lustre KV Tier",
+          "#06b6d4",
+          False,
+          "Mooncake distributed KV store (--hicache-storage-backend mooncake) backed by same-zone 1,000 MBps/TiB Managed Lustre achieves 18.43 tok/s/GPU (294.8 tok/s pool, 5.25× vs Stage 1 c=16) and 52.83 tok/s/user peak interactivity (16.84 ms P90 ITL).",
+      ),
+  }
+  grouped = {}
+  for r in rows:
+    sid, sname, col, dashed, note = stage_meta[r["stage"]]
+    if sid not in grouped:
+      grouped[sid] = {
+          "id": sid,
+          "name": sname,
+          "color": col,
+          "dashed": dashed,
+          "visible": True,
+          "points": [],
+      }
+    c = r["concurrency"]
+    grouped[sid]["points"].append({
+        "conc_rep": c,
+        "conc_pool": c,
+        "label": f"c={c} pool (2-node 16× B200)",
+        "tag": f"S{r['stage']} c={c}",
+        "out_tput_chip": r["out_tput_per_chip"],
+        "out_tput_pool": r["out_tput_pool"],
+        "tot_tput_chip": r["tot_tput_per_chip"],
+        "tot_tput_pool": r["tot_tput_pool"],
+        "p90_ttft_ms": r["ttft_p90_ms"],
+        "dec_tpot_ms": r["itl_p90_ms"],
+        "e2e_lat_ms_tok": r["p90_e2e_tok_lat_ms"],
+        "e2e_int": r["interactivity_p90_tok_s_user"],
+        "kv_hit": f"{r['kv_cache_hit_pct']:.2f}%",
+        "note": note,
+    })
+  order = [k for k in ["stage1", "stage2", "stage3", "stage4", "stage5"] if k in grouped]
+  return {
+      "title": "moonshotai/Kimi-K3 (NVFP4, 2.8T MoE) — NVIDIA Dynamo + SGLang (16× B200 Multi-Node RDMA): Stage 1 → 5 Pareto Frontier",
+      "subtitle": "Kimi-K3 (TP=16, DCP=16, EP=16, nnodes=2, trtllm_mla + flashinfer_cutedsl + 3-tok DSpark EAGLE3, Stage 4 HiCache DRAM + Stage 5 Mooncake Lustre)",
+      "stages": [grouped[k] for k in order],
+      "x_meta": {
+          "e2e_int": {"label": "P90 E2E Normalized Interactivity (tok/s/user — InferenceX X-Axis)  [→ Higher is Better]", "unit": "", "max": 60, "step": 10, "higherBetter": True},
+          "e2e_lat_ms_tok": {"label": "P90 E2E Latency per Output Token (ms/tok)  [← Lower is Better]", "unit": "ms", "max": 200, "step": 40, "higherBetter": False},
+          "dec_tpot_ms": {"label": "P90 Decode Inter-Token Latency / TPOT (ms/tok)  [← Lower is Better]", "unit": "ms", "max": 100, "step": 20, "higherBetter": False},
+          "p90_ttft_ms": {"label": "P90 Time to First Token — TTFT (ms)  [← Lower is Better]", "unit": "ms", "max": 20000, "step": 4000, "higherBetter": False},
+      },
+      "y_meta": {
+          "out_tput_chip": {"label": "Output Throughput / GPU (tok/s/GPU)  [↑ Higher is Better]", "unit": "tok/s/GPU", "max": 20},
+          "out_tput_pool": {"label": "Pool Output Throughput (tok/s — 16× B200)  [↑ Higher is Better]", "unit": "tok/s", "max": 320},
+          "tot_tput_chip": {"label": "Total Throughput / GPU (tok/s/GPU)  [↑ Higher is Better]", "unit": "tok/s/GPU", "max": 480},
+          "tot_tput_pool": {"label": "Pool Total Throughput (tok/s — 16× B200)  [↑ Higher is Better]", "unit": "tok/s", "max": 7500},
+      },
+  }
+
+
 def write_html(path, datasets, default_key):
   ds = datasets[default_key]
   opts = []
@@ -665,6 +849,8 @@ def main():
   llmd_ds["option_label"] = "DeepSeek-V4.1-Flash (8× B200) — llm-d + vLLM (v0.30.1rc1)"
   dynamo_ds = build_dynamo_dsv4_dataset()
   dynamo_ds["option_label"] = "DeepSeek-V4.1-Flash (8× B200) — NVIDIA Dynamo + SGLang (v0.5.10)"
+  kimik3_llmd_ds = build_llmd_kimik3_dataset()
+  kimik3_dynamo_ds = build_dynamo_kimik3_dataset()
 
   all_datasets = {
       "llmd_glm53": glm53_llmd_ds,
@@ -674,6 +860,12 @@ def main():
     all_datasets["dynamo_glm53"] = glm53_dynamo_ds
   all_datasets["llmd_dsv4"] = llmd_ds
   all_datasets["dynamo_dsv4"] = dynamo_ds
+  if kimik3_llmd_ds is not None:
+    kimik3_llmd_ds["option_label"] = "Kimi-K3 (2.8T MoE NVFP4, 16× B200) — llm-d + vLLM"
+    all_datasets["llmd_kimik3"] = kimik3_llmd_ds
+  if kimik3_dynamo_ds is not None:
+    kimik3_dynamo_ds["option_label"] = "Kimi-K3 (2.8T MoE NVFP4, 16× B200) — NVIDIA Dynamo + SGLang"
+    all_datasets["dynamo_kimik3"] = kimik3_dynamo_ds
 
   write_html(os.path.join(RESULTS_DIR, "glm53_stage1_to_4_pareto.html"), all_datasets, "llmd_glm53")
   write_html(os.path.join(RESULTS_DIR, "glm53_stage1_to_5_pareto.html"), all_datasets, "llmd_glm53")
@@ -681,6 +873,12 @@ def main():
     write_html(os.path.join(RESULTS_DIR, "glm53_dynamo_stage1_to_5_pareto.html"), all_datasets, "dynamo_glm53")
   write_html(os.path.join(RESULTS_DIR, "llmd_stage1_to_4_pareto.html"), all_datasets, "llmd_dsv4")
   write_html(os.path.join(RESULTS_DIR, "dynamo_stage1_to_4_pareto.html"), all_datasets, "dynamo_dsv4")
+  if "llmd_kimik3" in all_datasets:
+    write_html(os.path.join(RESULTS_DIR, "kimik3_llmd_stage1_to_5_pareto.html"), all_datasets, "llmd_kimik3")
+    write_html(os.path.join(RESULTS_DIR, "kimik3_llmd_scaffold_benchmark_graphs.html"), all_datasets, "llmd_kimik3")
+  if "dynamo_kimik3" in all_datasets:
+    write_html(os.path.join(RESULTS_DIR, "kimik3_dynamo_stage1_to_5_pareto.html"), all_datasets, "dynamo_kimik3")
+    write_html(os.path.join(RESULTS_DIR, "kimik3_dynamo_scaffold_benchmark_graphs.html"), all_datasets, "dynamo_kimik3")
 
 
 if __name__ == "__main__":

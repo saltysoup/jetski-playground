@@ -76,7 +76,19 @@ Both stacks were benchmarked on `16x NVIDIA B200` (`2x a4-highgpu-8g` nodes in `
 
 `moonshotai/Kimi-K3` is a **2.8T-parameter hybrid MoE** (`16/896` active experts, Kimi Delta Attention + Gated MLA, `1.46 TiB` in `NVFP4`) requiring **2 `a4-highgpu-8g` nodes (`16x NVIDIA B200` = `2,880 GB` HBM3e)** interconnected via **8x 400 Gb/s GPUDirect RDMA NICs (`453.4 GB/s` cross-node `all_reduce` busbw)**. Concurrency sweep: `c = [8, 16, 32, 64, 128]` (`393` multi-turn agentic traces).
 
-### 4.1 `moonshotai/Kimi-K3` — `NVIDIA Dynamo + SGLang` (`TP=16, DCP=16, EP=16, nnodes=2 = 16x B200`, NVFP4 + FP8 KV + 3-tok DSpark MTP)
+### 4.1 `moonshotai/Kimi-K3` — `llm-d + vLLM` (`TP=16, DCP=16, EP=16, nnodes=2 = 16x B200`, NVFP4 + FP8 KV + `TOKENSPEED_MLA` + 8-tok DSpark MTP)
+
+| Stage | `c=32` KV Hit Rate | `c=8` P90 TTFT (`ms`) | `c=16` Tput (`tok/s/GPU`) | `c=32` Tput (`tok/s/GPU`) | `c=128` Tput (`tok/s/GPU`) | `c=32` P90 TTFT (`ms`) | P90 Interactivity (`c=16 \| Peak tok/s/u`) | Gain vs. Stage 1 (`c=32`) |
+| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
+| **1. Naive L7 Round-Robin** | `12.9%` | `1,276.5` | `7.15` | `5.63` | `7.85` | `9,032.2` | `19.09 \| 29.43` | `1.00x Base` |
+| **2. llm-d KV-Cache-Aware Routing (EPP)** | `31.6%` | `1,993.3` | `9.40` | `8.39` | `5.65` | `5,938.9` | `17.64 \| 29.42` | `1.49x Tput \| 1.4x Int` |
+| **3. Multi-Node DCP=16 + EP=16 + Disagg P/D** | `49.0%` | `2,124.1` | `9.40` | `6.24` | `7.29` | `4,803.3` | `17.37 \| 27.34` | `1.11x Tput \| 1.4x Int` |
+| **4. vLLM Native Host DRAM Tier (`/dev/shm`)** | `71.2%` | `740.9` | `9.40` | **`10.68`** | **`7.77`** | `2,117.2` | `14.99 \| 21.95` | **`1.90x Tput \| 1.6x Int`** |
+| **5. Mooncake + `1,000 MBps/TiB` Lustre KV Tier** | **`71.9%`** | **`670.7`** | **`10.24`** | `10.48` | `6.81` | **`1,899.4`** | **`24.87 \| 27.66`** | **`1.86x Tput \| 2.4x Int`** |
+
+---
+
+### 4.2 `moonshotai/Kimi-K3` — `NVIDIA Dynamo + SGLang` (`TP=16, DCP=16, EP=16, nnodes=2 = 16x B200`, NVFP4 + FP8 KV + `trtllm_mla` + 3-tok DSpark EAGLE3)
 
 | Stage | Avg KV Hit Rate | `c=16` P90 TTFT (`ms`) | `c=16` Tput (`tok/s/GPU`) | `c=32` Tput (`tok/s/GPU`) | `c=128` Tput (`tok/s/GPU`) | `c=32` P90 TTFT (`ms`) | P90 Interactivity (`c=16 \| Peak tok/s/u`) | Gain vs. Stage 1 (`c=16`) |
 | :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
@@ -101,4 +113,5 @@ Both stacks were benchmarked on `16x NVIDIA B200` (`2x a4-highgpu-8g` nodes in `
 - [`results/glm53_dynamo_sglang_stage1_to_5_summary.json`](results/glm53_dynamo_sglang_stage1_to_5_summary.json) & [`.csv`](results/glm53_dynamo_sglang_stage1_to_5_summary.csv): Full 5-stage benchmark metrics for `zai-org/GLM-5.3` (`NVIDIA Dynamo + SGLang`, `16x B200`).
 - [`results/llmd_vllm_stage1_to_5_summary.json`](results/llmd_vllm_stage1_to_5_summary.json) & [`.csv`](results/llmd_vllm_stage1_to_5_summary.csv): Full 5-stage benchmark metrics for `deepseek-ai/DeepSeek-V4.1-Flash` (`llm-d + vLLM`, `8x B200`).
 - [`results/dynamo_sglang_stage1_to_5_summary.json`](results/dynamo_sglang_stage1_to_5_summary.json) & [`.csv`](results/dynamo_sglang_stage1_to_5_summary.csv): Full 5-stage benchmark metrics for `deepseek-ai/DeepSeek-V4.1-Flash` (`NVIDIA Dynamo + SGLang`, `8x B200`).
+- [`results/kimik3_llmd_vllm_stage1_to_5_summary.json`](results/kimik3_llmd_vllm_stage1_to_5_summary.json) & [`.csv`](results/kimik3_llmd_vllm_stage1_to_5_summary.csv): Full 5-stage benchmark metrics for `moonshotai/Kimi-K3` (`llm-d + vLLM`, `16x B200`).
 - [`results/kimik3_dynamo_sglang_stage1_to_5_summary.json`](results/kimik3_dynamo_sglang_stage1_to_5_summary.json) & [`.csv`](results/kimik3_dynamo_sglang_stage1_to_5_summary.csv): Full 5-stage benchmark metrics for `moonshotai/Kimi-K3` (`NVIDIA Dynamo + SGLang`, `16x B200`).

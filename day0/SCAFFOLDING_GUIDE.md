@@ -189,11 +189,26 @@ Before launching the pods on a new GKE cluster (`GB300` or `B200`), verify three
      ```
 
 3. **Critical Engine Stability Guardrails Discovered During Benchmarking**:
-   - **Multi-Node Custom & FlashInfer MNNVL AllReduce (`B200` RoCEv2 vs. `GB300 NVL72` MNNVL)**:
+   - **Multi-Node Custom, FlashInfer, CuteDSL GEMM-AR/RS & Direct DCP (`B200` RoCEv2 vs. `GB300 NVL72` MNNVL)**:
      - Always pass `--disable-custom-all-reduce` when running multi-node `TP=16` (`nnodes >= 2`) in both SGLang and vLLM.
-     - In **vLLM** on multi-node RoCEv2 clusters (`B200` / `B300` HGX without Multi-Node NVLink), also set `export VLLM_ALLREDUCE_USE_FLASHINFER=0` and `export VLLM_ALLREDUCE_USE_SYMM_MEM=0` so `tp:0` uses `PyNCCL` over GPUDirect RDMA (`453+ GB/s` busbw) instead of hanging in `flashinfer_comm.create_allreduce_fusion_workspace(backend="mnnvl")` waiting on a local IMEX Unix socket. On **GB300 NVL72** (`a4x`), where all 72 GPUs share a single Multi-Node NVLink (MNNVL) domain with IMEX enabled, leave `VLLM_ALLREDUCE_USE_FLASHINFER=1` enabled for hardware multicast all-reduce fusion!
-     - In **vLLM** multi-node `TP/DCP/EP` (`nnodes >= 2` with `DP=1`), always pass `--headless` on worker nodes (`--node-rank >= 1`) so only rank 0 launches the API server and worker nodes run `MultiprocExecutor` in headless mode.
-   - **Speculative Decoding + Hybrid Attention Memory Headroom**: When enabling `DSpark` or `EAGLE/MTP` speculative decoding on massive MoE models (`Kimi-K3`, `GLM-5.3`), set `--mem-fraction-static 0.84` (SGLang) or `--gpu-memory-utilization 0.84` (vLLM) with `PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True`. Using `0.90` leaves insufficient scratchpad VRAM (`< 1.5 GiB`) after draft CUDA graph capture for `flashinfer::FP4BlockScaleLauncher::prepare_moe` (`1.92 GiB` workspace).
+     - In **vLLM** on multi-node RoCEv2 clusters (`B200` / `B300` HGX without Multi-Node NVLink), also set:
+       ```bash
+       export VLLM_ALLREDUCE_USE_FLASHINFER=0
+       export VLLM_ALLREDUCE_USE_SYMM_MEM=0
+       export VLLM_KIMI_K3_GEMM_AR=0
+       export VLLM_ENABLE_GEMM_RS=0
+       export VLLM_USE_DIRECT_DCP_A2A=0
+       export VLLM_USE_DIRECT_DCP_Q_GATHER=0
+       export VLLM_USE_DIRECT_DCP_KV_GATHER=0
+       ```
+       Why? `FlashInferAllReduce` (`backend="mnnvl"`), Kimi-K3's CuteDSL `GEMM-RS/AR` (`maybe_init_gemm_rs_ar`), and Direct DCP symmetric-memory workspaces (`cp_common._symm_mem_spans_group`) all call `torch.distributed._symmetric_memory.rendezvous`, which requires all `TP=16` / `DCP=16` ranks to belong to a single NVLink domain (and otherwise hangs on local `/tmp/symm_mem-<pid>` Unix domain socket IPC across nodes).
+     - **On `NVIDIA GB300 NVL72` (`a4x`)**, where all 72 GPUs belong to a **single NVLink 5 domain** with IMEX enabled, **keep `VLLM_ALLREDUCE_USE_FLASHINFER=1`, `VLLM_KIMI_K3_GEMM_AR=1`, `VLLM_ENABLE_GEMM_RS=1`, and `VLLM_USE_DIRECT_DCP_*=1` enabled**—this unlocks hardware NVLink multicast GEMM + AllReduce/ReduceScatter and zero-copy Direct DCP Q/KV gather across `TP=16, DCP=16`!
+     - In **vLLM** multi-node `TP/DCP/EP` (`nnodes >= 2` with `DP=1`), always pass `--headless` on worker nodes (`--node-rank >= 1`) so only rank 0 launches the API server, pass explicit IPv4 `VLLM_HOST_IP` (avoid `$(hostname -i)` when IPv6 is enabled on GKE pods), and pass `--language-model-only` on text-only AgentX benchmarks to skip multimodal ViT encoder initialization when `vision_heads % tp_size != 0`.
+   - **Hybrid Mamba/KDA + MLA + DSpark Speculative Decoding in vLLM (`Kimi-K3`)**:
+     - `Kimi-K3` with `--kv-cache-dtype fp8` requires FP8 prefill query quantization (`prefill.q_data_type == torch.float8_e4m3fn` in `kimi_k3/nvidia/mla.py`). Pass `--attention-config '{"backend": "TOKENSPEED_MLA", "use_prefill_query_quantization": true, "mla_prefill_backend": "TRTLLM_RAGGED"}'`.
+     - Because `Kimi-K3`'s 72 Mamba/KDA layers inflate the unified KV cache manager `block_size` to `896` tokens (`516,096` bytes/page), the `DSpark` draft speculator's 5 sliding-window attention layers have padded pages and cannot split a `896`-token manager block into `32`/`64`-token FlashInfer kernel blocks (`ratio > 1`). Configure `DSpark` with `"attention_backend": "FLASH_ATTN"` and `"kv_cache_dtype": "bfloat16"` (`--speculative-config '{"method": "dspark", "model": "/mnt/lustre_1000mbps/models/RedHatAI/Kimi-K3-speculator.dspark", "num_speculative_tokens": 8, "draft_tensor_parallel_size": 16, "attention_backend": "FLASH_ATTN", "kv_cache_dtype": "bfloat16"}'`), which supports `MultipleOf(16)` (`kernel_block_size = 896`, `ratio = 1`) and full CUDA graph capture.
+     - For `num_speculative_tokens: 8` (`q_len = 1 + 8 = 9`), ensure `_TOKENSPEED_MAX_Q_LEN = 16` in `vllm/v1/attention/backends/mla/tokenspeed_mla.py` so the `tokenspeed_mla_decode` workspace buffer (`29.15 MB`) accommodates `q_len = 9` during `FULL` CUDA graph capture.
+   - **Speculative Decoding + Hybrid Attention Memory Headroom**: When enabling `DSpark` or `EAGLE/MTP` speculative decoding on massive MoE models (`Kimi-K3`, `GLM-5.3`), set `--mem-fraction-static 0.84` (SGLang) or `--gpu-memory-utilization 0.85` (vLLM) with `PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True`. Using `0.90` leaves insufficient scratchpad VRAM (`< 1.5 GiB`) after draft CUDA graph capture for `flashinfer::FP4BlockScaleLauncher::prepare_moe` (`1.92 GiB` workspace).
    - **Never Call `/abort_request` Mid-Decode on Hybrid Mamba/KDA + Speculative Requests**: Let each concurrency wave drain naturally via router drain polling (`in_flight_decode_reqs == 0`).
 
 ---

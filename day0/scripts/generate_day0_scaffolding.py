@@ -289,18 +289,21 @@ def parse_vllm_recipe(
         # On GB300/B300 (288GB/GPU), 8x GB300 = 2,304 GB HBM3e fits 1.46 TiB in 8 GPUs (or 16 GPUs across 4 trays).
         tp_size = 8 if hw in ("gb300", "b300") and recipe_tp <= 8 else 16
         extra_args.extend([
+            "--language-model-only",
             "--decode-context-parallel-size",
             str(tp_size),
             "--enable-expert-parallel",
             "--disable-custom-all-reduce",
-            "--attention-backend",
-            "FLASHINFER_MLA",
+            "--attention-config",
+            '{"backend":"TOKENSPEED_MLA","use_prefill_query_quantization":true,"mla_prefill_backend":"TRTLLM_RAGGED"}',
+            "--speculative-config",
+            f'{{"method":"dspark","model":"/mnt/lustre_1000mbps/models/RedHatAI/Kimi-K3-speculator.dspark","num_speculative_tokens":8,"draft_tensor_parallel_size":{tp_size},"attention_backend":"FLASH_ATTN","kv_cache_dtype":"bfloat16"}}',
             "--moe-backend",
             "flashinfer_trtllm",
             "--kv-cache-dtype",
-            "fp8_e4m3",
+            "fp8",
             "--gpu-memory-utilization",
-            "0.84",
+            "0.85",
             "--max-num-seqs",
             "128",
             "--max-num-batched-tokens",
@@ -309,6 +312,27 @@ def parse_vllm_recipe(
             "--enable-prompt-tokens-details",
             "--trust-remote-code",
         ])
+        if hw == "gb300":
+            # Single 72-GPU MNNVL domain on GB300 NVL72 supports hardware multicast GEMM+AR/RS & Direct DCP
+            extra_env.update({
+                "VLLM_ALLREDUCE_USE_FLASHINFER": "1",
+                "VLLM_KIMI_K3_GEMM_AR": "1",
+                "VLLM_ENABLE_GEMM_RS": "1",
+                "VLLM_USE_DIRECT_DCP_A2A": "1",
+                "VLLM_USE_DIRECT_DCP_Q_GATHER": "1",
+                "VLLM_USE_DIRECT_DCP_KV_GATHER": "1",
+            })
+        else:
+            # 2-node 8-GPU B200 connected via RoCEv2 RDMA requires disabling single-NVLink-domain symm_mem probes
+            extra_env.update({
+                "VLLM_ALLREDUCE_USE_FLASHINFER": "0",
+                "VLLM_ALLREDUCE_USE_SYMM_MEM": "0",
+                "VLLM_KIMI_K3_GEMM_AR": "0",
+                "VLLM_ENABLE_GEMM_RS": "0",
+                "VLLM_USE_DIRECT_DCP_A2A": "0",
+                "VLLM_USE_DIRECT_DCP_Q_GATHER": "0",
+                "VLLM_USE_DIRECT_DCP_KV_GATHER": "0",
+            })
 
     combined_args = strip_non_benchmark_flags(base_args + extra_args)
     combined_env = {**base_env, **extra_env}
