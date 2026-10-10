@@ -777,49 +777,49 @@ def main():
   if os.path.exists("/tmp/slide6.json"):
     with open("/tmp/slide6.json") as f:
       s6_env = json.load(f)
-    # Build Slide 6: moonshotai/Kimi-K3 (llm-d + vLLM on Left, NVIDIA Dynamo + SGLang on Right)
+    # Build Slide 6: moonshotai/Kimi-K3 (llm-d + vLLM TP8PP2/DCP8 on Left, NVIDIA Dynamo + SGLang on Right)
     s6_rows = [
         {
             "color": "#b91c1c",
             "config": "<strong style=\"color:#b91c1c;font-weight:700\">1. Naive L7 Round-Robin</strong> (Stateless L7 scatters multi-turn sessions)",
-            "kv_hit": "13.9% | 35.3%",
-            "llmd_tput": "28.4 (<strong style=\"font-weight:700\">1.00x</strong>)",
+            "kv_hit": "15.5% | 35.3%",
+            "llmd_tput": "84.4 (<strong style=\"font-weight:700\">1.00x</strong>)",
             "dynamo_tput": "12.8* (<strong style=\"font-weight:700\">1.00x</strong>)",
-            "p90_int": "57.7 | 92.1 tok/s/u",
+            "p90_int": "73.4 | 92.1 tok/s/u",
         },
         {
             "color": "#b45309",
             "config": "<strong style=\"color:#b45309;font-weight:700\">2. KV-Cache-Aware Routing</strong> (llm-d EPP / Dynamo prefix session affinity)",
-            "kv_hit": "31.6% | 54.6%",
-            "llmd_tput": "36.2 (<strong style=\"color:#b45309;font-weight:700\">1.28x</strong>)",
+            "kv_hit": "36.7% | 54.6%",
+            "llmd_tput": "87.4 (<strong style=\"color:#b45309;font-weight:700\">1.35x TTFT</strong>)",
             "dynamo_tput": "32.3 (<strong style=\"color:#b45309;font-weight:700\">2.53x*</strong>)",
-            "p90_int": "57.7 | 91.4 tok/s/u",
+            "p90_int": "78.5 | 91.4 tok/s/u",
         },
         {
             "color": "#1d4ed8",
-            "config": "<strong style=\"color:#1d4ed8;font-weight:700\">3. Multi-Node DCP/EP + P/D Disagg</strong> (2-Node RoCEv2 RDMA, HBM only)",
-            "kv_hit": "49.0% | 72.2%",
-            "llmd_tput": "45.9 (<strong style=\"color:#1d4ed8;font-weight:700\">1.62x</strong>)",
+            "config": "<strong style=\"color:#1d4ed8;font-weight:700\">3. Multi-Node TP8PP2/DCP8 + P/D Disagg</strong> (NVLink 5 + RoCEv2 RDMA)",
+            "kv_hit": "52.8% | 72.2%",
+            "llmd_tput": "101.7 (<strong style=\"color:#1d4ed8;font-weight:700\">1.21x</strong>)",
             "dynamo_tput": "34.7 (<strong style=\"color:#1d4ed8;font-weight:700\">2.71x*</strong>)",
-            "p90_int": "57.2 | 108.4 tok/s/u",
+            "p90_int": "84.0 | 108.4 tok/s/u",
         },
         {
             "color": "#7e22ce",
             "highlight": True,
-            "config": "<strong style=\"color:#7e22ce;font-weight:700\">4. Host DRAM KV Tiering</strong> (vLLM Host DRAM / SGLang HiCache DRAM)",
-            "kv_hit": "84.5% | 91.8%",
-            "llmd_tput": "<strong style=\"color:#7e22ce;font-weight:700\">80.5 (2.84x)</strong>",
+            "config": "<strong style=\"color:#7e22ce;font-weight:700\">4. Host DRAM KV Tiering</strong> (26.9M-tok HBM + DRAM / SGLang HiCache)",
+            "kv_hit": "94.7% | 91.8%",
+            "llmd_tput": "<strong style=\"color:#7e22ce;font-weight:700\">123.3 (3.53x TTFT)</strong>",
             "dynamo_tput": "<strong style=\"color:#7e22ce;font-weight:700\">64.6 (5.06x*)</strong>",
-            "p90_int": "60.9 | 152.5 tok/s/u",
+            "p90_int": "90.0 | 152.5 tok/s/u",
         },
         {
             "color": "#0f766e",
             "highlight": True,
             "config": "<strong style=\"color:#0f766e;font-weight:700\">5. Mooncake + Lustre KV Tier</strong> (Mooncake + 1,000 MBps/TiB Lustre)",
-            "kv_hit": "91.1% | 91.2%",
-            "llmd_tput": "<strong style=\"color:#0f766e;font-weight:700\">86.0 (3.03x)</strong>",
+            "kv_hit": "90.1% | 91.2%",
+            "llmd_tput": "<strong style=\"color:#0f766e;font-weight:700\">124.8 (3.58x TTFT)</strong>",
             "dynamo_tput": "<strong style=\"color:#0f766e;font-weight:700\">62.7 (4.91x*)</strong>",
-            "p90_int": "65.9 | 153.2 tok/s/u",
+            "p90_int": "160.8 | 153.2 tok/s/u",
         },
     ]
 
@@ -828,12 +828,12 @@ def main():
         slide_index=6,
         slide_id=s6_env["slideId"],
         title_id="el-kimik3-title",
-        title_text="Kimi-K3 (2.8T MoE): 5-Stage Scaffolding hits 3.03x–5.06x throughput",
-        left_hdr="llm-d on Cloud GPU — 16x B200 (Kimi-K3 NVFP4, vLLM)",
+        title_text="Kimi-K3 (2.8T MoE): TP8PP2/DCP8 hits 124.8 tok/s/GPU & 161 tok/s/u",
+        left_hdr="llm-d on Cloud GPU — 16x B200 (Kimi-K3 TP8PP2/DCP8, vLLM)",
         left_ds=kimik3_llmd,
-        left_xmax=75,
-        left_xstep=15,
-        left_ymax=100,
+        left_xmax=180,
+        left_xstep=45,
+        left_ymax=140,
         left_yticks=4,
         right_hdr="Dynamo on Cloud GPU — 16x B200 (Kimi-K3 NVFP4, SGLang)",
         right_ds=kimik3_dyn,
@@ -842,10 +842,10 @@ def main():
         right_ymax=80,
         right_yticks=4,
         table_id="el-kimik3-tbl",
-        table_headers=["Legend", "Stage & Optimization Configuration (16x B200 = 2-Node TP/EP=16)", "KV Cache Hit", "llm-d Tput", "Dynamo Tput", "P90 Interactivity"],
+        table_headers=["Legend", "Stage & Optimization Configuration (16x B200: TP8PP2/DCP8 & TP16)", "KV Cache Hit", "llm-d Tput", "Dynamo Tput", "P90 Interactivity"],
         table_rows=s6_rows,
         footnote_id="el-kimik3-fn",
-        footnote_html="<strong style=\"font-weight:700\">[1] Measured:</strong> GKE Day-0 5-Stage Scaffolding on 2-Node 16x B200 GPUDirect RDMA (Kimi-K3 2.8T MoE NVFP4, c=8..128; *Stage 1 Dynamo base at c=16).<br><strong style=\"font-weight:700\">[2] KV Tiering:</strong> Stage 4 uses vLLM Host DRAM &amp; SGLang HiCache DRAM; Stage 5 uses Mooncake Store on 1,000 MBps/TiB Lustre (419 GB/s NCCL RoCEv2).",
+        footnote_html="<strong style=\"font-weight:700\">[1] Measured:</strong> GKE Day-0 5-Stage Scaffolding on 2-Node 16x B200 GPUDirect RDMA (vLLM TP=8, PP=2, DCP=8 + 4-tok DSpark 3.36x accept, 192.4 tok/s/u P50 ITL at c=1).<br><strong style=\"font-weight:700\">[2] KV Tiering:</strong> 26.9M-tok FP8 HBM KV cache (42.1 GiB/GPU) + Stage 4 Host DRAM &amp; Stage 5 Mooncake Store on 1,000 MBps/TiB Lustre (3.58x lower P90 TTFT).",
     )
     with open("/tmp/slide6_dual.json", "w") as f:
       json.dump(s6_dual, f, indent=2)

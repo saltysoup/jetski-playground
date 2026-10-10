@@ -62,39 +62,47 @@ spec:
           export GLOO_SOCKET_IFNAME=eth0
           export NCCL_SOCKET_IFNAME=eth0
           export VLLM_HOST_IP=$(ip -4 -o addr show eth0 | awk '{print $4}' | cut -d/ -f1)
-          export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
-          export VLLM_ALLREDUCE_USE_FLASHINFER=0
-          export VLLM_ALLREDUCE_USE_SYMM_MEM=0
-          export VLLM_KIMI_K3_GEMM_AR=0
-          export VLLM_ENABLE_GEMM_RS=0
-          export VLLM_USE_DIRECT_DCP_A2A=0
-          export VLLM_USE_DIRECT_DCP_Q_GATHER=0
-          export VLLM_USE_DIRECT_DCP_KV_GATHER=0
-          sed -i 's/_TOKENSPEED_MAX_Q_LEN = 8/_TOKENSPEED_MAX_Q_LEN = 16/g' /usr/local/lib/python3.12/dist-packages/vllm/v1/attention/backends/mla/tokenspeed_mla.py || true
+          export VLLM_USE_V2_MODEL_RUNNER=1
+          export VLLM_ALLREDUCE_USE_FLASHINFER=1
+          export VLLM_KIMI_K3_GEMM_AR=1
+          export VLLM_USE_DIRECT_DCP_A2A=1
+          export VLLM_USE_DIRECT_DCP_Q_GATHER=1
+          export VLLM_USE_DIRECT_DCP_KV_GATHER=1
+          export VLLM_ENABLE_K3_LATENT_MOE_TAIL_FUSION=1
+          export VLLM_MEMORY_PROFILER_ESTIMATE_CUDAGRAPHS=0
+          export VLLM_FLOATING_POINT_EXCEPTION_DETECTION=0
+          export HF_HUB_OFFLINE=1
+          export SAFETENSORS_FAST_GPU=1
           exec /usr/local/bin/vllm serve /mnt/lustre_1000mbps/models/RedHatAI/Kimi-K3-NVFP4 \
             --served-model-name moonshotai/Kimi-K3 \
             --host 0.0.0.0 \
             --port 8000 \
             --trust-remote-code \
             --language-model-only \
+            --load-format fastsafetensors \
             --distributed-executor-backend mp \
             --nnodes 2 \
             --node-rank 0 \
             --master-addr $VLLM_HOST_IP \
             --master-port 29500 \
-            --tensor-parallel-size 16 \
-            --decode-context-parallel-size 16 \
-            --enable-expert-parallel \
-            --disable-custom-all-reduce \
-            --attention-config '{"backend": "TOKENSPEED_MLA", "use_prefill_query_quantization": true, "mla_prefill_backend": "TRTLLM_RAGGED"}' \
-            --speculative-config '{"method": "dspark", "model": "/mnt/lustre_1000mbps/models/RedHatAI/Kimi-K3-speculator.dspark", "num_speculative_tokens": 8, "draft_tensor_parallel_size": 16, "attention_backend": "FLASH_ATTN", "kv_cache_dtype": "bfloat16"}' \
-            --moe-backend flashinfer_trtllm \
+            --tensor-parallel-size 8 \
+            --pipeline-parallel-size 2 \
+            --decode-context-parallel-size 8 \
+            --dcp-comm-backend a2a \
+            --attention-backend TOKENSPEED_MLA \
+            --attention-config '{"mla_prefill_backend":"TRTLLM_RAGGED","use_prefill_query_quantization":true}' \
             --kv-cache-dtype fp8 \
-            --gpu-memory-utilization 0.85 \
+            --mamba-ssm-cache-dtype bfloat16 \
+            --prefix-match-unit 128 \
+            --gpu-memory-utilization 0.842 \
+            --max-model-len 1048576 \
             --max-num-seqs 128 \
             --max-num-batched-tokens 8192 \
             --enable-prefix-caching \
-            --enable-prompt-tokens-details
+            --enable-prompt-tokens-details \
+            --no-enable-flashinfer-autotune \
+            --compilation-config '{"cudagraph_mode":"FULL_AND_PIECEWISE","cudagraph_num_of_warmups":0,"cudagraph_capture_sizes":[1,7,18,34,53,64,75,100,128,256,512,1024,2048,4096,8192]}' \
+            --speculative-config '{"model":"/mnt/lustre_1000mbps/models/Inferact/Kimi-K3-DSpark","num_speculative_tokens":4,"method":"dspark","attention_backend":"TOKENSPEED_MLA","draft_sample_method":"probabilistic","rejection_sample_method":"synthetic","synthetic_acceptance_length":3.36}'
         env:
         - name: LD_LIBRARY_PATH
           value: /usr/local/nvidia/lib64:/usr/local/cuda/lib64
@@ -210,38 +218,46 @@ spec:
           export GLOO_SOCKET_IFNAME=eth0
           export NCCL_SOCKET_IFNAME=eth0
           export VLLM_HOST_IP=$(ip -4 -o addr show eth0 | awk '{print $4}' | cut -d/ -f1)
-          export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
-          export VLLM_ALLREDUCE_USE_FLASHINFER=0
-          export VLLM_ALLREDUCE_USE_SYMM_MEM=0
-          export VLLM_KIMI_K3_GEMM_AR=0
-          export VLLM_ENABLE_GEMM_RS=0
-          export VLLM_USE_DIRECT_DCP_A2A=0
-          export VLLM_USE_DIRECT_DCP_Q_GATHER=0
-          export VLLM_USE_DIRECT_DCP_KV_GATHER=0
-          sed -i 's/_TOKENSPEED_MAX_Q_LEN = 8/_TOKENSPEED_MAX_Q_LEN = 16/g' /usr/local/lib/python3.12/dist-packages/vllm/v1/attention/backends/mla/tokenspeed_mla.py || true
+          export VLLM_USE_V2_MODEL_RUNNER=1
+          export VLLM_ALLREDUCE_USE_FLASHINFER=1
+          export VLLM_KIMI_K3_GEMM_AR=1
+          export VLLM_USE_DIRECT_DCP_A2A=1
+          export VLLM_USE_DIRECT_DCP_Q_GATHER=1
+          export VLLM_USE_DIRECT_DCP_KV_GATHER=1
+          export VLLM_ENABLE_K3_LATENT_MOE_TAIL_FUSION=1
+          export VLLM_MEMORY_PROFILER_ESTIMATE_CUDAGRAPHS=0
+          export VLLM_FLOATING_POINT_EXCEPTION_DETECTION=0
+          export HF_HUB_OFFLINE=1
+          export SAFETENSORS_FAST_GPU=1
           exec /usr/local/bin/vllm serve /mnt/lustre_1000mbps/models/RedHatAI/Kimi-K3-NVFP4 \
             --served-model-name moonshotai/Kimi-K3 \
             --headless \
             --trust-remote-code \
             --language-model-only \
+            --load-format fastsafetensors \
             --distributed-executor-backend mp \
             --nnodes 2 \
             --node-rank 1 \
             --master-addr llmd-vllm-w1.ubench-llmd.svc.cluster.local \
             --master-port 29500 \
-            --tensor-parallel-size 16 \
-            --decode-context-parallel-size 16 \
-            --enable-expert-parallel \
-            --disable-custom-all-reduce \
-            --attention-config '{"backend": "TOKENSPEED_MLA", "use_prefill_query_quantization": true, "mla_prefill_backend": "TRTLLM_RAGGED"}' \
-            --speculative-config '{"method": "dspark", "model": "/mnt/lustre_1000mbps/models/RedHatAI/Kimi-K3-speculator.dspark", "num_speculative_tokens": 8, "draft_tensor_parallel_size": 16, "attention_backend": "FLASH_ATTN", "kv_cache_dtype": "bfloat16"}' \
-            --moe-backend flashinfer_trtllm \
+            --tensor-parallel-size 8 \
+            --pipeline-parallel-size 2 \
+            --decode-context-parallel-size 8 \
+            --dcp-comm-backend a2a \
+            --attention-backend TOKENSPEED_MLA \
+            --attention-config '{"mla_prefill_backend":"TRTLLM_RAGGED","use_prefill_query_quantization":true}' \
             --kv-cache-dtype fp8 \
-            --gpu-memory-utilization 0.85 \
+            --mamba-ssm-cache-dtype bfloat16 \
+            --prefix-match-unit 128 \
+            --gpu-memory-utilization 0.842 \
+            --max-model-len 1048576 \
             --max-num-seqs 128 \
             --max-num-batched-tokens 8192 \
             --enable-prefix-caching \
-            --enable-prompt-tokens-details
+            --enable-prompt-tokens-details \
+            --no-enable-flashinfer-autotune \
+            --compilation-config '{"cudagraph_mode":"FULL_AND_PIECEWISE","cudagraph_num_of_warmups":0,"cudagraph_capture_sizes":[1,7,18,34,53,64,75,100,128,256,512,1024,2048,4096,8192]}' \
+            --speculative-config '{"model":"/mnt/lustre_1000mbps/models/Inferact/Kimi-K3-DSpark","num_speculative_tokens":4,"method":"dspark","attention_backend":"TOKENSPEED_MLA","draft_sample_method":"probabilistic","rejection_sample_method":"synthetic","synthetic_acceptance_length":3.36}'
         env:
         - name: LD_LIBRARY_PATH
           value: /usr/local/nvidia/lib64:/usr/local/cuda/lib64

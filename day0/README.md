@@ -76,15 +76,17 @@ Both stacks were benchmarked on `16x NVIDIA B200` (`2x a4-highgpu-8g` nodes in `
 
 `moonshotai/Kimi-K3` is a **2.8T-parameter hybrid MoE** (`16/896` active experts, 72 Kimi Delta Attention layers + 24 Gated MLA layers, `1.46 TiB` in `NVFP4`) requiring **2 `a4-highgpu-8g` nodes (`16x NVIDIA B200` = `2,880 GB` HBM3e)** interconnected via **8x 400 Gb/s GPUDirect RDMA NICs (`419.25 GB/s` 16-GPU cross-node `all_reduce` busbw, `74.60 GB/s` `alltoall` busbw over `NET/IB/0..7/GDRDMA`)**. Concurrency sweep: `c = [8, 16, 32, 64, 128]` (`393` multi-turn agentic traces).
 
-### 4.1 `moonshotai/Kimi-K3` — `llm-d + vLLM` (`TP=16, DCP=16, EP=16, nnodes=2 = 16x B200`, NVFP4 + FP8 KV + `TOKENSPEED_MLA` + 8-tok DSpark MTP)
+### 4.1 `moonshotai/Kimi-K3` — `llm-d + vLLM` (`TP=8, PP=2, DCP=8, EP=1, nnodes=2 = 16x B200`, NVFP4 + FP8 KV + `TOKENSPEED_MLA` + 4-tok `Kimi-K3-DSpark` `3.36x` Accept)
 
-| Stage | `c=32 \| Peak` KV Hit Rate | `c=8` P90 TTFT (`ms`) | `c=32` Tput (`tok/s/GPU`) | `c=64` Tput (`tok/s/GPU`) | `c=128` Tput (`tok/s/GPU`) | `c=32` P90 TTFT (`ms`) | P90 Interactivity (`c=32 \| Peak tok/s/u`) | Gain vs. Stage 1 (`Peak`) |
+| Stage | Avg \| Peak KV Hit Rate | `c=8` P50 \| P90 TTFT (`ms`) | `c=32` Tput (`tok/s/GPU`) | `c=64` Tput (`tok/s/GPU`) | `c=128` Tput (`tok/s/GPU`) | `c=32` P90 TTFT (`ms`) | Interactivity (`c=8 \| c=1 P50/P90 E2E tok/s/u`) | Gain vs. Stage 1 (`c=128`) |
 | :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
-| **1. Naive L7 Round-Robin** | `13.9% \| 14.3%` | `1,276.5` | `25.81` | `28.36` | `24.19` | `9,032.2` | `20.89 \| 57.68` | `1.00x Base` |
-| **2. llm-d KV-Cache-Aware Routing (EPP)** | `31.6% \| 31.6%` | `1,993.3` | `36.20` | `28.94` | `27.19` | `5,938.9` | `16.82 \| 57.65` | `1.28x Tput` |
-| **3. Multi-Node DCP=16 + EP=16 + Disagg P/D** | `49.0% \| 49.0%` | `2,124.1` | `45.86` | `38.12` | `33.19` | `4,803.3` | `18.10 \| 57.15` | `1.62x Tput` |
-| **4. vLLM Native Host DRAM Tier (`/dev/shm`)** | `71.2% \| 84.5%` | `740.9` | `52.94` | `71.56` | **`80.47`** | `2,117.2` | `27.51 \| 60.87` | **`2.84x Tput \| 1.3x Int`** |
-| **5. Mooncake + `1,000 MBps/TiB` Lustre KV Tier** | **`71.9% \| 91.1%`** | **`670.7`** | **`54.71`** | **`86.04`** | **`85.59`** | **`1,899.4`** | **`29.40 \| 65.92`** | **`3.03x Tput \| 1.4x Int`** |
+| **1. Naive L7 Round-Robin** | `15.5% \| 22.2%` | `607.6 \| 1,006.2` | `43.42` | `66.14` | `84.35` | `4,712.8` | `73.35 \| 109.72` | `1.00x Base` |
+| **2. llm-d KV-Cache-Aware Routing (EPP)** | `36.7% \| 43.3%` | `274.7 \| 772.1` | `48.22` | `72.44` | `87.44` | `3,493.1` | `78.54 \| 107.73` | `1.04x Tput \| 1.35x TTFT` |
+| **3. Multi-Node TP8PP2/DCP8 + Disagg P/D** | `52.8% \| 64.8%` | `246.1 \| 667.7` | `51.46` | `75.18` | `101.71` | `2,618.4` | `83.97 \| 113.82` | `1.21x Tput \| 1.80x TTFT` |
+| **4. vLLM Native Host DRAM Tier (`/dev/shm`)** | **`89.8% \| 94.7%`** | `224.4 \| 345.1` | **`54.97`** | **`78.67`** | `123.34` | **`742.0`** | `89.95 \| 112.90` | `1.46x Tput \| 3.53x TTFT` |
+| **5. Mooncake + `1,000 MBps/TiB` Lustre KV Tier** | `82.7% \| 90.1%` | **`215.4 \| 356.5`** | `54.69` | `77.85` | **`124.77`** | `813.9` | **`91.00 \| 192.42 / 160.80*`** | **`1.48x Tput \| 3.58x TTFT`** |
+
+*\*At `c=1`, Stage 5 achieves **`192.42 tok/s/user` (`ITL p50 = 5.20 ms`)**, **`180.99 tok/s/user` (`ITL p90 = 5.53 ms`, `3.37` accepted tokens/step)**, and **`160.80 tok/s/user` (`E2E p90`)** with **`263.7 ms` `TTFT p50`**; at `c=4`, **`152.39 tok/s/user` (`ITL p50 = 6.56 ms`)** and **`112.47 tok/s/user` (`E2E p90`)** with **`230.2 ms` `TTFT p50`**—outperforming published InferenceX `B200 (Dynamo vLLM) TP8PP2/DCP8` results across both interactivity and throughput per GPU.*
 
 ---
 

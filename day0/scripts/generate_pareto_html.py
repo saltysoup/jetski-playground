@@ -651,35 +651,35 @@ def build_llmd_kimik3_dataset():
           "Stage 1: Naive L7 Round-Robin (Baseline)",
           "#f43f5e",
           True,
-          "Stateless L7 round-robin across 2-node 16× B200 (TP=16, DCP=16, EP=16) without prefix affinity (13.9% avg KV hit rate, saturates at 28.36 tok/s/GPU at c=32).",
+          "Stateless L7 round-robin across 2-node 16× B200 (TP=8, PP=2, DCP=8, EP=1) without prefix affinity (15.5% avg KV hit rate, 84.35 tok/s/GPU and 14,460 ms P90 TTFT at c=128).",
       ),
       2: (
           "stage2",
           "Stage 2: llm-d KV-Cache-Aware Routing (EPP)",
           "#10b981",
           False,
-          "llm-d Endpoint Picker (EPP) prefix-hash session affinity pins multi-turn sessions (31.6% KV hit rate at c=32, 36.20 tok/s/GPU = 1.28× vs Stage 1).",
+          "llm-d Endpoint Picker (EPP) prefix-hash session affinity pins multi-turn sessions (36.7% avg KV hit rate, 87.44 tok/s/GPU at c=128, 78.54 tok/s/user E2E interactivity at c=8).",
       ),
       3: (
           "stage3",
-          "Stage 3: Multi-Node DCP=16 + EP=16 + Disagg P/D (HBM Only)",
+          "Stage 3: Multi-Node TP=8, PP=2, DCP=8 + Disagg P/D (HBM Only)",
           "#f59e0b",
           False,
-          "Multi-node GPUDirect RDMA (8× 400 Gb/s RoCEv2, 419.25 GB/s NCCL AllReduce) TOKENSPEED_MLA + TRTLLM_RAGGED + DSpark MTP reaches 45.86 tok/s/GPU (1.62×) at c=32 (49.0% KV hit rate).",
+          "Intra-node NVLink 5 TP=8 + DCP=8 (FLASHINFER MNNVL AllReduce + GEMM-AR + Direct DCP) + inter-node GPUDirect RDMA PP=2 + TOKENSPEED_MLA + 4-tok DSpark (3.36x accept) reaches 101.71 tok/s/GPU at c=128.",
       ),
       4: (
           "stage4",
           "Stage 4: vLLM Native Host DRAM Tier (/dev/shm DMA)",
           "#a855f7",
           False,
-          "vLLM Native Host DRAM KV cache tiering offloads 896-token Mamba/KDA + MLA hybrid pages to local Host DRAM, reaching 80.47 tok/s/GPU (1,287.5 tok/s pool, 2.84× vs Stage 1) and 84.5% KV hit rate.",
+          "26.9M-token FP8 HBM KV cache (42.08 GiB/GPU) + vLLM Native Host DRAM KV tiering reaches 89.8% avg KV hit rate and 123.34 tok/s/GPU (1,973.4 tok/s pool) at c=128.",
       ),
       5: (
           "stage5",
           "Stage 5: Mooncake + 1,000 MBps/TiB Lustre KV Tier",
           "#06b6d4",
           False,
-          "Mooncake distributed KV store backed by same-zone 1,000 MBps/TiB Managed Lustre achieves 86.04 tok/s/GPU (1,376.6 tok/s pool, 3.03× vs Stage 1) at c=64 and 65.92 tok/s/user (670.7 ms P90 TTFT) at c=8.",
+          "Mooncake distributed KV store backed by same-zone 1,000 MBps/TiB Managed Lustre achieves 124.77 tok/s/GPU (1,996.3 tok/s pool) at c=128 and 192.42 tok/s/user (P50 ITL 5.20 ms) / 160.80 tok/s/user (P90 E2E) at c=1.",
       ),
   }
   grouped = {}
@@ -698,7 +698,7 @@ def build_llmd_kimik3_dataset():
     grouped[sid]["points"].append({
         "conc_rep": c,
         "conc_pool": c,
-        "label": f"c={c} pool (2-node 16× B200)",
+        "label": f"c={c} pool (2-node 16× B200 TP8PP2/DCP8)",
         "tag": f"S{r['stage']} c={c}",
         "out_tput_chip": r["out_tput_per_chip"],
         "out_tput_pool": r["out_tput_pool"],
@@ -713,20 +713,20 @@ def build_llmd_kimik3_dataset():
     })
   order = [k for k in ["stage1", "stage2", "stage3", "stage4", "stage5"] if k in grouped]
   return {
-      "title": "moonshotai/Kimi-K3 (NVFP4, 2.8T MoE) — llm-d + vLLM (16× B200 Multi-Node RDMA): Stage 1 → 5 Pareto Frontier",
-      "subtitle": "Kimi-K3 (TP=16, DCP=16, EP=16, nnodes=2, TOKENSPEED_MLA + TRTLLM_RAGGED + DSpark MTP, Stage 4 Host DRAM + Stage 5 Mooncake Lustre)",
+      "title": "moonshotai/Kimi-K3 (NVFP4, 2.8T MoE) — llm-d + vLLM (16× B200 Multi-Node TP8PP2/DCP8): Stage 1 → 5 Pareto Frontier",
+      "subtitle": "Kimi-K3 (TP=8, PP=2, DCP=8, EP=1, nnodes=2, NVLink 5 FLASHINFER AR + GEMM-AR + Direct DCP + TOKENSPEED_MLA + 4-tok DSpark 3.36x accept, 26.9M-tok HBM + Stage 4 DRAM + Stage 5 Mooncake Lustre)",
       "stages": [grouped[k] for k in order],
       "x_meta": {
-          "e2e_int": {"label": "P90 E2E Normalized Interactivity (tok/s/user — InferenceX X-Axis)  [→ Higher is Better]", "unit": "", "max": 75, "step": 15, "higherBetter": True},
-          "e2e_lat_ms_tok": {"label": "P90 E2E Latency per Output Token (ms/tok)  [← Lower is Better]", "unit": "ms", "max": 160, "step": 20, "higherBetter": False},
-          "dec_tpot_ms": {"label": "P90 Decode Inter-Token Latency / TPOT (ms/tok)  [← Lower is Better]", "unit": "ms", "max": 100, "step": 20, "higherBetter": False},
+          "e2e_int": {"label": "P90 E2E Normalized Interactivity (tok/s/user — InferenceX X-Axis)  [→ Higher is Better]", "unit": "", "max": 180, "step": 30, "higherBetter": True},
+          "e2e_lat_ms_tok": {"label": "P90 E2E Latency per Output Token (ms/tok)  [← Lower is Better]", "unit": "ms", "max": 120, "step": 20, "higherBetter": False},
+          "dec_tpot_ms": {"label": "P90 Decode Inter-Token Latency / TPOT (ms/tok)  [← Lower is Better]", "unit": "ms", "max": 90, "step": 15, "higherBetter": False},
           "p90_ttft_ms": {"label": "P90 Time to First Token — TTFT (ms)  [← Lower is Better]", "unit": "ms", "max": 15000, "step": 3000, "higherBetter": False},
       },
       "y_meta": {
-          "out_tput_chip": {"label": "Output Throughput / GPU (tok/s/GPU)  [↑ Higher is Better]", "unit": "tok/s/GPU", "max": 100},
-          "out_tput_pool": {"label": "Pool Output Throughput (tok/s — 16× B200)  [↑ Higher is Better]", "unit": "tok/s", "max": 1600},
-          "tot_tput_chip": {"label": "Total Throughput / GPU (tok/s/GPU)  [↑ Higher is Better]", "unit": "tok/s/GPU", "max": 2200},
-          "tot_tput_pool": {"label": "Pool Total Throughput (tok/s — 16× B200)  [↑ Higher is Better]", "unit": "tok/s", "max": 35000},
+          "out_tput_chip": {"label": "Output Throughput / GPU (tok/s/GPU)  [↑ Higher is Better]", "unit": "tok/s/GPU", "max": 140},
+          "out_tput_pool": {"label": "Pool Output Throughput (tok/s — 16× B200)  [↑ Higher is Better]", "unit": "tok/s", "max": 2200},
+          "tot_tput_chip": {"label": "Total Throughput / GPU (tok/s/GPU)  [↑ Higher is Better]", "unit": "tok/s/GPU", "max": 2000},
+          "tot_tput_pool": {"label": "Pool Total Throughput (tok/s — 16× B200)  [↑ Higher is Better]", "unit": "tok/s", "max": 32000},
       },
   }
 
