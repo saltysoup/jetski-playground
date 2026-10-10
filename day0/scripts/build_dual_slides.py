@@ -489,22 +489,23 @@ def build_dual_slide(base_envelope, slide_index, slide_id, title_id, title_text,
   for r_idx, r_data in enumerate(table_rows):
     is_last = r_idx == len(table_rows) - 1
     b_bot = None if is_last else "1px solid #e2e8f0"
+    row_fill = "#f8fafc" if r_idx % 2 == 1 else "#ffffff"
     row_cells = []
     col_hex = r_data["color"]
     # Col 0: Legend
-    st0 = {"color": col_hex, "bold": True, "align": "center"}
+    st0 = {"color": col_hex, "bold": True, "align": "center", "fill": row_fill}
     if b_bot:
       st0["borderBottom"] = b_bot
     row_cells.append({"content": "━━●━━", "style": st0})
 
     # Col 1: Stage & Optimization Configuration
-    st1 = {}
+    st1 = {"fill": row_fill}
     if b_bot:
       st1["borderBottom"] = b_bot
-    row_cells.append({"content": r_data["config"], "style": st1} if st1 else {"content": r_data["config"]})
+    row_cells.append({"content": r_data["config"], "style": st1})
 
     # Col 2: KV Hit
-    st2 = {"align": "right"}
+    st2 = {"align": "right", "fill": row_fill}
     if r_data.get("highlight"):
       st2["color"] = col_hex
       st2["bold"] = True
@@ -515,19 +516,19 @@ def build_dual_slide(base_envelope, slide_index, slide_id, title_id, title_text,
     row_cells.append({"content": r_data["kv_hit"], "style": st2})
 
     # Col 3: llm-d Tput
-    st3 = {"align": "right"}
+    st3 = {"align": "right", "fill": row_fill}
     if b_bot:
       st3["borderBottom"] = b_bot
     row_cells.append({"content": r_data["llmd_tput"], "style": st3})
 
     # Col 4: Dynamo Tput
-    st4 = {"align": "right"}
+    st4 = {"align": "right", "fill": row_fill}
     if b_bot:
       st4["borderBottom"] = b_bot
     row_cells.append({"content": r_data["dynamo_tput"], "style": st4})
 
     # Col 5: Peak P90 Interactivity
-    st5 = {"align": "right"}
+    st5 = {"align": "right", "fill": row_fill}
     if r_data.get("highlight"):
       st5["color"] = col_hex
       st5["bold"] = True
@@ -604,174 +605,257 @@ def build_dual_slide(base_envelope, slide_index, slide_id, title_id, title_text,
 
 
 def main():
-  with open("/tmp/slide4.json") as f:
-    s4_env = json.load(f)
-  with open("/tmp/slide5.json") as f:
-    s5_env = json.load(f)
-
   dsv4_llmd = gph.build_llmd_dsv4_dataset()
   dsv4_dyn = gph.build_dynamo_dsv4_dataset()
   glm_llmd = gph.build_llmd_glm53_dataset()
   glm_dyn = gph.build_dynamo_glm53_dataset()
+  kimik3_llmd = gph.build_llmd_kimik3_dataset()
+  kimik3_dyn = gph.build_dynamo_kimik3_dataset()
 
-  # Build Slide 4: DeepSeek-V4.1-Flash (llm-d + vLLM on Left, NVIDIA Dynamo + SGLang on Right)
-  s4_rows = [
-      {
-          "color": "#ef4444",
-          "config": "<strong style=\"color:#ef4444;font-weight:700\">1. Naive L7 Round-Robin</strong> (Stateless L7 scatters multi-turn sessions)",
-          "kv_hit": "96.9% | 84.8%",
-          "llmd_tput": "570 (<strong style=\"font-weight:700\">1.00x</strong>)",
-          "dynamo_tput": "123 (<strong style=\"font-weight:700\">1.00x</strong>)",
-          "p90_int": "96.9 | 44.3 tok/s/u",
-      },
-      {
-          "color": "#f59e0b",
-          "config": "<strong style=\"color:#d97706;font-weight:700\">2. KV-Cache-Aware Routing</strong> (llm-d EPP / Dynamo prefix session affinity)",
-          "kv_hit": "98.8% | 92.7%",
-          "llmd_tput": "822 (<strong style=\"color:#d97706;font-weight:700\">1.44x</strong>)",
-          "dynamo_tput": "193 (<strong style=\"color:#d97706;font-weight:700\">2.64x*</strong>)",
-          "p90_int": "129.8 | 42.3 tok/s/u",
-      },
-      {
-          "color": "#2563eb",
-          "config": "<strong style=\"color:#2563eb;font-weight:700\">3. KV Routing + P/D Disagg</strong> (Decoupled Prefill/Decode, HBM only)",
-          "kv_hit": "99.3% | 97.6%",
-          "llmd_tput": "854 (<strong style=\"color:#2563eb;font-weight:700\">1.50x</strong>)",
-          "dynamo_tput": "290 (<strong style=\"color:#2563eb;font-weight:700\">2.94x*</strong>)",
-          "p90_int": "233.0 | 61.9 tok/s/u",
-      },
-      {
-          "color": "#9333ea",
-          "highlight": True,
-          "config": "<strong style=\"color:#9333ea;font-weight:700\">4. Host DRAM KV Tiering</strong> (vLLM OffloadingConnector / SGLang HiCache)",
-          "kv_hit": "98.8% | 97.6%",
-          "llmd_tput": "<strong style=\"color:#9333ea;font-weight:700\">1,164 (2.04x)</strong>",
-          "dynamo_tput": "<strong style=\"color:#9333ea;font-weight:700\">305 (3.70x*)</strong>",
-          "p90_int": "242.0 | 136.7 tok/s/u",
-      },
-      {
-          "color": "#0d9488",
-          "highlight": True,
-          "config": "<strong style=\"color:#0d9488;font-weight:700\">5. Mooncake + Lustre KV Tier</strong> (Mooncake + 1,000 MBps/TiB Lustre)",
-          "kv_hit": "99.7% | 99.6%",
-          "llmd_tput": "<strong style=\"color:#0d9488;font-weight:700\">1,439 (2.66x)</strong>",
-          "dynamo_tput": "<strong style=\"color:#0d9488;font-weight:700\">332 (3.84x*)</strong>",
-          "p90_int": "251.0 | 137.5 tok/s/u",
-      },
-  ]
+  if os.path.exists("/tmp/slide4.json"):
+    with open("/tmp/slide4.json") as f:
+      s4_env = json.load(f)
+    # Build Slide 4: DeepSeek-V4.1-Flash (llm-d + vLLM on Left, NVIDIA Dynamo + SGLang on Right)
+    s4_rows = [
+        {
+            "color": "#ef4444",
+            "config": "<strong style=\"color:#ef4444;font-weight:700\">1. Naive L7 Round-Robin</strong> (Stateless L7 scatters multi-turn sessions)",
+            "kv_hit": "96.9% | 84.8%",
+            "llmd_tput": "570 (<strong style=\"font-weight:700\">1.00x</strong>)",
+            "dynamo_tput": "123 (<strong style=\"font-weight:700\">1.00x</strong>)",
+            "p90_int": "96.9 | 44.3 tok/s/u",
+        },
+        {
+            "color": "#f59e0b",
+            "config": "<strong style=\"color:#d97706;font-weight:700\">2. KV-Cache-Aware Routing</strong> (llm-d EPP / Dynamo prefix session affinity)",
+            "kv_hit": "98.8% | 92.7%",
+            "llmd_tput": "822 (<strong style=\"color:#d97706;font-weight:700\">1.44x</strong>)",
+            "dynamo_tput": "193 (<strong style=\"color:#d97706;font-weight:700\">2.64x*</strong>)",
+            "p90_int": "129.8 | 42.3 tok/s/u",
+        },
+        {
+            "color": "#2563eb",
+            "config": "<strong style=\"color:#2563eb;font-weight:700\">3. KV Routing + P/D Disagg</strong> (Decoupled Prefill/Decode, HBM only)",
+            "kv_hit": "99.3% | 97.6%",
+            "llmd_tput": "854 (<strong style=\"color:#2563eb;font-weight:700\">1.50x</strong>)",
+            "dynamo_tput": "290 (<strong style=\"color:#2563eb;font-weight:700\">2.94x*</strong>)",
+            "p90_int": "233.0 | 61.9 tok/s/u",
+        },
+        {
+            "color": "#9333ea",
+            "highlight": True,
+            "config": "<strong style=\"color:#9333ea;font-weight:700\">4. Host DRAM KV Tiering</strong> (vLLM OffloadingConnector / SGLang HiCache)",
+            "kv_hit": "98.8% | 97.6%",
+            "llmd_tput": "<strong style=\"color:#9333ea;font-weight:700\">1,164 (2.04x)</strong>",
+            "dynamo_tput": "<strong style=\"color:#9333ea;font-weight:700\">305 (3.70x*)</strong>",
+            "p90_int": "242.0 | 136.7 tok/s/u",
+        },
+        {
+            "color": "#0d9488",
+            "highlight": True,
+            "config": "<strong style=\"color:#0d9488;font-weight:700\">5. Mooncake + Lustre KV Tier</strong> (Mooncake + 1,000 MBps/TiB Lustre)",
+            "kv_hit": "99.7% | 99.6%",
+            "llmd_tput": "<strong style=\"color:#0d9488;font-weight:700\">1,439 (2.66x)</strong>",
+            "dynamo_tput": "<strong style=\"color:#0d9488;font-weight:700\">332 (3.84x*)</strong>",
+            "p90_int": "251.0 | 137.5 tok/s/u",
+        },
+    ]
 
-  s4_dual = build_dual_slide(
-      base_envelope=s4_env,
-      slide_index=4,
-      slide_id=s4_env["slideId"],
-      title_id="el-sio033",
-      title_text="DeepSeek-V4.1-Flash: 5-Stage Scaffolding hits 2.7x–3.8x throughput",
-      left_hdr="llm-d on Cloud GPU — 8x B200 (DeepSeek-V4.1-Flash, vLLM)",
-      left_ds=dsv4_llmd,
-      left_xmax=270,
-      left_xstep=45,
-      left_ymax=1600,
-      left_yticks=4,
-      right_hdr="NVIDIA Dynamo on Cloud GPU — 8x B200 (DeepSeek-V4.1-Flash, SGLang)",
-      right_ds=dsv4_dyn,
-      right_xmax=150,
-      right_xstep=25,
-      right_ymax=400,
-      right_yticks=4,
-      table_id="el-qz3rm6",
-      table_headers=["Legend", "Stage & Optimization Configuration (8x B200 = 2x TP=4 / TEP=4)", "KV Cache Hit", "llm-d Tput", "Dynamo Tput", "P90 Interactivity"],
-      table_rows=s4_rows,
-      footnote_id="el-dsv4-fn",
-      footnote_html="<strong style=\"font-weight:700\">[1] Measured:</strong> GKE Day-0 5-Stage Scaffolding on 8x B200 (2x TP=4 vLLM v0.30.1rc1 &amp; 2x TEP=4 SGLang v0.5.10; *Dynamo speedup at c=32).<br><strong style=\"font-weight:700\">[2] KV Tiering:</strong> Stage 4 uses vLLM OffloadingConnector &amp; SGLang HiCache DRAM; Stage 5 uses Mooncake Store on 1,000 MBps/TiB Lustre.",
-  )
+    s4_dual = build_dual_slide(
+        base_envelope=s4_env,
+        slide_index=4,
+        slide_id=s4_env["slideId"],
+        title_id="el-sio033",
+        title_text="DeepSeek-V4.1-Flash: 5-Stage Scaffolding hits 2.7x–3.8x throughput",
+        left_hdr="llm-d on Cloud GPU — 8x B200 (DeepSeek-V4.1-Flash, vLLM)",
+        left_ds=dsv4_llmd,
+        left_xmax=270,
+        left_xstep=45,
+        left_ymax=1600,
+        left_yticks=4,
+        right_hdr="NVIDIA Dynamo on Cloud GPU — 8x B200 (DeepSeek-V4.1-Flash, SGLang)",
+        right_ds=dsv4_dyn,
+        right_xmax=150,
+        right_xstep=25,
+        right_ymax=400,
+        right_yticks=4,
+        table_id="el-qz3rm6",
+        table_headers=["Legend", "Stage & Optimization Configuration (8x B200 = 2x TP=4 / TEP=4)", "KV Cache Hit", "llm-d Tput", "Dynamo Tput", "P90 Interactivity"],
+        table_rows=s4_rows,
+        footnote_id="el-dsv4-fn",
+        footnote_html="<strong style=\"font-weight:700\">[1] Measured:</strong> GKE Day-0 5-Stage Scaffolding on 8x B200 (2x TP=4 vLLM v0.30.1rc1 &amp; 2x TEP=4 SGLang v0.5.10; *Dynamo speedup at c=32).<br><strong style=\"font-weight:700\">[2] KV Tiering:</strong> Stage 4 uses vLLM OffloadingConnector &amp; SGLang HiCache DRAM; Stage 5 uses Mooncake Store on 1,000 MBps/TiB Lustre.",
+    )
+    with open("/tmp/slide4_dual.json", "w") as f:
+      json.dump(s4_dual, f, indent=2)
+    with open("/tmp/slide4.json.baserev") as f:
+      rev = f.read()
+    with open("/tmp/slide4_dual.json.baserev", "w") as f:
+      f.write(rev)
+    print("Generated /tmp/slide4_dual.json")
 
-  # Build Slide 5: zai-org/GLM-5.3 (llm-d + vLLM on Left, NVIDIA Dynamo + SGLang on Right)
-  s5_rows = [
-      {
-          "color": "#ef4444",
-          "config": "<strong style=\"color:#ef4444;font-weight:700\">1. Naive L7 Round-Robin</strong> (Stateless L7 scatters multi-turn sessions)",
-          "kv_hit": "42.2% | 13.2%",
-          "llmd_tput": "69.1 (<strong style=\"font-weight:700\">1.00x</strong>)",
-          "dynamo_tput": "57.2 (<strong style=\"font-weight:700\">1.00x</strong>)",
-          "p90_int": "72.7 | 62.6 tok/s/u",
-      },
-      {
-          "color": "#f59e0b",
-          "config": "<strong style=\"color:#d97706;font-weight:700\">2. KV-Cache-Aware Routing</strong> (llm-d EPP / Dynamo prefix session affinity)",
-          "kv_hit": "66.1% | 65.3%",
-          "llmd_tput": "94.7 (<strong style=\"color:#d97706;font-weight:700\">1.37x</strong>)",
-          "dynamo_tput": "81.9 (<strong style=\"color:#d97706;font-weight:700\">1.43x</strong>)",
-          "p90_int": "76.8 | 80.5 tok/s/u",
-      },
-      {
-          "color": "#2563eb",
-          "config": "<strong style=\"color:#2563eb;font-weight:700\">3. KV Routing + P/D Disagg</strong> (Decoupled Prefill/Decode, HBM only)",
-          "kv_hit": "80.8% | 78.8%",
-          "llmd_tput": "131.1 (<strong style=\"color:#2563eb;font-weight:700\">1.90x</strong>)",
-          "dynamo_tput": "101.6 (<strong style=\"color:#2563eb;font-weight:700\">1.78x</strong>)",
-          "p90_int": "91.6 | 85.6 tok/s/u",
-      },
-      {
-          "color": "#9333ea",
-          "highlight": True,
-          "config": "<strong style=\"color:#9333ea;font-weight:700\">4. Host DRAM KV Tiering</strong> (vLLM OffloadingConnector / SGLang HiCache)",
-          "kv_hit": "89.4% | 97.0%",
-          "llmd_tput": "<strong style=\"color:#9333ea;font-weight:700\">159.2 (2.30x)</strong>",
-          "dynamo_tput": "<strong style=\"color:#9333ea;font-weight:700\">109.2 (1.91x)</strong>",
-          "p90_int": "110.2 | 85.2 tok/s/u",
-      },
-      {
-          "color": "#0d9488",
-          "highlight": True,
-          "config": "<strong style=\"color:#0d9488;font-weight:700\">5. Mooncake + Lustre KV Tier</strong> (Mooncake + 1,000 MBps/TiB Lustre)",
-          "kv_hit": "93.0% | 94.0%",
-          "llmd_tput": "<strong style=\"color:#0d9488;font-weight:700\">203.3 (2.94x)</strong>",
-          "dynamo_tput": "<strong style=\"color:#0d9488;font-weight:700\">134.0 (2.34x)</strong>",
-          "p90_int": "110.1 | 85.6 tok/s/u",
-      },
-  ]
+  if os.path.exists("/tmp/slide5.json"):
+    with open("/tmp/slide5.json") as f:
+      s5_env = json.load(f)
+    # Build Slide 5: zai-org/GLM-5.3 (llm-d + vLLM on Left, NVIDIA Dynamo + SGLang on Right)
+    s5_rows = [
+        {
+            "color": "#ef4444",
+            "config": "<strong style=\"color:#ef4444;font-weight:700\">1. Naive L7 Round-Robin</strong> (Stateless L7 scatters multi-turn sessions)",
+            "kv_hit": "42.2% | 13.2%",
+            "llmd_tput": "69.1 (<strong style=\"font-weight:700\">1.00x</strong>)",
+            "dynamo_tput": "57.2 (<strong style=\"font-weight:700\">1.00x</strong>)",
+            "p90_int": "72.7 | 62.6 tok/s/u",
+        },
+        {
+            "color": "#f59e0b",
+            "config": "<strong style=\"color:#d97706;font-weight:700\">2. KV-Cache-Aware Routing</strong> (llm-d EPP / Dynamo prefix session affinity)",
+            "kv_hit": "66.1% | 65.3%",
+            "llmd_tput": "94.7 (<strong style=\"color:#d97706;font-weight:700\">1.37x</strong>)",
+            "dynamo_tput": "81.9 (<strong style=\"color:#d97706;font-weight:700\">1.43x</strong>)",
+            "p90_int": "76.8 | 80.5 tok/s/u",
+        },
+        {
+            "color": "#2563eb",
+            "config": "<strong style=\"color:#2563eb;font-weight:700\">3. KV Routing + P/D Disagg</strong> (Decoupled Prefill/Decode, HBM only)",
+            "kv_hit": "80.8% | 78.8%",
+            "llmd_tput": "131.1 (<strong style=\"color:#2563eb;font-weight:700\">1.90x</strong>)",
+            "dynamo_tput": "101.6 (<strong style=\"color:#2563eb;font-weight:700\">1.78x</strong>)",
+            "p90_int": "91.6 | 85.6 tok/s/u",
+        },
+        {
+            "color": "#9333ea",
+            "highlight": True,
+            "config": "<strong style=\"color:#9333ea;font-weight:700\">4. Host DRAM KV Tiering</strong> (vLLM OffloadingConnector / SGLang HiCache)",
+            "kv_hit": "89.4% | 97.0%",
+            "llmd_tput": "<strong style=\"color:#9333ea;font-weight:700\">159.2 (2.30x)</strong>",
+            "dynamo_tput": "<strong style=\"color:#9333ea;font-weight:700\">109.2 (1.91x)</strong>",
+            "p90_int": "110.2 | 85.2 tok/s/u",
+        },
+        {
+            "color": "#0d9488",
+            "highlight": True,
+            "config": "<strong style=\"color:#0d9488;font-weight:700\">5. Mooncake + Lustre KV Tier</strong> (Mooncake + 1,000 MBps/TiB Lustre)",
+            "kv_hit": "93.0% | 94.0%",
+            "llmd_tput": "<strong style=\"color:#0d9488;font-weight:700\">203.3 (2.94x)</strong>",
+            "dynamo_tput": "<strong style=\"color:#0d9488;font-weight:700\">134.0 (2.34x)</strong>",
+            "p90_int": "110.1 | 85.6 tok/s/u",
+        },
+    ]
 
-  s5_dual = build_dual_slide(
-      base_envelope=s5_env,
-      slide_index=5,
-      slide_id=s5_env["slideId"],
-      title_id="el-sio033",
-      title_text="GLM-5.3 (743B MoE): 5-Stage Scaffolding hits 2.34x–2.94x throughput",
-      left_hdr="llm-d on Cloud GPU — 16x B200 (zai-org/GLM-5.3 FP8, vLLM)",
-      left_ds=glm_llmd,
-      left_xmax=120,
-      left_xstep=20,
-      left_ymax=220,
-      left_yticks=4,
-      right_hdr="NVIDIA Dynamo on Cloud GPU — 16x B200 (GLM-5.3 FP8, SGLang)",
-      right_ds=glm_dyn,
-      right_xmax=120,
-      right_xstep=20,
-      right_ymax=160,
-      right_yticks=4,
-      table_id="el-qz3rm6",
-      table_headers=["Legend", "Stage & Optimization Configuration (16x B200 = 2x TP=8)", "KV Cache Hit", "llm-d Tput", "Dynamo Tput", "P90 Interactivity"],
-      table_rows=s5_rows,
-      footnote_id="el-glm53-fn",
-      footnote_html="<strong style=\"font-weight:700\">[1] Measured:</strong> GKE Day-0 5-Stage Scaffolding on 16x B200 (GLM-5.3 743B MoE / 39B Active FP8, 2x TP=8 vLLM v0.30.1rc1 &amp; SGLang v0.5.10, c=16..256).<br><strong style=\"font-weight:700\">[2] KV Tiering:</strong> Stage 4 uses vLLM OffloadingConnector &amp; SGLang HiRadixCache DRAM; Stage 5 uses Mooncake Store on 1,000 MBps/TiB Lustre.",
-  )
+    s5_dual = build_dual_slide(
+        base_envelope=s5_env,
+        slide_index=5,
+        slide_id=s5_env["slideId"],
+        title_id="el-sio033",
+        title_text="GLM-5.3 (743B MoE): 5-Stage Scaffolding hits 2.34x–2.94x throughput",
+        left_hdr="llm-d on Cloud GPU — 16x B200 (zai-org/GLM-5.3 FP8, vLLM)",
+        left_ds=glm_llmd,
+        left_xmax=120,
+        left_xstep=20,
+        left_ymax=220,
+        left_yticks=4,
+        right_hdr="NVIDIA Dynamo on Cloud GPU — 16x B200 (GLM-5.3 FP8, SGLang)",
+        right_ds=glm_dyn,
+        right_xmax=120,
+        right_xstep=20,
+        right_ymax=160,
+        right_yticks=4,
+        table_id="el-qz3rm6",
+        table_headers=["Legend", "Stage & Optimization Configuration (16x B200 = 2x TP=8)", "KV Cache Hit", "llm-d Tput", "Dynamo Tput", "P90 Interactivity"],
+        table_rows=s5_rows,
+        footnote_id="el-glm53-fn",
+        footnote_html="<strong style=\"font-weight:700\">[1] Measured:</strong> GKE Day-0 5-Stage Scaffolding on 16x B200 (GLM-5.3 743B MoE / 39B Active FP8, 2x TP=8 vLLM v0.30.1rc1 &amp; SGLang v0.5.10, c=16..256).<br><strong style=\"font-weight:700\">[2] KV Tiering:</strong> Stage 4 uses vLLM OffloadingConnector &amp; SGLang HiRadixCache DRAM; Stage 5 uses Mooncake Store on 1,000 MBps/TiB Lustre.",
+    )
+    with open("/tmp/slide5_dual.json", "w") as f:
+      json.dump(s5_dual, f, indent=2)
+    with open("/tmp/slide5.json.baserev") as f:
+      rev = f.read()
+    with open("/tmp/slide5_dual.json.baserev", "w") as f:
+      f.write(rev)
+    print("Generated /tmp/slide5_dual.json")
 
-  with open("/tmp/slide4_dual.json", "w") as f:
-    json.dump(s4_dual, f, indent=2)
-  with open("/tmp/slide4.json.baserev") as f:
-    rev = f.read()
-  with open("/tmp/slide4_dual.json.baserev", "w") as f:
-    f.write(rev)
+  if os.path.exists("/tmp/slide6.json"):
+    with open("/tmp/slide6.json") as f:
+      s6_env = json.load(f)
+    # Build Slide 6: moonshotai/Kimi-K3 (llm-d + vLLM on Left, NVIDIA Dynamo + SGLang on Right)
+    s6_rows = [
+        {
+            "color": "#b91c1c",
+            "config": "<strong style=\"color:#b91c1c;font-weight:700\">1. Naive L7 Round-Robin</strong> (Stateless L7 scatters multi-turn sessions)",
+            "kv_hit": "13.9% | 35.3%",
+            "llmd_tput": "28.4 (<strong style=\"font-weight:700\">1.00x</strong>)",
+            "dynamo_tput": "12.8* (<strong style=\"font-weight:700\">1.00x</strong>)",
+            "p90_int": "57.7 | 92.1 tok/s/u",
+        },
+        {
+            "color": "#b45309",
+            "config": "<strong style=\"color:#b45309;font-weight:700\">2. KV-Cache-Aware Routing</strong> (llm-d EPP / Dynamo prefix session affinity)",
+            "kv_hit": "31.6% | 54.6%",
+            "llmd_tput": "36.2 (<strong style=\"color:#b45309;font-weight:700\">1.28x</strong>)",
+            "dynamo_tput": "32.3 (<strong style=\"color:#b45309;font-weight:700\">2.53x*</strong>)",
+            "p90_int": "57.7 | 91.4 tok/s/u",
+        },
+        {
+            "color": "#1d4ed8",
+            "config": "<strong style=\"color:#1d4ed8;font-weight:700\">3. Multi-Node DCP/EP + P/D Disagg</strong> (2-Node RoCEv2 RDMA, HBM only)",
+            "kv_hit": "49.0% | 72.2%",
+            "llmd_tput": "45.9 (<strong style=\"color:#1d4ed8;font-weight:700\">1.62x</strong>)",
+            "dynamo_tput": "34.7 (<strong style=\"color:#1d4ed8;font-weight:700\">2.71x*</strong>)",
+            "p90_int": "57.2 | 108.4 tok/s/u",
+        },
+        {
+            "color": "#7e22ce",
+            "highlight": True,
+            "config": "<strong style=\"color:#7e22ce;font-weight:700\">4. Host DRAM KV Tiering</strong> (vLLM Host DRAM / SGLang HiCache DRAM)",
+            "kv_hit": "84.5% | 91.8%",
+            "llmd_tput": "<strong style=\"color:#7e22ce;font-weight:700\">80.5 (2.84x)</strong>",
+            "dynamo_tput": "<strong style=\"color:#7e22ce;font-weight:700\">64.6 (5.06x*)</strong>",
+            "p90_int": "60.9 | 152.5 tok/s/u",
+        },
+        {
+            "color": "#0f766e",
+            "highlight": True,
+            "config": "<strong style=\"color:#0f766e;font-weight:700\">5. Mooncake + Lustre KV Tier</strong> (Mooncake + 1,000 MBps/TiB Lustre)",
+            "kv_hit": "91.1% | 91.2%",
+            "llmd_tput": "<strong style=\"color:#0f766e;font-weight:700\">86.0 (3.03x)</strong>",
+            "dynamo_tput": "<strong style=\"color:#0f766e;font-weight:700\">62.7 (4.91x*)</strong>",
+            "p90_int": "65.9 | 153.2 tok/s/u",
+        },
+    ]
 
-  with open("/tmp/slide5_dual.json", "w") as f:
-    json.dump(s5_dual, f, indent=2)
-  with open("/tmp/slide5.json.baserev") as f:
-    rev = f.read()
-  with open("/tmp/slide5_dual.json.baserev", "w") as f:
-    f.write(rev)
-
-  print("Generated /tmp/slide4_dual.json and /tmp/slide5_dual.json")
+    s6_dual = build_dual_slide(
+        base_envelope=s6_env,
+        slide_index=6,
+        slide_id=s6_env["slideId"],
+        title_id="el-kimik3-title",
+        title_text="Kimi-K3 (2.8T MoE): 5-Stage Scaffolding hits 3.03x–5.06x throughput",
+        left_hdr="llm-d on Cloud GPU — 16x B200 (Kimi-K3 NVFP4, vLLM)",
+        left_ds=kimik3_llmd,
+        left_xmax=75,
+        left_xstep=15,
+        left_ymax=100,
+        left_yticks=4,
+        right_hdr="Dynamo on Cloud GPU — 16x B200 (Kimi-K3 NVFP4, SGLang)",
+        right_ds=kimik3_dyn,
+        right_xmax=160,
+        right_xstep=40,
+        right_ymax=80,
+        right_yticks=4,
+        table_id="el-kimik3-tbl",
+        table_headers=["Legend", "Stage & Optimization Configuration (16x B200 = 2-Node TP/EP=16)", "KV Cache Hit", "llm-d Tput", "Dynamo Tput", "P90 Interactivity"],
+        table_rows=s6_rows,
+        footnote_id="el-kimik3-fn",
+        footnote_html="<strong style=\"font-weight:700\">[1] Measured:</strong> GKE Day-0 5-Stage Scaffolding on 2-Node 16x B200 GPUDirect RDMA (Kimi-K3 2.8T MoE NVFP4, c=8..128; *Stage 1 Dynamo base at c=16).<br><strong style=\"font-weight:700\">[2] KV Tiering:</strong> Stage 4 uses vLLM Host DRAM &amp; SGLang HiCache DRAM; Stage 5 uses Mooncake Store on 1,000 MBps/TiB Lustre (419 GB/s NCCL RoCEv2).",
+    )
+    with open("/tmp/slide6_dual.json", "w") as f:
+      json.dump(s6_dual, f, indent=2)
+    with open("/tmp/slide6.json.baserev") as f:
+      rev = f.read()
+    with open("/tmp/slide6_dual.json.baserev", "w") as f:
+      f.write(rev)
+    print("Generated /tmp/slide6_dual.json")
 
 
 if __name__ == "__main__":
   main()
+

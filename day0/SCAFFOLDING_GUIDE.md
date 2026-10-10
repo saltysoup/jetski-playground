@@ -187,6 +187,12 @@ Before launching the pods on a new GKE cluster (`GB300` or `B200`), verify three
      export NCCL_SOCKET_IFNAME=eth0
      export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
      ```
+   - **Verify Multi-Node GPUDirect RDMA Health (`torch.distributed` 16-GPU AllReduce & AllToAll)**:
+     Before starting the inference server on a multi-node deployment, run a 2-node 16-GPU `torch.distributed` NCCL benchmark (`NCCL_DEBUG=INFO`) across the head and worker pods to verify `NET/IB/0..7/GDRDMA` (GPUDirect RDMA over RoCEv2 `mlx5_0..7` with `PXN 0` and `NVLS` tree channels):
+     - **Verified on 2x `a4-highgpu-8g` (`16x B200`, 8x 400 Gbps RoCEv2)**:
+       - `16-GPU AllReduce` (`2 GiB`): **`223.60 GB/s` algbw / `419.25 GB/s` busbw**
+       - `16-GPU AllToAll` (`512 MiB`, MoE `EP=16` dispatch/combine pattern): **`79.58 GB/s` algbw / `74.60 GB/s` busbw**
+       - `2-GPU Cross-Node P2P Send/Recv` (`1 GiB`): **`47.90 GB/s` per NIC** (`~383.2 Gbps` line rate)
 
 3. **Critical Engine Stability Guardrails Discovered During Benchmarking**:
    - **Multi-Node Custom, FlashInfer, CuteDSL GEMM-AR/RS & Direct DCP (`B200` RoCEv2 vs. `GB300 NVL72` MNNVL)**:
@@ -248,8 +254,8 @@ We execute the 5 stages from **Stage 5 down to Stage 1** (or Stage 1 up to Stage
 2. **Run the Automated 5-Stage Sweep Script**:
    - Each runner script (`run_kimik3_dynamo_stages_1_to_5.py`, `run_kimik3_llmd_stages_1_to_5.py`, `run_glm53_dynamo_stages_1_to_5.py`, etc.) automatically:
      1. Configures the router stage via `POST /admin/set_stage {"stage": S, "concurrency": C}`.
-     2. Executes `aiperf profile` across the 5 concurrency levels (`c = [16, 32, 64, 128, 256]` for 2-instance deployments, or `c = [8, 16, 32, 64, 128]` for 2-node single-instance deployments).
-     3. Collects Prometheus KV cache hit rate metrics (`/metrics`) before and after each wave.
+     2. Executes `aiperf profile` across the 5 concurrency levels (`c = [16, 32, 64, 128, 256]` for 2-instance deployments, or `c = [8, 16, 32, 64, 128]` for 2-node single-instance deployments) with `--benchmark-duration 90 --benchmark-grace-period 60.0` so long 585-token trajectories finish without client grace-period truncation.
+     3. Collects Prometheus KV cache hit rate metrics (`/metrics`) and reconciles `server_metrics_export.json` (`vllm:generation_tokens` / `sglang:realtime_tokens{mode="decode"}` and speculative acceptance length `spec_accept_length`) so true non-truncated generation throughput and per-token `TPOT` (`ITL / spec_accept_length`) are recorded accurately.
      4. Writes incremental JSON and CSV summaries to `day0/results/<model>_<stack>_stage1_to_5_summary.json`.
 
 ---

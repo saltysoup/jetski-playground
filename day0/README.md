@@ -74,29 +74,29 @@ Both stacks were benchmarked on `16x NVIDIA B200` (`2x a4-highgpu-8g` nodes in `
 
 ## 4. Verified 5-Stage Day-0 Benchmark Results (`moonshotai/Kimi-K3` NVFP4 on `16x NVIDIA B200` Multi-Host RDMA)
 
-`moonshotai/Kimi-K3` is a **2.8T-parameter hybrid MoE** (`16/896` active experts, Kimi Delta Attention + Gated MLA, `1.46 TiB` in `NVFP4`) requiring **2 `a4-highgpu-8g` nodes (`16x NVIDIA B200` = `2,880 GB` HBM3e)** interconnected via **8x 400 Gb/s GPUDirect RDMA NICs (`453.4 GB/s` cross-node `all_reduce` busbw)**. Concurrency sweep: `c = [8, 16, 32, 64, 128]` (`393` multi-turn agentic traces).
+`moonshotai/Kimi-K3` is a **2.8T-parameter hybrid MoE** (`16/896` active experts, 72 Kimi Delta Attention layers + 24 Gated MLA layers, `1.46 TiB` in `NVFP4`) requiring **2 `a4-highgpu-8g` nodes (`16x NVIDIA B200` = `2,880 GB` HBM3e)** interconnected via **8x 400 Gb/s GPUDirect RDMA NICs (`419.25 GB/s` 16-GPU cross-node `all_reduce` busbw, `74.60 GB/s` `alltoall` busbw over `NET/IB/0..7/GDRDMA`)**. Concurrency sweep: `c = [8, 16, 32, 64, 128]` (`393` multi-turn agentic traces).
 
 ### 4.1 `moonshotai/Kimi-K3` — `llm-d + vLLM` (`TP=16, DCP=16, EP=16, nnodes=2 = 16x B200`, NVFP4 + FP8 KV + `TOKENSPEED_MLA` + 8-tok DSpark MTP)
 
-| Stage | `c=32` KV Hit Rate | `c=8` P90 TTFT (`ms`) | `c=16` Tput (`tok/s/GPU`) | `c=32` Tput (`tok/s/GPU`) | `c=128` Tput (`tok/s/GPU`) | `c=32` P90 TTFT (`ms`) | P90 Interactivity (`c=16 \| Peak tok/s/u`) | Gain vs. Stage 1 (`c=32`) |
+| Stage | `c=32 \| Peak` KV Hit Rate | `c=8` P90 TTFT (`ms`) | `c=32` Tput (`tok/s/GPU`) | `c=64` Tput (`tok/s/GPU`) | `c=128` Tput (`tok/s/GPU`) | `c=32` P90 TTFT (`ms`) | P90 Interactivity (`c=32 \| Peak tok/s/u`) | Gain vs. Stage 1 (`Peak`) |
 | :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
-| **1. Naive L7 Round-Robin** | `12.9%` | `1,276.5` | `7.15` | `5.63` | `7.85` | `9,032.2` | `19.09 \| 29.43` | `1.00x Base` |
-| **2. llm-d KV-Cache-Aware Routing (EPP)** | `31.6%` | `1,993.3` | `9.40` | `8.39` | `5.65` | `5,938.9` | `17.64 \| 29.42` | `1.49x Tput \| 1.4x Int` |
-| **3. Multi-Node DCP=16 + EP=16 + Disagg P/D** | `49.0%` | `2,124.1` | `9.40` | `6.24` | `7.29` | `4,803.3` | `17.37 \| 27.34` | `1.11x Tput \| 1.4x Int` |
-| **4. vLLM Native Host DRAM Tier (`/dev/shm`)** | `71.2%` | `740.9` | `9.40` | **`10.68`** | **`7.77`** | `2,117.2` | `14.99 \| 21.95` | **`1.90x Tput \| 1.6x Int`** |
-| **5. Mooncake + `1,000 MBps/TiB` Lustre KV Tier** | **`71.9%`** | **`670.7`** | **`10.24`** | `10.48` | `6.81` | **`1,899.4`** | **`24.87 \| 27.66`** | **`1.86x Tput \| 2.4x Int`** |
+| **1. Naive L7 Round-Robin** | `13.9% \| 14.3%` | `1,276.5` | `25.81` | `28.36` | `24.19` | `9,032.2` | `20.89 \| 57.68` | `1.00x Base` |
+| **2. llm-d KV-Cache-Aware Routing (EPP)** | `31.6% \| 31.6%` | `1,993.3` | `36.20` | `28.94` | `27.19` | `5,938.9` | `16.82 \| 57.65` | `1.28x Tput` |
+| **3. Multi-Node DCP=16 + EP=16 + Disagg P/D** | `49.0% \| 49.0%` | `2,124.1` | `45.86` | `38.12` | `33.19` | `4,803.3` | `18.10 \| 57.15` | `1.62x Tput` |
+| **4. vLLM Native Host DRAM Tier (`/dev/shm`)** | `71.2% \| 84.5%` | `740.9` | `52.94` | `71.56` | **`80.47`** | `2,117.2` | `27.51 \| 60.87` | **`2.84x Tput \| 1.3x Int`** |
+| **5. Mooncake + `1,000 MBps/TiB` Lustre KV Tier** | **`71.9% \| 91.1%`** | **`670.7`** | **`54.71`** | **`86.04`** | **`85.59`** | **`1,899.4`** | **`29.40 \| 65.92`** | **`3.03x Tput \| 1.4x Int`** |
 
 ---
 
 ### 4.2 `moonshotai/Kimi-K3` — `NVIDIA Dynamo + SGLang` (`TP=16, DCP=16, EP=16, nnodes=2 = 16x B200`, NVFP4 + FP8 KV + `trtllm_mla` + 3-tok DSpark EAGLE3)
 
-| Stage | Avg KV Hit Rate | `c=16` P90 TTFT (`ms`) | `c=16` Tput (`tok/s/GPU`) | `c=32` Tput (`tok/s/GPU`) | `c=128` Tput (`tok/s/GPU`) | `c=32` P90 TTFT (`ms`) | P90 Interactivity (`c=16 \| Peak tok/s/u`) | Gain vs. Stage 1 (`c=16`) |
+| Stage | Avg KV Hit Rate | `c=16` P90 TTFT (`ms`) | `c=16` Tput (`tok/s/GPU`) | `c=32` Tput (`tok/s/GPU`) | `c=64` Tput (`tok/s/GPU`) | `c=32` P90 TTFT (`ms`) | P90 Interactivity (`c=16 \| Peak tok/s/u`) | Gain vs. Stage 1 (`Peak`) |
 | :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
-| **1. Naive L7 Round-Robin** | `35.3%` | `4,283.8` | `3.51` | *Saturated* | *Saturated* | *Saturated* | `14.84 \| 42.13` | `1.00x Base` |
-| **2. Dynamo KV-Cache-Aware Routing** | `54.6%` | `3,405.6` | `12.34` | `10.93` | `0.49` | `8,369.6` | `25.73 \| 41.80` | `3.52x Tput \| 1.7x Int` |
-| **3. Multi-Node DCP=16 + EP=16 + Active Load** | `66.1%` | `2,689.9` | `11.47` | `15.35` | `3.92` | `5,065.3` | `27.97 \| 45.71` | `3.27x Tput (4.37x Pk)` |
-| **4. SGLang `HiCache` Host DRAM Tier (`page_first`)** | **`91.2%`** | **`1,248.7`** | **`14.96`** | **`18.43`** | **`16.49`** | **`1,602.3`** | **`37.66 \| 51.93`** | **`4.26x Tput \| 2.5x Int`** |
-| **5. Mooncake + `1,000 MBps/TiB` Lustre KV Tier** | `87.5%` | `1,280.7` | `13.89` | **`18.43`** | **`16.49`** | `1,648.3` | `33.52 \| 52.83` | **`3.96x Tput (5.25x Pk)`** |
+| **1. Naive L7 Round-Robin** | `35.3%` | `4,283.8` | `12.77` | *Saturated* | *Saturated* | *Saturated* | `28.80 \| 92.13` | `1.00x Base` |
+| **2. Dynamo KV-Cache-Aware Routing** | `54.6%` | `3,405.6` | `21.22` | `30.69` | `32.29` | `8,369.6` | `56.92 \| 91.36` | `2.53x Tput \| 2.0x Int` |
+| **3. Multi-Node DCP=16 + EP=16 + Active Load** | `72.2%` | `2,689.9` | `22.25` | `34.66` | `33.78` | `5,065.3` | `64.02 \| 108.42` | `2.71x Tput \| 2.2x Int` |
+| **4. SGLang `HiCache` Host DRAM Tier (`page_first`)** | **`91.8%`** | **`1,248.7`** | **`23.76`** | `36.85` | `45.10` *(64.64 at c=128)* | **`1,602.3`** | **`105.51 \| 152.53`** | **`5.06x Tput \| 3.7x Int`** |
+| **5. Mooncake + `1,000 MBps/TiB` Lustre KV Tier** | `91.2%` | `1,280.7` | `23.43` | **`37.13`** | **`45.28`** *(62.69 at c=128)* | `1,648.3` | `95.67 \| 153.21` | **`4.91x Tput \| 3.3x Int`** |
 
 ---
 

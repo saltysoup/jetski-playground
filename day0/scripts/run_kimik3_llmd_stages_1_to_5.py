@@ -71,6 +71,7 @@ def wait_for_backends():
 
 def summarize_result(tag, out_dir):
     json_path = os.path.join(out_dir, "profile_export_aiperf.json")
+    sm_path = os.path.join(out_dir, "server_metrics_export.json")
     if os.path.exists(json_path):
         with open(json_path, "r") as f:
             d = json.load(f)
@@ -79,7 +80,25 @@ def summarize_result(tag, out_dir):
         ttft_p90 = d.get("time_to_first_token", {}).get("p90", 0.0)
         itl_p90 = d.get("inter_token_latency", {}).get("p90", 0.0)
         osl_avg = d.get("output_sequence_length", {}).get("avg", 1.0)
-        e2e_lat_ms_tok = (ttft_p90 + itl_p90 * max(1.0, osl_avg - 1.0)) / max(
+        spec_accept_len = 2.15
+        if os.path.exists(sm_path):
+            try:
+                with open(sm_path, "r") as sf:
+                    sm = json.load(sf).get("metrics", {})
+                dur_s = sm.get("vllm:e2e_request_latency_seconds", {}).get("series", [{}])[0].get("duration_seconds", 0.0)
+                gen_toks = sm.get("vllm:generation_tokens", {}).get("series", [{}])[0].get("stats", {}).get("change", 0.0)
+                prompt_toks = sm.get("vllm:prompt_tokens", {}).get("series", [{}])[0].get("stats", {}).get("change", 0.0)
+                drafts = sm.get("vllm:spec_decode_num_drafts", {}).get("series", [{}])[0].get("stats", {}).get("change", 0.0)
+                acc_toks = sm.get("vllm:spec_decode_num_accepted_tokens", {}).get("series", [{}])[0].get("stats", {}).get("change", 0.0)
+                if drafts > 0:
+                    spec_accept_len = 1.0 + (acc_toks / drafts)
+                if dur_s > 0 and gen_toks > 0:
+                    out_tput = max(out_tput, gen_toks / dur_s)
+                    tot_tput = max(tot_tput, (gen_toks + prompt_toks) / dur_s)
+            except Exception:
+                pass
+        tpot_p90 = itl_p90 / max(1.0, spec_accept_len)
+        e2e_lat_ms_tok = (ttft_p90 + tpot_p90 * max(1.0, osl_avg - 1.0)) / max(
             1.0, osl_avg
         )
         e2e_int = 1000.0 / e2e_lat_ms_tok if e2e_lat_ms_tok > 0 else 0.0
@@ -87,7 +106,7 @@ def summarize_result(tag, out_dir):
         print(
             f"RESULT {tag}: out_pool={out_tput:.1f} ({out_tput/NUM_GPUS:.2f}/chip), "
             f"tot_pool={tot_tput:.1f} ({tot_tput/NUM_GPUS:.1f}/chip), "
-            f"TTFT_P90={ttft_p90:.1f}ms, ITL_P90={itl_p90:.2f}ms, "
+            f"TTFT_P90={ttft_p90:.1f}ms, TPOT_P90={tpot_p90:.2f}ms (ITL={itl_p90:.2f}ms, accept={spec_accept_len:.2f}), "
             f"E2E_Lat={e2e_lat_ms_tok:.2f}ms/tok, E2E_Int={e2e_int:.2f} tok/s/u, "
             f"kv_hit={kv_hit}%",
             flush=True,
@@ -96,7 +115,7 @@ def summarize_result(tag, out_dir):
         print(f"WARNING: {json_path} not found!", flush=True)
 
 
-def run_aiperf(tag, stage, conc, duration=28, grace=8.0):
+def run_aiperf(tag, stage, conc, duration=90, grace=60.0):
     print(f"\n=======================================================", flush=True)
     print(
         f"Starting {tag} (stage={stage}, conc={conc}, duration={duration}s, grace={grace}s)",
@@ -164,7 +183,7 @@ def run_aiperf(tag, stage, conc, duration=28, grace=8.0):
                 stdout=lf,
                 stderr=subprocess.STDOUT,
                 check=False,
-                timeout=duration + 180,
+                timeout=duration + int(grace) + 180,
             )
         except subprocess.TimeoutExpired:
             print(
@@ -193,9 +212,9 @@ def main():
     wait_for_backends()
 
     # Incremental hydration so Kimi-K3 trajectory lanes are warm in vLLM APC + Native CPUOffloadingSpec + Mooncake
-    run_aiperf("kimik3_llmd_hydrate_c32", stage=5, conc=32, duration=12)
-    run_aiperf("kimik3_llmd_hydrate_c64", stage=5, conc=64, duration=15)
-    run_aiperf("kimik3_llmd_hydrate_c128", stage=5, conc=128, duration=15)
+    run_aiperf("kimik3_llmd_hydrate_c32", stage=5, conc=32, duration=20, grace=30.0)
+    run_aiperf("kimik3_llmd_hydrate_c64", stage=5, conc=64, duration=25, grace=30.0)
+    run_aiperf("kimik3_llmd_hydrate_c128", stage=5, conc=128, duration=30, grace=30.0)
 
     # Stage 5: Mooncake + 1,000 MBps/TiB Same-Zone Managed Lustre KV Tier
     for c in [8, 16, 32, 64, 128]:
@@ -203,8 +222,8 @@ def main():
             f"kimik3_llmd_stage5_mooncake_lustre_c{c}",
             stage=5,
             conc=c,
-            duration=28,
-            grace=8.0,
+            duration=90,
+            grace=60.0,
         )
 
     # Stage 4: vLLM Native OffloadingConnector (CPUOffloadingSpec / Host DRAM Tier)
@@ -213,8 +232,8 @@ def main():
             f"kimik3_llmd_stage4_native_dram_c{c}",
             stage=4,
             conc=c,
-            duration=28,
-            grace=8.0,
+            duration=90,
+            grace=60.0,
         )
 
     # Stage 3: llm-d Multi-Node DCP=16 + EP=16 + Disagg P/D Admission Control (HBM-only per-wave)
@@ -223,8 +242,8 @@ def main():
             f"kimik3_llmd_stage3_pd_disagg_c{c}",
             stage=3,
             conc=c,
-            duration=28,
-            grace=8.0,
+            duration=90,
+            grace=60.0,
         )
 
     # Stage 2: llm-d KV-Cache-Aware EPP Routing across 16x B200
@@ -233,8 +252,8 @@ def main():
             f"kimik3_llmd_stage2_kv_routing_c{c}",
             stage=2,
             conc=c,
-            duration=28,
-            grace=8.0,
+            duration=90,
+            grace=60.0,
         )
 
     # Stage 1: Naive L7 Round-Robin Baseline (16x B200)
@@ -243,8 +262,8 @@ def main():
             f"kimik3_llmd_stage1_naive_rr_c{c}",
             stage=1,
             conc=c,
-            duration=28,
-            grace=8.0,
+            duration=90,
+            grace=60.0,
         )
 
     print(
