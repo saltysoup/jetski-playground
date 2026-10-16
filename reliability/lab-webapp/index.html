@@ -988,7 +988,7 @@
         <span id="player-score-label" style="color: var(--green-text); font-family: var(--mono);">0 pts</span>
       </button>
       <div class="progress-pill">
-        <span id="progress-text">0 / 10 Clues Solved</span>
+        <span id="progress-text">0 / 20 Clues Solved</span>
         <div class="progress-bar-wrap">
           <div class="progress-bar-fill" id="progress-fill"></div>
         </div>
@@ -1026,7 +1026,7 @@
 
       <div class="panel">
         <div class="panel-title">
-          <span>Investigation Missions</span>
+          <span>5-Day Curriculum Missions</span>
         </div>
         <nav class="mission-nav" id="mission-nav"></nav>
       </div>
@@ -1093,11 +1093,11 @@
       <h3>🕵️ Welcome to Operation Goodput</h3>
       <p>
         Choose a nickname to join the <strong>Live CE Scoreboard</strong>.
-        Once you start, each breadcrumb question has a <strong>10:00 countdown timer</strong> worth up to <strong>1,000 points</strong>:
+        This self-paced, read-only forensic lab spans <strong>5 Missions (20 Breadcrumbs)</strong> aligned with the 5-Day GPU Reliability Deep Dive curriculum. Each question has a <strong>10:00 countdown timer</strong> worth up to <strong>1,000 points</strong>:
       </p>
       <ul style="margin: 0 0 16px; padding-left: 20px; font-size: 13px; color: var(--text-secondary);">
+        <li><strong>100% Read-Only Investigation:</strong> Inspect live or pre-captured GKE, GCE, Cloud Logging, and Cloud Monitoring telemetry—never create or mutate compute resources.</li>
         <li><strong>Speed Matters:</strong> The faster you submit the right answer, the more points you earn (`1,000 pts` at 10:00 down to `0 pts` at 00:00).</li>
-        <li><strong>Zero-Point Floor:</strong> If your 10-minute timer hits `00:00`, you earn `0` points for that question (you can still solve it to advance).</li>
         <li><strong>Stuck?</strong> Click <code>🔓 Reveal Answer</code> on any question with the instructor password to reveal the answer and advance for `0` points.</li>
       </ul>
       <form id="nickname-form">
@@ -1145,7 +1145,7 @@
 
   <!-- 3. Full Live Scoreboard Modal -->
   <div class="modal-backdrop" id="scoreboard-modal">
-    <div class="modal-card wide">
+    <div class="modal-card wide" style="max-width: 920px;">
       <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 8px;">
         <h3 style="margin: 0;"><span class="live-dot"></span>🏆 Live CE Scoreboard (Real-Time)</h3>
         <div style="display: flex; gap: 8px;">
@@ -1156,23 +1156,25 @@
         </div>
       </div>
       <p style="margin-bottom: 10px;">
-        Scores update automatically every 2 seconds across all connected CEs. Maximum possible score: <strong>10,000 pts</strong> (1,000 pts × 10 clues).
+        Scores update automatically every 2 seconds across all connected CEs. Maximum possible score: <strong>20,000 pts</strong> (1,000 pts × 20 clues across Days 1–5).
       </p>
-      <div style="max-height: 420px; overflow-y: auto;">
+      <div style="max-height: 440px; overflow-y: auto;">
         <table class="sb-table">
           <thead>
             <tr>
               <th>Rank</th>
               <th>Nickname</th>
               <th>Progress</th>
-              <th>Mission 1</th>
-              <th>Mission 2</th>
-              <th>Mission 3</th>
+              <th>Day 1 (M1)</th>
+              <th>Day 2 (M2)</th>
+              <th>Day 3 (M3)</th>
+              <th>Day 4 (M4)</th>
+              <th>Day 5 (M5)</th>
               <th style="text-align: right;">Total Score</th>
             </tr>
           </thead>
           <tbody id="full-scoreboard-tbody">
-            <tr><td colspan="7" style="text-align: center; color: var(--text-muted);">No players registered yet.</td></tr>
+            <tr><td colspan="9" style="text-align: center; color: var(--text-muted);">No players registered yet.</td></tr>
           </tbody>
         </table>
       </div>
@@ -1183,84 +1185,125 @@
     const MISSIONS = [
       {
         id: "mission-1",
-        number: "Mission 1",
-        title: "The Midnight Pager: Why Did the Training Job Die?",
-        subtitle: "Triage Application vs. Hardware Faults",
-        scenario: `<strong>Incident Ticket #101:</strong> Your ML team launched their first multi-node NeMo-RL Gemma 3 27B training run (<code>dapo-gemma3-run1</code>) across 16 × B200 GPUs. Less than 3 minutes into Step 1, the job crashed and paged on-call. The ML engineer insists: <em>"One of the B200 nodes must have bad GPU memory—please replace the node!"</em> Your job is to investigate the logs, find the true root cause, and recommend the fastest fix.`,
+        number: "Mission 1 · Day 1",
+        title: "Job Execution Telemetry, In-Band vs. Out-of-Band Metrics & Software Resiliency",
+        subtitle: "Goodput Baseline, DCGM vs. GCE/CLAM Metrics, Checkpoint Audit & CUDA OOM",
+        scenario: `<strong>Day 1 User Journey (Primer &amp; Monitoring Job Execution):</strong> Before troubleshooting hardware faults, a reliability detective must establish a <strong>Goodput baseline</strong>, understand what <strong>In-Band (GKE/VM DCGM)</strong> vs. <strong>Out-of-Band (GCE Host / CLAM)</strong> metrics expose, audit <strong>software-layer checkpoint resiliency</strong>, and separate application config bugs (like <code>CUDA OOM</code>) from hardware failures—all using 100% read-only cluster and telemetry queries.`,
         clues: [
           {
             id: "m1-c1",
-            stepLabel: "Breadcrumb 1.1 · Initial Triage",
-            title: "Check Kubernetes Node Health & Locate the Failed Job Logs",
-            prompt: `Before blaming physical GPU hardware, check whether Kubernetes sees any unhealthy nodes or missing GPUs, and locate the logs for the failed training run (<code>dapo-gemma3-run1</code>) in the <code>default</code> namespace.<br><br><strong>Question:</strong> How many total allocatable GPUs (<code>nvidia.com/gpu</code>) are currently healthy across the two <code>a4-highgpu-8g</code> nodes (or enter the name of the failed pod/job)?`,
+            stepLabel: "Breadcrumb 1.1 · Baseline Job Execution & Goodput Constants",
+            title: "Inspect Baseline Training Step Time & Worker Initialization Overhead",
+            prompt: `On our 2-node <code>a4-highgpu-8g</code> cluster (<code>16 × NVIDIA B200</code> GPUs with gIB RDMA), inspect the captured baseline run telemetry (<code>kubectl get configmap day1-baseline-telemetry -n default -o yaml</code> or <code>kubectl logs dapo-gemma3-baseline-driver -n default</code>).<br><br>Google Cloud defines <strong>Runtime Goodput</strong> as:<br><code>Runtime Goodput = (T_ckpt - t_ch) / (T_ckpt + t_re + t_rm)</code><br><br><strong>Question:</strong> From the baseline telemetry on <code>ikwak-reliability</code>, what is the steady-state <strong>mean step time</strong> in seconds (<code>~116.4s</code>) OR the total warm <strong>worker initialization / resume overhead (<code>t_rm</code>)</strong> in seconds (<code>721.5s</code> / <code>12m 01s</code>)?`,
             inputType: "text",
-            placeholder: "e.g., 16 GPUs (or 8 per node) / dapo-gemma3-run1",
-            hint: `Run <code>kubectl get nodes</code> to check node status and allocatable GPUs, and <code>kubectl get pods -n default</code> to see the training pods/jobs:
+            placeholder: "e.g., 116.39s (or 116.4 / 721.5s / 12m 01s)",
+            hint: `Inspect the pre-staged Day 1 baseline telemetry ConfigMap and node status (read-only):
 <div class="code-block">kubectl get nodes -l cloud.google.com/gke-accelerator=nvidia-b200 \\
   -o custom-columns=NAME:.metadata.name,READY:.status.conditions[-1].status,GPUS:.status.allocatable."nvidia\\.com/gpu"
 
-kubectl get pods -n default</div>`,
+kubectl get configmap day1-baseline-telemetry -n default -o yaml</div>`,
             telemetrySample: `$ kubectl get nodes -l cloud.google.com/gke-accelerator=nvidia-b200 -o custom-columns=NAME:.metadata.name,READY:.status.conditions[-1].status,GPUS:.status.allocatable."nvidia\\.com/gpu"
 NAME                                                  READY   GPUS
 gke-ikwak-reliabilit-a4-highgpu-8g-a4-0256e2f1-34t3   True    8
 gke-ikwak-reliabilit-a4-highgpu-8g-a4-0256e2f1-6df3   True    8
 
-$ kubectl get pods -n default
-NAME                                             READY   STATUS    RESTARTS   AGE
-dapo-gemma3-run1-driver                          0/1     Error     0          24m
-ray-cluster-kuberay-head-nt7b6                   2/2     Running   0          2h
-ray-cluster-kuberay-worker-workergroup-1-lsfdm   3/3     Running   0          2h
-ray-cluster-kuberay-worker-workergroup-1-k88n4   3/3     Running   0          2h`,
-            acceptedKeywords: ["16", "8", "dapo-gemma3-run1", "dapo-gemma3-run1-driver", "true"],
-            warmKeywords: ["ready", "node", "kubectl"],
-            warmMessage: "You're looking in the right place! Enter the total number of healthy allocatable GPUs across both nodes (16, or 8 per node) or the failed pod name (`dapo-gemma3-run1-driver`).",
-            explanationTitle: "Correct! Both nodes are Ready with all 16 B200 GPUs (8 per node), and `dapo-gemma3-run1-driver` exited with Error.",
+$ kubectl get configmap day1-baseline-telemetry -n default -o yaml
+data:
+  workload: "NeMo-RL v0.6.0 DAPO on google/gemma-3-27b-it (FSDP2 across 16x B200 GPUs)"
+  step_time_mean_sec: "116.39"
+  step_time_p50_sec: "118.08"
+  step_time_stdev_sec: "8.02"
+  checkpoint_save_blocking_sec: "49.14"
+  worker_init_t_rm_warm_sec: "721.5 (12m 01s: vLLM init 428.9s + FSDP2 policy init 93.7s + setup 195.9s)"
+  cold_image_pull_sec: "450.0 (20.1 GB nvcr.io/nvidia/nemo-rl:v0.6.0)"`,
+            acceptedKeywords: ["116.39", "116.4", "116", "118.08", "721.5", "721", "12m 01s", "12m01s", "49.14"],
+            warmKeywords: ["16", "b200", "step", "goodput", "450"],
+            warmMessage: "You found the baseline ConfigMap! Enter the steady-state mean step time (`116.39` seconds) or the warm worker resume time `t_rm` (`721.5` seconds).",
+            explanationTitle: "Correct! Steady-state step time is 116.39s (~1m 56s), while warm job resume overhead (`t_rm`) is 721.5s (12m 01s).",
             explanationHtml: `
-              <p>Both <code>-34t3</code> and <code>-6df3</code> report <code>Ready=True</code> with <code>8</code> allocatable GPUs each (<strong>16 GPUs total</strong>), and the KubeRay worker pods are still running cleanly. Only the job submission driver (<code>dapo-gemma3-run1-driver</code>) failed.</p>
-              <h4>Why This Matters for MTTR:</h4>
+              <p>Establishing a quantitative baseline before injecting or diagnosing faults is Rule #1 of GPU reliability engineering:</p>
               <ul>
-                <li><strong>Warning:</strong> As you will see in Mission 2 and Mission 3, <code>kubectl get nodes</code> showing <code>Ready=True</code> does <em>not</em> guarantee the GPU hardware is healthy. However, when a job fails at Step 1 while worker pods stay alive, the first place to look is the <strong>job/application log</strong>.</li>
+                <li><strong>Why <code>t_rm = 721.5s</code> (6.2× step time) matters:</strong> Even if infrastructure recovery time is zero (<code>t_re = 0</code>), restarting a NeMo-RL job pays <code>12m 01s</code> of warm initialization (plus <code>450s</code> if pulling the 20.1 GB container image cold).</li>
+                <li><strong>Blackout vs. Brownout:</strong> A <em>blackout</em> (hard crash) incurs <code>t_ch + t_re + t_rm</code>. A <em>brownout</em> (thermal or PCIe straggler slowing step time from <code>116.4s</code> to <code>167.2s</code>) silently degrades <strong>Program Goodput (MFU)</strong> without ever firing an exit code—unless you monitor step-time distributions!</li>
               </ul>
             `
           },
           {
             id: "m1-c2",
-            stepLabel: "Breadcrumb 1.2 · Root Cause Analysis",
-            title: "Inspect the Training Job Traceback",
-            prompt: `Now inspect the logs of the failed job (<code>kubectl logs dapo-gemma3-run1-driver -n default</code>) and check whether any hardware error fired. <br><br><strong>Question:</strong> What is the exact root-cause error that killed <code>dapo-gemma3-run1</code>?`,
+            stepLabel: "Breadcrumb 1.2 · In-Band (GKE/VM) vs. Out-of-Band (GCE Host / CLAM) Metrics",
+            title: "Audit What Default GKE DCGM Exports vs. What Is Missing",
+            prompt: `In Day 1.2, we compare <strong>In-Band vs. Out-of-Band metrics</strong>, <strong>GCE vs. GKE metrics</strong>, and <strong>VM vs. Host vs. NVLink telemetry</strong> in Metrics Explorer.<br><br>Inspect the telemetry audit on our cluster (<code>kubectl get configmap day1-telemetry-audit -n default -o yaml</code>). The default GKE managed <code>dcgm-exporter</code> exposes 168 metric series across 21 utilization/profiling families (<code>GPU_UTIL</code>, <code>SM_CLOCK</code>, <code>GPU_TEMP</code>, <code>POWER_USAGE</code>, <code>PCIE_TX_BYTES</code>, <code>NVLINK_TX_BYTES</code>).<br><br><strong>Question:</strong> Which critical DCGM failure metric (enter the metric name <code>DCGM_FI_DEV_XID_ERRORS</code>, its numeric field ID <code>319</code>, or <code>ECC</code> / <code>row remap</code>) is <strong>omitted by default</strong> in managed GKE DCGM, requiring Out-of-Band GCE/Serial Console telemetry or a custom exporter?`,
             inputType: "text",
-            placeholder: "e.g., CUDA out of memory / torch.OutOfMemoryError",
-            hint: `Fetch the logs from the failed job pod in <code>default</code>:
-<div class="code-block">kubectl logs dapo-gemma3-run1-driver -n default --tail=50</div>`,
-            telemetrySample: `$ kubectl logs dapo-gemma3-run1-driver -n default --tail=30
-[Step 1/100] Starting rollout generation across 16 GPUs (rollout.max_model_len=32768, train_micro_batch_size=8)...
-(DTensorPolicyWorkerV2 pid=18422, ip=10.88.2.6) [Rank 0] Forward+Backward pass started
-Traceback (most recent call last):
-  File "/opt/nemo-rl/examples/run_grpo.py", line 241, in main
-    grpo_train(policy, rollout_workers, dataloader, config)
-  File "/opt/nemo-rl/nemo_rl/algorithms/grpo.py", line 418, in grpo_train
-    loss = policy.train_step(batch)
-torch.OutOfMemoryError: CUDA out of memory. Tried to allocate 14.50 GiB. GPU 0 has a total capacity of 178.35 GiB of which 2.12 GiB is free. Including non-PyTorch memory, this process has 176.18 GiB memory in use. Of the allocated memory 168.40 GiB is allocated by PyTorch, and 4.12 GiB is reserved by PyTorch but unallocated.
-ray.exceptions.RayTaskError(OutOfMemoryError): ray::DTensorPolicyWorkerV2.train_step() (pid=18422, ip=10.88.2.6)
-[Job Status] dapo-gemma3-run1 FAILED (ExitCode: 1)`,
-            acceptedKeywords: ["oom", "out of memory", "outofmemoryerror", "cuda out of memory", "memory"],
-            warmKeywords: ["cuda", "torch", "pytorch", "14.50", "178.35"],
-            warmMessage: "Almost there! Look at the specific exception line (`torch.OutOfMemoryError: ...`)—what type of CUDA error is this?",
-            explanationTitle: "Spot on! It's a Job-Level `torch.OutOfMemoryError: CUDA out of memory` (CUDA OOM)—NOT a hardware fault.",
+            placeholder: "e.g., DCGM_FI_DEV_XID_ERRORS / field 319 / ECC counters",
+            hint: `Read the telemetry audit ConfigMap comparing In-Band GKE DCGM vs. Out-of-Band GCE Host / CLAM telemetry:
+<div class="code-block">kubectl get configmap day1-telemetry-audit -n default -o yaml</div>`,
+            telemetrySample: `$ kubectl get configmap day1-telemetry-audit -n default -o yaml
+data:
+  gke_managed_dcgm_present_21_families: |
+    DCGM_FI_DEV_SM_CLOCK, DCGM_FI_DEV_MEMORY_TEMP, DCGM_FI_DEV_GPU_TEMP,
+    DCGM_FI_DEV_POWER_USAGE, DCGM_FI_DEV_TOTAL_ENERGY_CONSUMPTION,
+    DCGM_FI_DEV_GPU_UTIL, DCGM_FI_DEV_MEM_COPY_UTIL,
+    DCGM_FI_DEV_FB_TOTAL, DCGM_FI_DEV_FB_FREE, DCGM_FI_DEV_FB_USED,
+    DCGM_FI_PROF_GR_ENGINE_ACTIVE, DCGM_FI_PROF_SM_ACTIVE,
+    DCGM_FI_PROF_PIPE_TENSOR_ACTIVE, DCGM_FI_PROF_DRAM_ACTIVE,
+    DCGM_FI_PROF_PCIE_TX_BYTES, DCGM_FI_PROF_PCIE_RX_BYTES,
+    DCGM_FI_PROF_NVLINK_TX_BYTES, DCGM_FI_PROF_NVLINK_RX_BYTES
+  gke_managed_dcgm_MISSING_failure_fields: |
+    - DCGM_FI_DEV_XID_ERRORS (Field ID 319) -> OMITTED!
+    - ECC Counters (SBE/DBE volatile & aggregate) -> OMITTED!
+    - Row Remap Counters (remapped rows / bank exhaustion) -> OMITTED!
+    - NVLink Error Counters (CRC / recovery / replay errors) -> OMITTED!
+  inband_vs_outofband_summary: |
+    - In-Band (GKE / Guest VM DCGM): High-frequency SM/Tensor/NVLink throughput, but dies or freezes if the Guest OS hangs or GPU falls off the PCIe bus (XID 79).
+    - Out-of-Band (GCE Host / Serial Console / CLAM / Reservation Health): Survives guest VM kernel panics and PCIe bus drops; feeds Google Host Health & Emergent Maintenance.`,
+            acceptedKeywords: ["319", "dcgm_fi_dev_xid_errors", "xid_errors", "xid", "ecc", "row remap", "nvlink error"],
+            warmKeywords: ["dcgm", "gpu_util", "in-band", "out-of-band", "clam"],
+            warmMessage: "Look under `gke_managed_dcgm_MISSING_failure_fields` in the ConfigMap—what is the DCGM field name or numeric ID (`319` / `DCGM_FI_DEV_XID_ERRORS`) missing from default GKE?",
+            explanationTitle: "Correct! Default GKE DCGM omits `DCGM_FI_DEV_XID_ERRORS` (Field 319), ECC counters, and NVLink error counters.",
             explanationHtml: `
-              <p>The job crashed with <code>torch.OutOfMemoryError: CUDA out of memory</code> while trying to allocate an extra <code>14.50 GiB</code> during the FSDP2 policy backward pass because <code>train_micro_batch_size=8</code> and <code>max_model_len=32768</code> exceeded the 178.35 GiB HBM3e capacity when co-located with vLLM rollout weights.</p>
-              <h4>Key Takeaway from Industry Research (ByteRobust &amp; Acme):</h4>
+              <p>A dashboard full of green <code>DCGM_FI_DEV_GPU_UTIL</code> charts looks reassuring, but default GKE managed DCGM only exports <em>utilization</em> metrics—not <em>failure</em> metrics!</p>
+              <h4>In-Band (GKE/VM) vs. Out-of-Band (GCE Host / CLAM) Telemetry:</h4>
               <ul>
-                <li>In ByteDance's 9,600-GPU study (<em>ByteRobust</em>), <strong>CUDA errors ranked #1 by incident count (36.1%)</strong> and OOM/CPU overload accounted for <strong>>20%</strong> of job failures.</li>
-                <li>Yet a Python stack trace ending in a CUDA error can be either an <strong>application config bug</strong> (like this CUDA OOM) or a <strong>symptom of a deeper hardware XID</strong>. Checking the job traceback first (and confirming zero hardware XIDs in the kernel log) prevents you from wasting hours replacing healthy hardware!</li>
+                <li><strong>In-Band Metrics (GKE DCGM / Guest VM Agent):</strong> Collected inside the guest OS via NVML/DCGM (or exported to Managed Service for Prometheus / 3P tools like Datadog &amp; Grafana). Great for profiling Tensor Core activity (<code>PIPE_TENSOR_ACTIVE</code>), HBM bandwidth (<code>DRAM_ACTIVE</code>), and NVLink throughput (<code>NVLINK_TX_BYTES</code>). However, if a GPU drops off the PCIe bus (<code>XID 79</code>) or the VM kernel locks up, in-band agents go blind.</li>
+                <li><strong>Out-of-Band Metrics (GCE Host / Serial Port 1 / Reservation Health / CLAM):</strong> Observed outside the guest workload container by the hypervisor/host control plane. Even if the guest VM crashes, serial console XID logs (<code>serialconsole.googleapis.com/serial_port_1_output</code>), GCE <code>hostError</code> audit logs, and Reservation Health remain 100% visible.</li>
               </ul>
             `
           },
           {
             id: "m1-c3",
-            stepLabel: "Breadcrumb 1.3 · Remediation Decision",
-            title: "Choose the Optimal Recovery Action",
-            prompt: `Every minute of downtime on a 512-GPU B200 cluster costs <strong>$96.23</strong> ($5,774/hr). Based on your diagnosis of <code>dapo-gemma3-run1</code>, select the correct remediation action to minimize MTTR:`,
+            stepLabel: "Breadcrumb 1.3 · Software-Layer Resiliency & Checkpointing Audit",
+            title: "Find the Silent Checkpoint Defect That Makes Node-Loss MTTR Infinite",
+            prompt: `Day 1.1 emphasizes <strong>Software-Layer Resiliency (async/hierarchical checkpointing &amp; defense-in-depth)</strong> before hardware troubleshooting: if your checkpoints are broken, even the fastest hardware repair yields <strong>0% Goodput</strong>.<br><br>Inspect the forensic audit of our 10-step run's checkpoint directory (<code>kubectl get configmap day1-checkpoint-audit -n default -o yaml</code>). The head pod reported <code>Checkpoint saved successfully at step_10</code>—yet restoring from it after a node replacement failed completely!<br><br><strong>Question:</strong> What critical storage defect did the audit uncover (e.g., checkpoints were written to the local container <code>overlay</code> filesystem instead of shared <code>gcsfuse</code>/<code>lustre</code>, or left un-renamed in <code>tmp_step_10</code>)?`,
+            inputType: "text",
+            placeholder: "e.g., container overlay filesystem / tmp_step_10 rename failed / not on shared GCS Fuse or Lustre",
+            hint: `Inspect the <code>day1-checkpoint-audit</code> ConfigMap in the <code>default</code> namespace:
+<div class="code-block">kubectl get configmap day1-checkpoint-audit -n default -o yaml</div>`,
+            telemetrySample: `$ kubectl get configmap day1-checkpoint-audit -n default -o yaml
+data:
+  head_pod_step_10: "/opt/nemo-rl/results/step_10/ -> 28 KB (config.yaml, training_info.json, train_dataloader.pt ONLY)"
+  worker_a_34t3: "/opt/nemo-rl/results/tmp_step_10/ -> 152 GB (policy/weights/model/shard-*.safetensors)"
+  worker_b_6df3: "/opt/nemo-rl/results/tmp_step_10/ -> 152 GB (policy/optimizer/optim/*.distcp)"
+  defect_1_ephemeral_storage: "/opt/nemo-rl/results is the container OVERLAY filesystem (not a PersistentVolume, GCS FUSE, or Lustre mount). Pod restart or node repair destroys all 304 GB of weights!"
+  defect_2_incomplete_rename: "tmp_step_10 -> step_10 atomic rename never completed on workers (and on non-HNS GCS FUSE buckets, directory rename fails with Errno 24 Too many open files unless mountOptions includes implicit-dirs,rename-dir-limit=200000)."
+  defect_3_blocking_save: "Async mode disabled (PyTorch < 2.9.0); each checkpoint save blocks all 16 GPUs for 49.14s."`,
+            acceptedKeywords: ["overlay", "tmp_step_10", "tmp_step", "ephemeral", "gcsfuse", "gcs fuse", "lustre", "rename", "errno 24", "split"],
+            warmKeywords: ["checkpoint", "152", "step_10", "storage", "volume"],
+            warmMessage: "You're looking at the checkpoint audit! Mention `overlay` (container overlay filesystem), `tmp_step_10` (incomplete rename), or `gcsfuse` / `lustre` to unlock.",
+            explanationTitle: "Correct! Checkpoints landed on the ephemeral container `overlay` filesystem in `tmp_step_10/` instead of durable shared storage (`GCS FUSE` / `Lustre`).",
+            explanationHtml: `
+              <p>A job that logs "checkpoint saved" but cannot actually restore after a node replacement is one of the deadliest silent failure modes in large-scale training:</p>
+              <ul>
+                <li><strong>1. Ephemeral Container Overlay Trap:</strong> Writing to <code>/opt/nemo-rl/results</code> without mounting a shared CSI volume (<strong>Cloud Storage FUSE</strong> or <strong>Google Cloud Managed Lustre</strong>) splits shards across local worker overlays. Any pod restart or node repair wipes the weights (making <code>MTTR = ∞</code>).</li>
+                <li><strong>2. The <code>gcsfuse</code> Atomic Rename Trap (<code>Errno 24</code>):</strong> Distributed checkpointers write to <code>tmp_step_N/</code> and atomically rename to <code>step_N/</code>. On non-Hierarchical Namespace (HNS) buckets, pass <code>mountOptions: "implicit-dirs,rename-dir-limit=200000"</code> (or use an HNS bucket / Managed Lustre) so directory renames do not fail.</li>
+                <li><strong>3. Async &amp; Hierarchical Checkpointing:</strong> Blocking checkpoint saves cost <code>49.14s</code> (23% of a step). Enabling PyTorch Async Checkpointing (staging to pinned host RAM / Local SSD, then flushing asynchronously to GCS/Lustre) cuts checkpoint badput by &gt;90%.</li>
+              </ul>
+            `
+          },
+          {
+            id: "m1-c4",
+            stepLabel: "Breadcrumb 1.4 · Application Triage (`CUDA OOM` vs. Hardware Fault)",
+            title: "Triage Incident #101 (`dapo-gemma3-run1-driver`) Without Wasting a Node Swap",
+            prompt: `Your ML engineer pages you: <code>dapo-gemma3-run1</code> crashed at Step 1 and they insist: <em>"One of the B200 nodes has broken HBM memory—please replace the node!"</em><br><br>Inspect the failed driver pod logs (<code>kubectl logs dapo-gemma3-run1-driver -n default --tail=30</code>). Both nodes report <code>Ready=True</code> with <code>8</code> GPUs, Cloud Logging shows <strong>0 hardware XIDs</strong>, and the traceback ends with:<br><code>torch.OutOfMemoryError: CUDA out of memory. Tried to allocate 14.50 GiB. GPU 0 has a total capacity of 178.35 GiB of which 2.12 GiB is free.</code><br><br><strong>Question:</strong> Select the optimal remediation action to maximize cluster Goodput:`,
             inputType: "choice",
             choices: [
               {
@@ -1269,130 +1312,190 @@ ray.exceptions.RayTaskError(OutOfMemoryError): ray::DTensorPolicyWorkerV2.train_
               },
               {
                 id: "b",
-                text: "Apply `kubectl label node ... cloud.google.com/perform-maintenance=true` to request a GCE host replacement."
+                text: "Call the GCE `reportHostAsFaulty` (R&R) API to replace the B200 host."
               },
               {
                 id: "c",
-                text: "Do not reboot or replace any nodes. Reduce `train_micro_batch_size` / `max_model_len` (or enable FSDP2 activation checkpointing / memory offloading) in the recipe YAML and immediately resubmit the job."
+                text: "Do not reboot or replace any nodes (`t_re = 0`). Explain that `train_micro_batch_size=8` + `max_model_len=32768` exceeded the 178.35 GiB B200 HBM3e budget when co-located with vLLM; reduce micro-batch/sequence length (or enable FSDP2 activation checkpointing) and resubmit immediately."
               },
               {
                 id: "d",
-                text: "Run `nvidia-smi --gpu-reset` on all 8 GPUs on the node."
+                text: "Run `nvidia-smi --gpu-reset` across all 16 GPUs."
               }
             ],
             correctChoice: "c",
-            explanationTitle: "Correct! Fix the job configuration and resubmit immediately ($t_{re} = 0$).",
+            hint: `Fetch the logs from the failed job pod in <code>default</code>:
+<div class="code-block">kubectl logs dapo-gemma3-run1-driver -n default --tail=30</div>`,
+            telemetrySample: `$ kubectl logs dapo-gemma3-run1-driver -n default --tail=30
+[Step 1/100] Starting rollout generation across 16 GPUs (rollout.max_model_len=32768, train_micro_batch_size=8)...
+(DTensorPolicyWorkerV2 pid=18422, ip=10.88.2.6) [Rank 0] Forward+Backward pass started
+Traceback (most recent call last):
+  File "/opt/nemo-rl/examples/run_grpo.py", line 241, in main
+    grpo_train(policy, rollout_workers, dataloader, config)
+  File "/opt/nemo-rl/nemo_rl/algorithms/grpo.py", line 418, in grpo_train
+    loss = policy.train_step(batch)
+torch.OutOfMemoryError: CUDA out of memory. Tried to allocate 14.50 GiB. GPU 0 has a total capacity of 178.35 GiB of which 2.12 GiB is free.
+[Job Status] dapo-gemma3-run1 FAILED (ExitCode: 1)`,
+            explanationTitle: "Correct! Application-level `CUDA out of memory` requires a recipe config fix (`t_re = 0`), not a hardware repair.",
             explanationHtml: `
-              <p>Because the hardware is 100% healthy and PyTorch released its CUDA context when the worker process exited, <strong>infrastructure recovery time ($t_{re}$) is 0 seconds</strong>.</p>
-              <ul>
-                <li>If you had rebooted the node (Option A), you would have wasted ~10–15 minutes—and in our Run 8a test, an unnecessary <code>perform-reboot=true</code> left a local SSD read-only and triggered a full GKE node recreation!</li>
-                <li>If you had triggered host maintenance (Option B), you would have idled the cluster for <strong>~35 minutes</strong> (or been ignored if no maintenance event was pending), only for the job to OOM again on the new node.</li>
-              </ul>
+              <p>In ByteDance's 9,600-GPU <em>ByteRobust</em> study, <strong>CUDA errors ranked #1 by incident count (36.1%)</strong> and OOMs accounted for <strong>&gt;20%</strong> of job failures. Always verify whether a CUDA exception is an application OOM (0 XIDs in serial console) before triggering a 35-minute host repair or unnecessary node reboot!</p>
             `
           }
         ]
       },
       {
         id: "mission-2",
-        number: "Mission 2",
-        title: "The Second Crash: A Transient Hardware Fault Strikes",
-        subtitle: "Cloud Logging Serial Console & XID 48 Handling",
-        scenario: `<strong>Incident Ticket #102:</strong> The ML team fixed the batch size and launched <code>dapo-gemma3-run2</code>. It stepped smoothly at <code>116.4s/step</code> for 18 steps—then suddenly died! This time, the Python job log only says: <code>RuntimeError: NCCL error: unhandled cuda error</code>. Kubernetes still reports both nodes as <code>Ready=True</code> with 8 GPUs. Where did the real error go, what XID code fired, and how does Google Cloud recommend handling it?`,
+        number: "Mission 2 · Day 2",
+        title: "Job Crashes, NCCL Hangs, HostError RCA (Veritas/CLAM) & Reporting Faulty Hosts (R&R API)",
+        subtitle: "NCCL Watchdog Timeouts, Unplanned VM Terminations, Cordoning & reportHostAsFaulty",
+        scenario: `<strong>Day 2 User Journey (Infrastructure Crashes, R&amp;R API &amp; Failure RCA):</strong> Not all failures look alike. Some jobs hang silently in an <strong>NCCL collective stall</strong>, some VMs suffer an unplanned <strong>Google-detected <code>hostError</code> termination</strong> (investigated via Cloud Audit Logs, Veritas &amp; CLAM), and sometimes <strong>you (the customer) detect a bad node first</strong> and must cordon/drain it and invoke the <strong>Faulty Host Reporting (R&amp;R / <code>report-faulty-host</code>) API</strong>.`,
         clues: [
           {
             id: "m2-c1",
-            stepLabel: "Breadcrumb 2.1 · Detective Tooling (MTTD)",
-            title: "Locate the NVIDIA Driver Kernel Log Stream in Cloud Logging",
-            prompt: `When an NVIDIA GPU encounters a hardware or driver fault, the kernel module (<code>NVRM</code>) writes an <code>Xid</code> message to <code>/dev/kmsg</code>, which Google Cloud streams to the VM's serial console in Cloud Logging.<br><br><strong>Beware two common traps:</strong><br>1. Querying <code>log_id("compute.googleapis.com/serial_port_1_output")</code> returns <strong>nothing</strong>.<br>2. Searching bare <code>Xid</code> without <code>"NVRM: Xid"</code> matches thousands of unrelated <code>containerBoxID</code> lines.<br><br><strong>Question:</strong> What is the exact Cloud Logging <code>log_id</code> (or service name) where GCE serial console port 1 output actually lands?`,
+            stepLabel: "Breadcrumb 2.1 · Job Crash vs. Silent NCCL Hang Triage",
+            title: "Pinpoint the Stalled RDMA NIC / Rank in an NCCL Collective Hang",
+            prompt: `In ByteRobust, <strong>Silent Job Hangs / Collective Stalls (9.9% of incidents)</strong> have the highest MTTD of any failure mode because all 16 GPUs remain allocated while waiting for a stalled collective.<br><br>Inspect the logs of stalled training run <code>dapo-gemma3-run2-nccl-stall</code> (<code>kubectl logs dapo-gemma3-run2-nccl-stall -n default</code>). Unlike a fast process crash (which exits in ~9s with <code>Socket closed</code>), PyTorch's <code>ProcessGroupNCCL</code> watchdog aborted after a collective timeout during <code>ALLREDUCE</code>.<br><br><strong>Question:</strong> According to the NCCL debug / watchdog log, which <strong>gIB RDMA network interface (<code>eth2</code>–<code>eth9</code>)</strong> or <strong>global rank (<code>Rank 9</code>)</strong> on node <code>-6df3</code> dropped link and caused the collective hang?`,
             inputType: "text",
-            placeholder: "e.g., serialconsole.googleapis.com/serial_port_1_output",
-            hint: `Use this Cloud Logging filter in the Logs Explorer UI or via <code>gcloud logging read</code>:
-<div class="code-block">gcloud logging read \\
-  'resource.type="gce_instance" AND log_id("serialconsole.googleapis.com/serial_port_1_output") AND "NVRM: Xid"' \\
-  --project=gpu-launchpad-playground --limit=10 \\
-  --format="table(timestamp, resource.labels.instance_id, textPayload)"</div>`,
-            telemetrySample: `Filter:
-resource.type="gce_instance"
-log_id("serialconsole.googleapis.com/serial_port_1_output")
-"NVRM: Xid"`,
-            acceptedKeywords: ["serialconsole.googleapis.com/serial_port_1_output", "serial_port_1_output", "serialconsole.googleapis.com"],
-            warmKeywords: ["serial", "logging", "kmsg", "dmesg"],
-            warmMessage: "Close! Enter the exact log_id name: `serialconsole.googleapis.com/serial_port_1_output`.",
-            explanationTitle: "Correct! `serialconsole.googleapis.com/serial_port_1_output` is the fastest and richest detective surface (~2.0s MTTD).",
+            placeholder: "e.g., eth3 (or Rank 9 / ProcessGroupNCCL timeout)",
+            hint: `Read the pod logs for <code>dapo-gemma3-run2-nccl-stall</code> in namespace <code>default</code>:
+<div class="code-block">kubectl logs dapo-gemma3-run2-nccl-stall -n default</div>`,
+            telemetrySample: `$ kubectl logs dapo-gemma3-run2-nccl-stall -n default
+[2026-10-06 14:20:11 UTC] Step 11/100 complete | step_time: 116.20s
+[2026-10-06 14:22:08 UTC] Step 12/100 in progress (FSDP2 AllReduce across 16 GPUs over gIB RDMA eth2-eth9)...
+[2026-10-06 14:22:12 UTC] gke-ikwak-reliabilit-a4-highgpu-8g-a4-0256e2f1-6df3:204112:204189 [1] NCCL WARN NET/IB : mlx5_1:1 (interface eth3, IP 10.88.2.7) port 1 state DOWN / Retry counter exceeded on QP 0x14a8
+[2026-10-06 14:32:12 UTC] [Rank 9] Watchdog caught collective operation timeout: WorkNCCL(SeqNum=4182, OpType=ALLREDUCE, NumelIn=67108864, Timeout(ms)=600000) ran for 600084 ms before timing out.
+[2026-10-06 14:32:13 UTC] TORCH_NCCL_HEARTBEAT_TIMEOUT_SEC triggered dump -> aborting communicator on Rank 9 (node -6df3, GPU 1, NIC eth3).`,
+            acceptedKeywords: ["eth3", "rank 9", "rank9", "mlx5_1", "10.88.2.7", "allreduce", "watchdog"],
+            warmKeywords: ["nccl", "timeout", "rdma", "6df3", "eth"],
+            warmMessage: "You found the NCCL watchdog log! Which specific gIB RDMA interface (`eth3`) or rank (`Rank 9`) caused the timeout?",
+            explanationTitle: "Correct! gIB RDMA NIC `eth3` (`mlx5_1`, Rank 9 on `-6df3`) went down, stalling `ALLREDUCE` until the NCCL watchdog fired.",
             explanationHtml: `
-              <p>Across our 11 benchmark runs on <code>ikwak-reliability</code>, we measured the exact latency from hardware fault ($T_0$) to each detection surface:</p>
+              <p>On <code>a4-highgpu-8g</code> nodes, each of the 8 B200 GPUs is paired with a dedicated Google gIB RDMA NIC (<code>eth2</code> through <code>eth9</code>). Here is how to slash MTTD on NCCL hangs:</p>
               <ul>
-                <li><strong>Cloud Logging (<code>serialconsole.googleapis.com/serial_port_1_output</code>):</strong> Emitted in <strong>0.06s</strong>, queryable in <strong>2.07s</strong>. It is the <em>only</em> surface that immediately tells you the exact GPU PCI bus address and numeric XID code.</li>
-                <li><strong>Log-Based Alert Policy (matching <code>"NVRM: Xid"</code> on this log_id):</strong> Fires to Pub/Sub and operator Email in <strong>1m 36s – 2m 15s</strong>.</li>
-                <li><strong>Default GKE Managed DCGM Exporter:</strong> Exports 168 utilization series (<code>GPU_UTIL</code>, <code>SM_CLOCK</code>) but <strong>0 XID or ECC fields</strong> (field 319 <code>DCGM_FI_DEV_XID_ERRORS</code> is omitted by default).</li>
+                <li><strong>Why Default Timeouts Hurt Goodput:</strong> Default PyTorch NCCL timeouts are often 10–30 minutes (<code>600s–1800s</code>), meaning all GPUs spin idle burning $96/min on a 512-GPU cluster before the job even exits.</li>
+                <li><strong>Fast Hang Detection:</strong> Enable PyTorch's NCCL flight recorder and heartbeat monitor (<code>TORCH_NCCL_ENABLE_MONITORING=1</code>, <code>TORCH_NCCL_HEARTBEAT_TIMEOUT_SEC=120</code>, <code>TORCH_NCCL_DUMP_ON_TIMEOUT=1</code>) and alert on <code>NCCL WARN NET/IB</code> + GCE RDMA link flap metrics so you immediately know <em>which</em> node and NIC (<code>eth3</code> on <code>-6df3</code>) stalled the collective.</li>
               </ul>
             `
           },
           {
             id: "m2-c2",
-            stepLabel: "Breadcrumb 2.2 · Identify the XID Error Code",
-            title: "Find the Exact XID Code That Killed Run 2",
-            prompt: `Query Cloud Logging (or inspect the captured serial console log for <code>dapo-gemma3-run2</code> on node <code>-6df3</code> / instance <code>482910491827364512</code>).<br><br><strong>Question:</strong> What numeric <strong>XID error code</strong> was emitted by <code>NVRM</code>, and what memory error does it indicate?`,
+            stepLabel: "Breadcrumb 2.2 · Unplanned VM Terminations & HostError RCA (Veritas + CLAM)",
+            title: "Identify a Google-Detected Unplanned Host Failure in Cloud Audit Logs",
+            prompt: `In Day 2.3, we investigate unplanned VM terminations and root-cause analysis (RCA) using Cloud Logging, <strong>Veritas</strong>, and <strong>CLAM</strong>.<br><br>Suppose a customer reports that their training VM suddenly rebooted at <code>03:14 UTC</code> and asks whether their application crashed the OS or if Google's physical host failed. Inspect the captured Cloud Audit &amp; System Event log in <code>kubectl get configmap day2-hosterror-rca -n default -o yaml</code>.<br><br><strong>Question:</strong> What exact <code>protoPayload.methodName</code> (e.g., <code>compute.instances.hostError</code>) in Cloud Logging proves that Compute Engine experienced a physical host/hypervisor failure and automatically restarted the VM?`,
             inputType: "text",
-            placeholder: "e.g., XID 48 (or 48 / Double Bit ECC)",
-            hint: `Run the Cloud Logging query filtering for <code>"NVRM: Xid"</code> on the cluster instances, or click "View Captured Cluster Telemetry" below to see the exact serial console output.`,
-            telemetrySample: `TIMESTAMP: 2026-10-06T19:14:22.418Z
-INSTANCE_ID: 482910491827364512 (gke-ikwak-reliabilit-a4-highgpu-8g-a4-0256e2f1-6df3)
-LOG_NAME: projects/gpu-launchpad-playground/logs/serialconsole.googleapis.com%2Fserial_port_1_output
-TEXT_PAYLOAD:
-[14289.412088] NVRM: Xid (PCI:0000:89:00): 48, pid=218402, name=ray::DTensorPolicy, An uncorrectable double bit error (DBE) has been detected on GPU (0000:89:00).`,
-            acceptedKeywords: ["48", "xid 48", "xid48", "double bit ecc", "dbe"],
-            warmKeywords: ["ecc", "memory", "uncorrectable", "89:00"],
-            warmMessage: "You found the memory error on PCI 0000:89:00! What is the numeric XID code shown right after `(PCI:0000:89:00):`?",
-            explanationTitle: "Correct! `XID 48` — An uncorrectable Double-Bit ECC Error (DBE) in GPU memory.",
+            placeholder: "e.g., compute.instances.hostError (or hostError)",
+            hint: `Inspect the captured Cloud Logging system event and Veritas/CLAM RCA summary:
+<div class="code-block">kubectl get configmap day2-hosterror-rca -n default -o yaml
+
+# Equivalent Cloud Logging query for unplanned host terminations:
+gcloud logging read \\
+  'resource.type="gce_instance" AND protoPayload.methodName=("compute.instances.hostError" OR "compute.instances.automaticRestart")' \\
+  --project=gpu-launchpad-playground --limit=5</div>`,
+            telemetrySample: `$ kubectl get configmap day2-hosterror-rca -n default -o yaml
+data:
+  cloud_audit_log_system_event.json: |
+    {
+      "logName": "projects/gpu-launchpad-playground/logs/cloudaudit.googleapis.com%2Fsystem_event",
+      "resource": {
+        "type": "gce_instance",
+        "labels": {
+          "instance_id": "174490015860863227",
+          "zone": "europe-west4-b"
+        }
+      },
+      "protoPayload": {
+        "methodName": "compute.instances.hostError",
+        "status": {
+          "message": "Instance terminated by Compute Engine due to a physical host error; automaticRestart triggered."
+        }
+      },
+      "timestamp": "2026-10-05T03:14:09.112Z"
+    }
+  veritas_and_clam_rca_notes: |
+    - Customer-Visible Signal: cloudaudit.googleapis.com/system_event with methodName="compute.instances.hostError" followed by "compute.instances.automaticRestart".
+    - Internal CE/Eng RCA (Veritas & CLAM): Correlates physical hostId, out-of-band BMC/PCIe/NVSwitch telemetry (CLAM), and repair history to verify whether the defective physical host was quarantined (Outkast) so it cannot become a repeat "bad magnet".`,
+            acceptedKeywords: ["compute.instances.hosterror", "hosterror", "host_error", "automaticrestart", "compute.instances.automaticrestart"],
+            warmKeywords: ["system_event", "cloudaudit", "veritas", "clam"],
+            warmMessage: "Look at `protoPayload.methodName` in `cloud_audit_log_system_event.json`—what is the exact methodName (`compute.instances.hostError`)?",
+            explanationTitle: "Correct! `protoPayload.methodName = \"compute.instances.hostError\"` in `cloudaudit.googleapis.com/system_event` confirms an unplanned physical host failure.",
             explanationHtml: `
-              <p>The serial console log reveals: <code>NVRM: Xid (PCI:0000:89:00): 48 ... An uncorrectable double bit error (DBE) has been detected on GPU</code>.</p>
-              <h4>What Happens When XID 48 Fires:</h4>
+              <p>When a VM restarts unexpectedly, your first forensic check in Cloud Logging is <code>cloudaudit.googleapis.com/system_event</code>:</p>
               <ul>
-                <li>GPU HBM memory is protected by Error-Correcting Code (ECC), which automatically corrects single-bit errors (SBE) and detects uncorrectable double-bit errors (DBE).</li>
-                <li>When a DBE occurs, the driver immediately terminates the running CUDA context (killing <code>dapo-gemma3-run2</code>) to prevent silent data corruption (SDC), and increments the volatile uncorrectable ECC counter.</li>
-                <li>On NVIDIA A100, H100, and B200 GPUs, the hardware records the bad HBM row for <strong>row remapping</strong> (often accompanied by <code>Xid 63</code>), which requires a GPU reset or VM reboot to take effect.</li>
+                <li><strong>Customer-Visible Surface:</strong> <code>compute.instances.hostError</code> (paired with <code>compute.instances.automaticRestart</code> or <code>guestTerminate</code>) proves the termination originated in the physical host/hypervisor rather than an inside-the-VM OOM killer.</li>
+                <li><strong>Internal RCA with Veritas &amp; CLAM:</strong> CEs and TSEs use <strong>Veritas</strong> and <strong>CLAM</strong> (<code>go/gpu-clam-list</code>) to inspect the underlying physical host lifecycle, verify out-of-band PCIe/NVLink/thermal sensors at the timestamp of the crash, and confirm that Google's automated repair pipeline quarantined the bad physical host.</li>
               </ul>
             `
           },
           {
             id: "m2-c3",
-            stepLabel: "Breadcrumb 2.3 · Remediation Playbook (GCP Docs)",
-            title: "Select the Recommended Action for XID 48",
-            prompt: `Consult the official <a href="https://docs.cloud.google.com/compute/docs/troubleshooting/troubleshooting-gpus#xid-handling" target="_blank" rel="noopener">Google Cloud GPU Troubleshooting Guide (#xid-handling)</a> under <strong>GPU memory errors → Xid 48: Double Bit ECC</strong>.<br><br>Notice also that checking the GCE Reservation and Instance shows <code>healthStatus: HEALTHY</code> and <code>upcomingMaintenance: null</code>. What is the recommended <strong>Customer Action</strong> to recover from an isolated <code>Xid 48</code> on a GKE node?`,
+            stepLabel: "Breadcrumb 2.3 · Isolating a \"Bad Magnet\" Node (`kubectl cordon` & Drain)",
+            title: "Prevent the Scheduler from Re-Landing Jobs on a Suspect Node",
+            prompt: `In real customer escalations (such as the Day 2.3 bad-node isolation case study), a single degraded node whose failure is <em>invisible</em> to Kubernetes (<code>Ready=True, 8 GPUs</code>) acts as a <strong>"bad magnet"</strong>: every time a job crashes on that node and frees its 8 GPUs, Kubernetes immediately schedules the next retry pod right back onto the same broken node!<br><br><strong>Question:</strong> When your bisect identifies a faulty GKE node (e.g., <code>-6df3</code>), what is the correct operational sequence <strong>before</strong> you delete the failed job or call the Faulty Host Reporting (R&amp;R) API?`,
             inputType: "choice",
             choices: [
               {
                 id: "a",
-                text: "Report the host as faulty immediately and wait for Google to replace the physical machine."
+                text: "Delete the failing KubeRay / JobSet pods first so the GPUs are freed, then wait to see if the next job fails on the same node."
               },
               {
                 id: "b",
-                text: "Stop your workloads and reset the GPUs (`sudo nvidia-smi --gpu-reset`) or trigger a guest OS reboot on the GKE node (`kubectl label nodes <NODE_NAME> cloud.google.com/perform-reboot=true`) to clear the volatile ECC error and complete any pending row remap."
+                text: "Immediately mark the node unschedulable (`kubectl cordon <NODE>`) and drain/evict workload pods (`kubectl drain <NODE> --ignore-daemonsets --delete-emptydir-data`), then invoke the Faulty Host Reporting (`report-faulty-host` / R&R) API."
               },
               {
                 id: "c",
-                text: "Apply `kubectl label nodes <NODE_NAME> cloud.google.com/perform-maintenance=true` even though `upcomingMaintenance` is null."
+                text: "Delete the Kubernetes Node object (`kubectl delete node <NODE>`) without cordoning or calling any GCE API."
               },
               {
                 id: "d",
-                text: "Disable ECC memory checking on the B200 GPUs (`nvidia-smi -e 0`) so future double-bit errors do not interrupt training."
+                text: "Restart the `kubelet` systemd service on the node so Kubernetes re-registers the 8 GPUs."
               }
             ],
             correctChoice: "b",
-            explanationTitle: "Correct! Stop workloads and reset the GPU (`nvidia-smi --gpu-reset`) or reboot the GKE node (`cloud.google.com/perform-reboot=true`).",
+            explanationTitle: "Correct! Always `kubectl cordon <NODE>` (and drain) BEFORE freeing pods or calling the R&R API.",
             explanationHtml: `
-              <p>Per the <a href="https://docs.cloud.google.com/compute/docs/troubleshooting/troubleshooting-gpus#gpu-memory-errors" target="_blank" rel="noopener">official Google Cloud XID Handling documentation</a>:</p>
-              <blockquote><em>"When you encounter an uncorrectable ECC error, your workload terminates and the volatile error count increments. Our recommendation in this case is to reset the GPU or reboot the instance and not to report the host as faulty."</em></blockquote>
-              <h4>Two Empirical Insights from Our Run 8 Experiments:</h4>
+              <p>Why cordoning first is critical:</p>
               <ul>
-                <li><strong>1. Isolated XID 48 does NOT trigger GCE Host Maintenance:</strong> In Runs 8a &amp; 8b, we injected 10 consecutive XID 48 events across 85+ minutes. GCE kept the reservation <code>HEALTHY</code> and never scheduled a host repair—because Google only replaces the hardware on memory errors if the HBM row-remap bank is exhausted (<code>Xid 64: All reserved rows for bank are remapped</code>), if SRAM lifetime error thresholds are exceeded, or after <strong>3 consecutive XID 63 row-remap events</strong> (Run 8d).</li>
-                <li><strong>2. How to Reset a GPU or Reboot a GKE Node:</strong>
-                  <ul>
-                    <li><strong>GKE Node Guest Reboot:</strong> <code>kubectl label nodes &lt;NODE_NAME&gt; cloud.google.com/perform-reboot=true</code></li>
-                    <li><strong>GKE GPU Reset Tool / CLI:</strong> On A3/A4 nodes, <code>/home/kubernetes/bin/nvidia/bin/nvidia-smi --gpu-reset</code> (or the <a href="https://github.com/ai-on-gke/tutorials-and-examples/tree/main/gpu-reset-tool" target="_blank" rel="noopener">GKE gpu-reset-tool</a>) resets the GPU after stopping the GKE GPU management daemons holding <code>/dev/nvidia*</code>.</li>
-                  </ul>
-                </li>
+                <li><strong>Breaking the "Bad Magnet" Loop:</strong> If a 64-node cluster has 1 spare node and 1 broken node (with <code>Ready=True</code>), deleting a crashed job without running <code>kubectl cordon &lt;BAD_NODE&gt;</code> gives the scheduler a 50%+ chance of placing the restarted job right back onto the broken node.</li>
+                <li><strong>Clean Quarantine:</strong> <code>kubectl cordon &lt;NODE&gt;</code> immediately sets <code>spec.unschedulable = true</code> so replacement pods schedule onto healthy spare capacity while you initiate host repair on the quarantined node.</li>
+              </ul>
+            `
+          },
+          {
+            id: "m2-c4",
+            stepLabel: "Breadcrumb 2.4 · Customer-Detected Faulty Host Reporting (R&R API / `report-faulty-host`)",
+            title: "Identify the API / Label Used When the Customer Detects a Faulty Host First",
+            prompt: `In Day 2.2, we cover <strong>Troubleshooting a Faulty Node &amp; Reporting (<code>report-faulty-host</code> / R&amp;R API)</strong>.<br><br>What if your workload or NCCL bisect proves node <code>-6df3</code> has a hardware fault (such as silent data corruption, persistent gIB RDMA timeouts, or an unrecoverable GPU error), <strong>but Google Cloud has NOT yet scheduled an <code>upcomingMaintenance</code> event</strong> (<code>upcomingMaintenance</code> is still <code>null</code>)?<br><br>Inspect <code>kubectl get configmap day2-rr-api-reference -n default -o yaml</code> (or the <a href="https://docs.cloud.google.com/ai-hypercomputer/docs/manage/manage-gke-clusters#report-faulty-hosts-how-to" target="_blank" rel="noopener">GKE Report Faulty Hosts guide</a>).<br><br><strong>Question:</strong> What is the exact <strong>GKE node label</strong> (<code>cloud.google.com/report-faulty-host...</code>) OR <strong>GCE API / gcloud command</strong> (<code>report-faulty-host</code> / <code>reportHostAsFaulty</code>) used to report a customer-detected faulty host and trigger R&amp;R replacement?`,
+            inputType: "text",
+            placeholder: "e.g., report-faulty-host / reportHostAsFaulty / cloud.google.com/report-faulty-host",
+            hint: `Inspect the R&R API reference ConfigMap in namespace <code>default</code>:
+<div class="code-block">kubectl get configmap day2-rr-api-reference -n default -o yaml</div>`,
+            telemetrySample: `$ kubectl get configmap day2-rr-api-reference -n default -o yaml
+data:
+  when_to_use_rr_vs_perform_maintenance: |
+    1. Customer-Detected Fault (upcomingMaintenance is NULL):
+       Use the Report Faulty Host (R&R) API (gcloud compute instances report-faulty-host / REST instances.reportHostAsFaulty or GKE node label cloud.google.com/report-faulty-host).
+    2. Google-Detected Fault (upcomingMaintenance is PENDING with canReschedule=true):
+       Use Customer-Triggered Maintenance (kubectl label node <NODE> cloud.google.com/perform-maintenance=true or gcloud compute instances perform-maintenance).
+  gcloud_rr_command_example: |
+    gcloud compute instances report-faulty-host gke-ikwak-reliabilit-a4-highgpu-8g-a4-0256e2f1-6df3 \\
+      --zone=europe-west4-b \\
+      --Async \\
+      --disruption-schedule=IMMEDIATE \\
+      --fault-reasons=behavior=PERFORMANCE,description="Persistent gIB RDMA eth3 QP retry timeout stalling NCCL AllReduce"
+  supported_fault_reason_behaviors: |
+    - PERFORMANCE (straggler / severe network or GPU degradation)
+    - SILENT_DATA_CORRUPTION (SDC / NaN / gradient corruption tied to specific host)
+    - UNRECOVERABLE_GPU_ERROR (XID / NVLink / PCIe fault not yet auto-flagged)
+    - BEHAVIOR_UNSPECIFIED`,
+            acceptedKeywords: ["report-faulty-host", "reporthostasfaulty", "fault-reasons", "faultreasons", "silent_data_corruption", "unrecoverable_gpu_error"],
+            warmKeywords: ["r&r", "faulty", "disruption-schedule", "immediate"],
+            warmMessage: "You're looking at the R&R reference! Enter the exact CLI/API name (`report-faulty-host` or `reportHostAsFaulty`).",
+            explanationTitle: "Correct! Use `report-faulty-host` (`instances.reportHostAsFaulty`) when YOU detect a bad host before `upcomingMaintenance` exists.",
+            explanationHtml: `
+              <p>Know the exact boundary between Google Cloud's two self-service repair primitives:</p>
+              <ul>
+                <li><strong><code>report-faulty-host</code> (R&amp;R API — Customer-Detected):</strong> Used when <code>upcomingMaintenance</code> is <code>null</code>, but your own diagnostics (NCCL bisect, SDC checksums, persistent XID/RDMA errors) prove the host is bad. You pass <code>--disruption-schedule=IMMEDIATE</code> and structured <code>--fault-reasons</code> (<code>PERFORMANCE</code>, <code>SILENT_DATA_CORRUPTION</code>, <code>UNRECOVERABLE_GPU_ERROR</code>).</li>
+                <li><strong><code>perform-maintenance</code> (Customer-Triggered Maintenance — Google-Detected):</strong> Used when Google's control plane has <em>already</em> detected the fault and populated <code>upcomingMaintenance</code> (<code>PENDING</code>, <code>canReschedule: true</code>). Applying <code>cloud.google.com/perform-maintenance=true</code> pulls that scheduled repair forward to right now.</li>
               </ul>
             `
           }
@@ -1400,162 +1503,489 @@ TEXT_PAYLOAD:
       },
       {
         id: "mission-3",
-        number: "Mission 3",
-        title: "The Catastrophic Fault: Bus Drop, Emergency Maintenance & Host Repair",
-        subtitle: "XID 79 Triage, Pulling Forward Repair & Readiness Verification",
-        scenario: `<strong>Incident Ticket #103:</strong> Hours later, the Cloud Monitoring log-based alert fires for a third time! Training run <code>dapo-gemma3-run3</code> crashed in <strong>9.4 seconds</strong> with <code>ActorUnavailableError: Socket closed (rpc_code: 14)</code>. Your mission is to:<br>1) Find the catastrophic XID in Cloud Logging on node <code>-34t3</code>,<br>2) Confirm the fault across the GCE Reservation &amp; Instance maintenance status,<br>3) Trigger immediate Emergency Maintenance, and<br>4) Confirm that the bad node was repaired and returned to service with all 8 GPUs.`,
+        number: "Mission 3 · Day 3",
+        title: "HotGPU Thermal Throttling, Decoding XID Errors (48/63/79) & Emergent Maintenance",
+        subtitle: "Node vs. Rack Thermal Slowdown, Serial Console XID Triage & Customer-Triggered Repair",
+        scenario: `<strong>Day 3 User Journey (HotGPU, XID Errors &amp; Emergent Maintenance):</strong> Today you tackle three classic GPU hardware scenarios from our B200 cluster:<br>1) A silent <strong>"HotGPU" thermal throttling straggler</strong> slowing step time by 1.44× (distinguishing a single-GPU/node anomaly from a rack cooling issue),<br>2) Decoding <strong>NVIDIA XID 48 &amp; XID 63</strong> in Cloud Logging Serial Port 1 and deciding when to reset a GPU vs. replace a host, and<br>3) Tracing a catastrophic <strong>XID 79 bus drop</strong> to its 7-day <code>UNSCHEDULED</code> Emergent Maintenance notice and pulling forward the <strong>35-minute in-place host repair</strong>.`,
         clues: [
           {
             id: "m3-c1",
-            stepLabel: "Breadcrumb 3.1 · Cloud Logging Forensics",
-            title: "Identify the Catastrophic XID Code on Node -34t3",
-            prompt: `Query Cloud Logging (<code>serialconsole.googleapis.com/serial_port_1_output</code>) for node <code>gke-ikwak-reliabilit-a4-highgpu-8g-a4-0256e2f1-34t3</code> (instance ID <code>174490015860863227</code>) during the <code>dapo-gemma3-run3</code> crash.<br><br><strong>Question:</strong> What primary <strong>XID error code</strong> fired on GPU 7 (<code>PCI:0000:cc:00</code>) that caused it to disappear from the PCIe bus?`,
+            stepLabel: "Breadcrumb 3.1 · Debugging HotGPU Thermal Throttling (Node vs. Rack)",
+            title: "Diagnose a 1.44× Step-Time Slowdown Using Thermal & Clock Telemetry",
+            prompt: `In Day 3.1, we investigate <strong>HotGPU thermal throttling (single-GPU/node vs. rack cooling issues)</strong>.<br><br>Training run <code>dapo-gemma3-straggler</code> has <strong>zero XIDs</strong> and has not crashed, yet step time jumped from <code>116.4s/step</code> to <code>167.2s/step</code> (+44% slowdown across all 16 GPUs!). Inspect the captured DCGM &amp; CLAM thermal snapshot in <code>kubectl get configmap day3-hotgpu-telemetry -n default -o yaml</code>.<br><br><strong>Question:</strong> Which specific GPU index on node <code>-6df3</code> (e.g., <code>GPU 3</code>) is throttling at <code>89°C</code> / <code>540 MHz</code> with <code>HW_THERMAL_SLOWDOWN</code>—and since the other 7 GPUs on <code>-6df3</code> and all 8 GPUs on <code>-34t3</code> are cool (<code>58–61°C</code>), is this an <strong>isolated single-GPU/node defect</strong> or a <strong>rack-wide cooling failure</strong>?`,
             inputType: "text",
-            placeholder: "e.g., XID 79 (or 79 / GPU has fallen off the bus)",
-            hint: `Run the Cloud Logging query filtered to instance <code>174490015860863227</code>:
-<div class="code-block">gcloud logging read \\
-  'resource.type="gce_instance" AND resource.labels.instance_id="174490015860863227" AND log_id("serialconsole.googleapis.com/serial_port_1_output") AND "NVRM: Xid"' \\
-  --project=gpu-launchpad-playground --limit=15 \\
-  --format="table(timestamp, textPayload)"</div>`,
-            telemetrySample: `TIMESTAMP: 2026-09-24T20:31:38.086Z
-INSTANCE_ID: 174490015860863227 (gke-ikwak-reliabilit-a4-highgpu-8g-a4-0256e2f1-34t3)
-TEXT_PAYLOAD:
-[ 4182.104821] NVRM: Xid (PCI:0000:cc:00): 79, pid=0, name=, GPU has fallen off the bus.
-[ 4182.105012] NVRM: GPU 0000:cc:00.0: GPU has fallen off the bus.
-[ 4182.741902] NVRM: Xid (PCI:0000:04:00): 154, GPU recovery action changed from 0x0 (None) to 0x1 (Node Reboot Required)
-[ 4182.789120] NVRM: Xid (PCI:0000:cc:00): 154, GPU recovery action changed from 0x0 (None) to 0x1 (Node Reboot Required)
-[ 4183.110492] NVRM: Xid (PCI:0000:89:00): 145, NVLink: fatal error detected on link...`,
-            acceptedKeywords: ["79", "xid 79", "xid79", "fallen off the bus"],
-            warmKeywords: ["154", "145", "cc:00", "bus", "pcie"],
-            warmMessage: "You see the burst of XIDs on node -34t3! Enter the primary XID code on `PCI:0000:cc:00` that says `GPU has fallen off the bus`.",
-            explanationTitle: "Correct! `XID 79: GPU has fallen off the bus` (followed by cascading `XID 154` across all 8 GPUs).",
+            placeholder: "e.g., GPU 3 (isolated single-GPU/node thermal defect at 89C / 540 MHz)",
+            hint: `Inspect the pre-staged thermal & clock telemetry ConfigMap:
+<div class="code-block">kubectl get configmap day3-hotgpu-telemetry -n default -o yaml</div>`,
+            telemetrySample: `$ kubectl get configmap day3-hotgpu-telemetry -n default -o yaml
+data:
+  observed_step_time_sec: "167.2s (vs 116.4s baseline -> 1.44x slowdown across all 16 GPUs)"
+  node_34t3_gpus_0_to_7: "GPU_TEMP: 57C..60C | SM_CLOCK: 1980 MHz | THROTTLE_REASON: 0x0 (None)"
+  node_6df3_gpus_0_1_2_4_5_6_7: "GPU_TEMP: 58C..61C | SM_CLOCK: 1980 MHz | THROTTLE_REASON: 0x0 (None)"
+  node_6df3_gpu_3_ANOMALY: |
+    PCI: 0000:8a:00.0 (GPU 3 on gke-ikwak-reliabilit-a4-highgpu-8g-a4-0256e2f1-6df3)
+    DCGM_FI_DEV_GPU_TEMP: 89 C ( Memory Temp: 94 C )
+    DCGM_FI_DEV_SM_CLOCK: 540 MHz (throttled down from 1980 MHz!)
+    DCGM_FI_DEV_CLOCK_THROTTLE_REASONS: HW_THERMAL_SLOWDOWN | SW_THERMAL_SLOWDOWN
+  triage_rule_node_vs_rack: |
+    - Single GPU at 89C while sibling GPUs on the same baseboard are 58-61C = Isolated GPU heatsink/TIM/coldplate defect (Cordon & report-faulty-host on -6df3).
+    - All 8 GPUs across multiple nodes in the same rack rising >80C together = Facility/Rack CDU coolant flow or inlet temperature excursion.`,
+            acceptedKeywords: ["gpu 3", "gpu3", "89", "540", "isolated", "single", "node", "hw_thermal_slowdown", "0000:8a:00"],
+            warmKeywords: ["thermal", "throttle", "6df3", "rack", "167"],
+            warmMessage: "You found the thermal snapshot! Enter the throttled GPU index (`GPU 3`) or state that it's an `isolated` / `single` GPU defect at `89C`.",
+            explanationTitle: "Correct! `GPU 3` on `-6df3` (`89°C`, `540 MHz` SM clock) has an isolated single-GPU thermal defect, dragging down all 16 GPUs.",
             explanationHtml: `
-              <p>When GPU 7 (<code>0000:cc:00.0</code>) dropped off the PCIe bus (<code>VENDOR_ID = ffff</code>), it triggered an immediate chain reaction across the entire node:</p>
+              <p>Why stragglers are insidious in synchronous FSDP2 / Megatron training:</p>
               <ul>
-                <li><strong><code>T0 + 1.0s</code>:</strong> <code>NVRM: Xid (PCI:0000:cc:00): 79, GPU has fallen off the bus.</code></li>
-                <li><strong><code>T0 + 1.7s</code>:</strong> Because all 8 B200 GPUs are interconnected over NVLink, losing GPU 7 faulted the fabric—emitting <code>Xid 154 (Node Reboot Required)</code> across <strong>all 8 GPUs</strong> and <code>Xid 145 / 45</code> NVLink errors on peer GPUs.</li>
-                <li><strong><code>T0 + 9.4s</code>:</strong> The KubeRay training job died. Yet Kubernetes <code>kubectl get nodes</code> kept reporting <code>-34t3</code> as <code>Ready=True</code> with <code>8</code> allocatable GPUs for the next <strong>40 minutes</strong>!</li>
+                <li><strong>1 Slow GPU = 100% Cluster Slowdown:</strong> Because every FSDP2 <code>AllGather</code> and <code>ReduceScatter</code> barrier waits for the slowest rank, <strong>1 GPU</strong> throttling from <code>1980 MHz</code> to <code>540 MHz</code> slows the entire 16-GPU (or 512-GPU) job by <strong>1.44×</strong>—burning 30% of your compute budget with zero error logs!</li>
+                <li><strong>Node vs. Rack Triage:</strong> Always compare <code>DCGM_FI_DEV_GPU_TEMP</code> and <code>SM_CLOCK</code> across all 8 GPUs on the host and across hosts in the same reservation block:
+                  <ul>
+                    <li><strong>1 GPU hot (<code>89°C</code>), 7 sibling GPUs normal (<code>58–61°C</code>):</strong> Isolated GPU coldplate/TIM hardware defect $\to$ Cordon node and invoke <code>report-faulty-host</code> (<code>behavior=PERFORMANCE</code>).</li>
+                    <li><strong>All 8 GPUs across multiple nodes in the block hot:</strong> Rack/CDU cooling excursion (correlate with GCE CLAM host thermal metrics).</li>
+                  </ul>
+                </li>
               </ul>
             `
           },
           {
             id: "m3-c2",
-            stepLabel: "Breadcrumb 3.2 · Confirming Platform Detection (Reservation & Instance)",
-            title: "Verify the Fault in GCE Reservation Health & Upcoming Maintenance",
-            prompt: `Unlike <code>XID 48</code>, Google Cloud proactively sends machines with <strong>XID 79</strong> to repair. Before triggering emergency maintenance, confirm that Google Cloud's control plane detected the fault:<br>1) Within ~30 seconds of <code>XID 79</code>, the Compute Reservation (<code>nvidia-b200-6bsoymep8ylww</code>) <code>healthStatus</code> flips from <code>HEALTHY</code> to <code>DEGRADED</code>.<br>2) Within ~11–26 minutes, GCE populates <code>resourceStatus.upcomingMaintenance</code> on instance <code>-34t3</code> (and mirrors it to the GKE node annotation <code>node.gke.io/upcoming-maintenance</code>).<br><br><strong>Question:</strong> Inspect the <code>upcomingMaintenance</code> payload on node <code>-34t3</code>. What exact string appears in <code>maintenanceReasons</code> to confirm Google scheduled this repair due to the GPU XID?`,
+            stepLabel: "Breadcrumb 3.2 · Serial Console XID Detective Trap & XID 48 vs. XID 63 Rules",
+            title: "Locate the Serial Console Stream & Decode Memory XIDs (48 vs. 63)",
+            prompt: `Job <code>dapo-gemma3-run2</code> crashed at Step 18 with a generic Python exception: <code>RuntimeError: NCCL error: unhandled cuda error</code>. To find the real hardware error, you must query the VM's serial console output in Cloud Logging and apply the XID remediation matrix.<br><br>Inspect <code>kubectl get configmap day3-xid-matrix -n default -o yaml</code> (or query Cloud Logging for <code>"NVRM: Xid"</code>).<br><br><strong>Question:</strong> What is the exact Cloud Logging <code>log_id</code> for serial port 1 (<code>serialconsole.googleapis.com/serial_port_1_output</code>), OR what numeric <strong>XID code (<code>XID 48</code>)</strong> killed <code>run2</code> on node <code>-6df3</code>?`,
             inputType: "text",
-            placeholder: "e.g., FAILURE_GPU_XID",
-            hint: `Check the GKE node annotation or GCE instance description (or inspect the captured telemetry below):
-<div class="code-block">kubectl get node gke-ikwak-reliabilit-a4-highgpu-8g-a4-0256e2f1-34t3 \\
-  -o jsonpath='{.metadata.annotations.node\\.gke\\.io/upcoming-maintenance}'
+            placeholder: "e.g., serialconsole.googleapis.com/serial_port_1_output or XID 48",
+            hint: `Query Cloud Logging with the exact <code>log_id</code> and <code>"NVRM: Xid"</code> filter, or inspect <code>day3-xid-matrix</code>:
+<div class="code-block">kubectl get configmap day3-xid-matrix -n default -o yaml
 
-gcloud compute instances describe gke-ikwak-reliabilit-a4-highgpu-8g-a4-0256e2f1-34t3 \\
-  --zone=europe-west4-b --project=gpu-launchpad-playground \\
-  --format="yaml(resourceStatus.upcomingMaintenance)"</div>`,
-            telemetrySample: `$ gcloud compute reservations describe nvidia-b200-6bsoymep8ylww --zone=europe-west4-b --format="yaml(resourceStatus.healthInfo)"
-resourceStatus:
-  healthInfo:
-    degradedBlockCount: 1
-    healthStatus: DEGRADED
-    healthyBlockCount: 0
+gcloud logging read \\
+  'resource.type="gce_instance" AND log_id("serialconsole.googleapis.com/serial_port_1_output") AND "NVRM: Xid"' \\
+  --project=gpu-launchpad-playground --limit=10 \\
+  --format="table(timestamp, resource.labels.instance_id, textPayload)"</div>`,
+            telemetrySample: `TIMESTAMP: 2026-10-06T19:14:22.418Z
+INSTANCE_ID: 482910491827364512 (gke-ikwak-reliabilit-a4-highgpu-8g-a4-0256e2f1-6df3)
+LOG_NAME: projects/gpu-launchpad-playground/logs/serialconsole.googleapis.com%2Fserial_port_1_output
+TEXT_PAYLOAD:
+[14289.412088] NVRM: Xid (PCI:0000:89:00): 48, pid=218402, name=ray::DTensorPolicy, An uncorrectable double bit error (DBE) has been detected on GPU (0000:89:00).
 
-$ gcloud compute instances describe gke-ikwak-reliabilit-a4-highgpu-8g-a4-0256e2f1-34t3 --zone=europe-west4-b --format="json(resourceStatus.upcomingMaintenance)"
-{
-  "resourceStatus": {
-    "upcomingMaintenance": {
-      "canReschedule": true,
-      "latestWindowStartTime": "2026-10-02T00:00:01Z",
-      "maintenanceReasons": [
-        "FAILURE_GPU_XID",
-        "FAILURE_GPU"
-      ],
-      "maintenanceStatus": "PENDING",
-      "type": "UNSCHEDULED",
-      "windowEndTime": "2026-10-02T04:00:00Z",
-      "windowStartTime": "2026-10-02T00:00:00Z"
-    }
-  }
-}`,
-            acceptedKeywords: ["failure_gpu_xid", "failure_gpu", "degraded"],
-            warmKeywords: ["pending", "unscheduled", "upcomingmaintenance", "canreschedule"],
-            warmMessage: "You're looking right at the `upcomingMaintenance` block! Enter the reason code inside `maintenanceReasons` (`FAILURE_GPU_XID`).",
-            explanationTitle: "Correct! `maintenanceReasons: [\"FAILURE_GPU_XID\", \"FAILURE_GPU\"]` with `canReschedule: true`.",
+--- Empirical XID Trigger Matrix (Runs 8a-11 on ikwak-reliability) ---
+- XID 48 (Double-Bit ECC Error): 0/10 host repair triggers. Recommended Action: Reset GPU (nvidia-smi --gpu-reset) or reboot GKE node (cloud.google.com/perform-reboot=true). Do NOT report host faulty on an isolated XID 48.
+- XID 63 (HBM Row Remap Recording): 1-2 events = reset GPU locally to activate spare row; 3 consecutive XID 63 events = automatically flips reservation DEGRADED in 16.6s and schedules FAILURE_GPU_XID host repair in ~11m!
+- XID 64 (Row Remap Failure / Bank Exhausted): Immediate host repair trigger.
+- XID 79 (GPU Fallen Off Bus): Single-shot host repair trigger (cascades to XID 154 across all 8 GPUs).`,
+            acceptedKeywords: ["serialconsole.googleapis.com/serial_port_1_output", "serial_port_1_output", "48", "xid 48", "xid48", "double bit ecc", "dbe"],
+            warmKeywords: ["serial", "xid", "63", "ecc", "kmsg"],
+            warmMessage: "Almost there! Enter `serialconsole.googleapis.com/serial_port_1_output` or `XID 48`.",
+            explanationTitle: "Correct! `serialconsole.googleapis.com/serial_port_1_output` (2.07s MTTD) caught `XID 48` on `-6df3`.",
             explanationHtml: `
-              <p>Here is how the two-stage infrastructure detection works on Google Cloud:</p>
+              <p>Key takeaways from our empirical XID experiments (Runs 8a–9):</p>
               <ul>
-                <li><strong>Stage 1 — Reservation Health (<code>+12.5s – 35.6s</code>):</strong> <code>resourceStatus.healthInfo.healthStatus</code> flips to <code>DEGRADED</code>. Fast, coarse 1-bit signal.</li>
-                <li><strong>Stage 2 — Emergent Maintenance Scheduled (<code>+11m – 26m</code>):</strong> Because <strong>Emergent Maintenance</strong> was enabled on the reservation (<code>gcloud compute reservations update ... --enable-emergent-maintenance</code>), GCE schedules an <code>UNSCHEDULED</code> / <code>PENDING</code> repair with <code>maintenanceReasons: ["FAILURE_GPU_XID", "FAILURE_GPU"]</code> and sets <code>windowStartTime</code> <strong>7+ days in the future</strong> (snapped to <code>00:00:00 UTC</code> on day + 8) with <code>canReschedule: true</code>.</li>
-                <li><strong>Why the 7-day buffer matters:</strong> If a fault is non-fatal (like 3× XID 63s), Emergent Maintenance gives you 7 days to finish or checkpoint your training run cleanly instead of abruptly terminating the VM. When a fault is fatal (like XID 79), <code>canReschedule: true</code> lets you pull that repair forward to <strong>right now</strong>!</li>
+                <li><strong>Two Cloud Logging Traps:</strong> Always query <code>log_id("serialconsole.googleapis.com/serial_port_1_output")</code> (not <code>compute.googleapis.com/...</code>) and match <code>"NVRM: Xid"</code> (bare <code>Xid</code> matches thousands of <code>containerBoxID</code> lines).</li>
+                <li><strong>XID 48 vs. XID 63 Remediation:</strong> Per <a href="https://docs.cloud.google.com/compute/docs/troubleshooting/troubleshooting-gpus#xid-handling" target="_blank" rel="noopener">Google Cloud's XID Handling docs</a>, an isolated <code>XID 48</code> (DBE) or 1–2 <code>XID 63</code> (row remap) events are recovered locally via <code>nvidia-smi --gpu-reset</code> (after stopping <code>nvidia-persistenced.path</code> and GKE GPU DaemonSets) or <code>cloud.google.com/perform-reboot=true</code>. Once a GPU hits <strong>3 consecutive XID 63 events</strong> (or <code>XID 64</code> bank exhaustion), GCE automatically flags the host for repair—even if you ran <code>--gpu-reset</code> between them (verified in Run 8f)!</li>
               </ul>
             `
           },
           {
             id: "m3-c3",
-            stepLabel: "Breadcrumb 3.3 · Request Emergency Maintenance",
-            title: "Trigger the Host Repair Immediately on GKE",
-            prompt: `According to the <a href="https://docs.cloud.google.com/compute/docs/troubleshooting/troubleshooting-gpus#other-xid-errors" target="_blank" rel="noopener">Google Cloud XID 79 documentation</a> and <a href="https://docs.cloud.google.com/ai-hypercomputer/docs/manage/manage-gke-clusters#report-faulty-hosts-how-to" target="_blank" rel="noopener">GKE Host Maintenance guide</a>, when <code>upcomingMaintenance</code> is <code>PENDING</code> with <code>canReschedule: true</code>, you should trigger the emergency maintenance immediately rather than waiting 7 days.<br><br><strong>Question:</strong> What node label (<code>key=value</code>) or <code>kubectl label node</code> command do you apply to node <code>gke-ikwak-reliabilit-a4-highgpu-8g-a4-0256e2f1-34t3</code> to start the host maintenance right now?`,
+            stepLabel: "Breadcrumb 3.3 · Catastrophic `XID 79` & 7-Day `UNSCHEDULED` Emergent Maintenance",
+            title: "Trace `XID 79` to Reservation `DEGRADED` and `upcomingMaintenance`",
+            prompt: `In Day 3.2 &amp; Day 3 Lab, we walk through the end-to-end B200 hardware fault lifecycle.<br><br>Training run <code>dapo-gemma3-run3</code> crashed in <strong>9.4 seconds</strong> with <code>ActorUnavailableError: Socket closed (rpc_code: 14)</code>. Inspect the serial console log for node <code>-34t3</code> (<code>instance_id=174490015860863227</code>) and the captured maintenance snapshot (<code>kubectl get configmap mission3-maintenance-snapshot -n default -o yaml</code>):<br>• At <code>T0 + 1.0s</code>, GPU 7 (<code>PCI:0000:cc:00</code>) emitted <strong><code>XID 79</code> (<code>GPU has fallen off the bus</code>)</strong>, cascading within 1.7s into <strong><code>XID 154</code> (<code>Node Reboot Required</code>)</strong> across all 8 GPUs.<br>• At <code>T0 + 30.4s</code>, the Compute Reservation (<code>nvidia-b200-6bsoymep8ylww</code>) flipped to <code>DEGRADED</code>.<br>• Because <code>--enable-emergent-maintenance</code> was enabled on the reservation, GCE populated <code>upcomingMaintenance</code> (<code>type: UNSCHEDULED</code>, <code>maintenanceStatus: PENDING</code>, <code>canReschedule: true</code>) with a <strong>7-day advance window</strong>.<br><br><strong>Question:</strong> What exact reason code appears inside <code>upcomingMaintenance.maintenanceReasons</code> (or enter the primary bus-drop XID code <code>XID 79</code>)?`,
             inputType: "text",
-            placeholder: "e.g., kubectl label node ... cloud.google.com/perform-maintenance=true",
-            hint: `Unlike <code>cloud.google.com/perform-reboot=true</code> (which only reboots the guest OS for transient errors like XID 48), pulling forward a scheduled GCE host maintenance event on GKE uses a specific <code>cloud.google.com/perform-...</code> node label:
-<div class="code-block">kubectl label node gke-ikwak-reliabilit-a4-highgpu-8g-a4-0256e2f1-34t3 \\
-  cloud.google.com/perform-maintenance=true</div>`,
-            telemetrySample: `# Command executed by operator / orchestrator (B7):
-$ kubectl label node gke-ikwak-reliabilit-a4-highgpu-8g-a4-0256e2f1-34t3 cloud.google.com/perform-maintenance=true
-node/gke-ikwak-reliabilit-a4-highgpu-8g-a4-0256e2f1-34t3 labeled
-
-# +20.8s later (B9):
-Taint applied: cloud.google.com/maintenance-window-started=PreferNoSchedule
-
-# +51.2s later (B8):
-upcomingMaintenance.maintenanceStatus: PENDING -> ONGOING
-upcomingMaintenance.canReschedule: true -> false
-upcomingMaintenance.windowStartTime: 2026-10-02T00:00:00Z -> 2026-09-24T20:58:11Z`,
-            acceptedKeywords: ["perform-maintenance=true", "cloud.google.com/perform-maintenance=true", "perform-maintenance"],
-            warmKeywords: ["kubectl label", "maintenance", "report-faulty-host"],
-            warmMessage: "Almost! Make sure to include the exact GKE node label: `cloud.google.com/perform-maintenance=true`.",
-            explanationTitle: "Correct! `kubectl label node <NODE> cloud.google.com/perform-maintenance=true` pulls the host repair forward immediately.",
+            placeholder: "e.g., FAILURE_GPU_XID (or XID 79)",
+            hint: `Inspect the captured B4/B5 maintenance snapshot ConfigMap in namespace <code>default</code>:
+<div class="code-block">kubectl get configmap mission3-maintenance-snapshot -n default -o yaml</div>`,
+            telemetrySample: `$ kubectl get configmap mission3-maintenance-snapshot -n default -o yaml
+data:
+  serial_console_xid_burst: |
+    [ 4182.104821] NVRM: Xid (PCI:0000:cc:00): 79, pid=0, name=, GPU has fallen off the bus.
+    [ 4182.741902] NVRM: Xid (PCI:0000:04:00..cc:00): 154, GPU recovery action changed from 0x0 (None) to 0x1 (Node Reboot Required) [ALL 8 GPUs]
+    [ 4183.110492] NVRM: Xid (PCI:0000:89:00): 145, NVLink: fatal error detected on link
+  reservation_health_at_b4.yaml: |
+    reservation: nvidia-b200-6bsoymep8ylww
+    observedAt: "2026-09-24T20:32:07.466Z (+30.4s after XID 79)"
+    healthStatus: DEGRADED
+    degradedBlockCount: 1
+  instance_upcoming_maintenance_at_b5.json: |
+    {
+      "instance": "gke-ikwak-reliabilit-a4-highgpu-8g-a4-0256e2f1-34t3",
+      "upcomingMaintenance": {
+        "canReschedule": true,
+        "maintenanceReasons": ["FAILURE_GPU_XID", "FAILURE_GPU"],
+        "maintenanceStatus": "PENDING",
+        "type": "UNSCHEDULED",
+        "windowStartTime": "2026-10-02T00:00:00Z",
+        "windowEndTime": "2026-10-02T04:00:00Z"
+      }
+    }`,
+            acceptedKeywords: ["failure_gpu_xid", "failure_gpu", "79", "xid 79", "xid79"],
+            warmKeywords: ["degraded", "pending", "unscheduled", "154", "canreschedule"],
+            warmMessage: "You see the `upcomingMaintenance` payload! Enter `FAILURE_GPU_XID` (or `XID 79`) to unlock.",
+            explanationTitle: "Correct! `XID 79` triggered `DEGRADED` in 30.4s and scheduled `UNSCHEDULED` Emergent Maintenance with `maintenanceReasons: [\"FAILURE_GPU_XID\", \"FAILURE_GPU\"]`.",
             explanationHtml: `
-              <p>Applying <code>cloud.google.com/perform-maintenance=true</code> triggers an immediate, deterministic repair sequence (measured in Run 10 &amp; Run 11):</p>
+              <p>Why <strong>Emergent Maintenance</strong> (configured on the reservation via <code>gcloud compute reservations update ... --enable-emergent-maintenance</code>) is essential:</p>
               <ul>
-                <li><strong><code>+21s</code>:</strong> GKE applies the <code>cloud.google.com/maintenance-window-started:PreferNoSchedule</code> taint and begins draining pods.</li>
-                <li><strong><code>+51s</code>:</strong> GCE rewrites <code>windowStartTime</code> from 7 days out to <em>now</em>, flips <code>maintenanceStatus</code> from <code>PENDING</code> to <code>ONGOING</code>, and sets <code>canReschedule: false</code> (irreversible).</li>
-                <li><strong><code>+14m 23s</code>:</strong> Node drain completes (<code>NodeNotReady</code>).</li>
-                <li><strong><code>+17m 07s</code> to <code>+33m 27s</code>:</strong> The VM enters <code>REPAIRING</code> (~16m 20s of physical/hypervisor host repair) while the healthy sibling node (<code>-6df3</code>) stays untouched!</li>
+                <li><strong>7-Day Buffer for Non-Fatal Faults:</strong> Instead of abruptly terminating a VM when hardware degrades (e.g., after 3× XID 63 row remaps), GCE schedules a <code>PENDING</code> window 7+ days out with <code>canReschedule: true</code>, letting you finish or checkpoint cleanly (slashing <code>t_ch</code> to ~0).</li>
+                <li><strong>Immediate Pull-Forward for Fatal Faults:</strong> When a fault is immediately fatal (like <code>XID 79</code> + <code>XID 154</code> across all 8 GPUs—while Kubernetes <code>kubectl get nodes</code> remains blindly <code>Ready=True</code> for 40 minutes!), <code>canReschedule: true</code> lets you trigger the host repair immediately.</li>
               </ul>
             `
           },
           {
             id: "m3-c4",
-            stepLabel: "Breadcrumb 3.4 · Verify Node Repair & Avoid the 4-Hour Automation Trap",
-            title: "Confirm the Repaired Node Is Back in Place and Ready",
-            prompt: `Now inspect the current live state of node <code>gke-ikwak-reliabilit-a4-highgpu-8g-a4-0256e2f1-34t3</code> on the cluster and in GCE Instance metadata after the repair completed.<br><br>Look closely at the post-repair timeline below:<br>• At <strong>+35m 25s</strong> after applying the label, the VM transitioned <code>REPAIRING → RUNNING</code> (with a new <code>lastStartTimestamp</code>) and the GKE node became <code>Ready=True</code> with all <code>8</code> allocatable GPUs.<br>• Yet <code>upcomingMaintenance.maintenanceStatus</code> stayed <code>ONGOING</code> until <code>windowEndTime</code> (<strong>+4 hours 00 minutes</strong>—nearly 3.5 hours after the node was already repaired!).<br><br><strong>Question:</strong> How does GCE repair the GKE node (does the Kubernetes Node Name / GCE Instance ID change, or is it repaired <strong>in-place</strong> with a new <code>lastStartTimestamp</code> and <code>8</code> GPUs?), and what <strong>two signals</strong> should you check to confirm the node is ready instead of waiting 4 hours for <code>windowEndTime</code>?`,
+            stepLabel: "Breadcrumb 3.4 · Customer-Triggered Maintenance (`perform-maintenance=true`)",
+            title: "Pull Forward the Scheduled Host Repair & Measure the In-Place Repair Duration",
+            prompt: `Once <code>upcomingMaintenance</code> is <code>PENDING</code> with <code>canReschedule: true</code> on node <code>gke-ikwak-reliabilit-a4-highgpu-8g-a4-0256e2f1-34t3</code>, you do not want to wait 7 days.<br><br><strong>Question:</strong> What exact <strong>GKE node label (<code>key=value</code>)</strong> do you apply to pull the GCE host maintenance forward immediately (or how many minutes did the <strong>label $\to$ Node Ready</strong> in-place repair take in Run 10 &amp; Run 11: <code>~35m</code>)?`,
             inputType: "text",
-            placeholder: "e.g., In-place repair; check lastStartTimestamp + Ready with 8 GPUs",
-            hint: `Check the live node and GCE instance fields:
-<div class="code-block">kubectl get node gke-ikwak-reliabilit-a4-highgpu-8g-a4-0256e2f1-34t3 \\
-  -o jsonpath='{.metadata.name}{" | UID="}{.metadata.uid}{" | Ready="}{.status.conditions[?(@.type=="Ready")].status}{" | GPUs="}{.status.allocatable.nvidia\\.com/gpu}{"\\n"}'
+            placeholder: "e.g., cloud.google.com/perform-maintenance=true (or ~35 minutes)",
+            hint: `Check the GKE node label for triggering a pending host maintenance event (and the measured timeline below):
+<div class="code-block"># Pull forward pending GCE host maintenance on a GKE node:
+kubectl label node gke-ikwak-reliabilit-a4-highgpu-8g-a4-0256e2f1-34t3 \\
+  cloud.google.com/perform-maintenance=true
 
-gcloud compute instances describe gke-ikwak-reliabilit-a4-highgpu-8g-a4-0256e2f1-34t3 \\
-  --zone=europe-west4-b --project=gpu-launchpad-playground \\
-  --format="yaml(id, status, lastStartTimestamp, resourceStatus.upcomingMaintenance)"</div>`,
-            telemetrySample: `Post-Repair Verification (Run 11 Timeline):
-- Node Name: gke-ikwak-reliabilit-a4-highgpu-8g-a4-0256e2f1-34t3 (UNCHANGED)
-- GCE Instance ID: 174490015860863227 (UNCHANGED — repaired in-place on healthy host hardware)
-- Pre-repair lastStartTimestamp:  2026-09-24T15:12:19.474Z
-- Post-repair lastStartTimestamp: 2026-09-24T21:31:26.374Z (+33m 27s after label: VM RUNNING)
-- GKE Node Status at +35m 25s:    Ready=True | allocatable nvidia.com/gpu: 8 (Cluster 16/16 GPUs)
-- Reservation Health at +27m 58s: Flipped DEGRADED -> HEALTHY (5m 29s BEFORE the VM booted!)
-- upcomingMaintenance status:     Stayed ONGOING until 00:58:07Z (6.1s after 4-hour windowEndTime, 3h 24m AFTER node was Ready!)`,
-            acceptedKeywords: ["laststarttimestamp", "in-place", "in place", "8", "ready", "same", "unchanged", "35"],
-            warmKeywords: ["windowendtime", "ongoing", "running", "gpu"],
-            warmMessage: "Almost there! Mention `lastStartTimestamp` (or `in-place` / `Ready` with `8` GPUs) to confirm how we verify the node is back.",
-            explanationTitle: "Lab Complete! You confirmed the 35-minute In-Place Host Repair and mastered the Readiness Gate.",
+# Or directly via GCE API:
+gcloud compute instances perform-maintenance gke-ikwak-reliabilit-a4-highgpu-8g-a4-0256e2f1-34t3 \\
+  --zone=europe-west4-b</div>`,
+            telemetrySample: `Measured Run 11 In-Place Host Repair Timeline (Node -34t3):
+- B7 (00:00): Applied label cloud.google.com/perform-maintenance=true (10s after B5 reason appeared)
+- B9 (+20.8s): GKE applied taint cloud.google.com/maintenance-window-started:PreferNoSchedule
+- B8 (+51.2s): GCE flipped maintenanceStatus PENDING -> ONGOING, canReschedule: true -> false
+- B10 (+14m 23s): Node drain completed (NodeNotReady)
+- B11..B12 (+17m 07s to +33m 27s): GCE VM in REPAIRING state (16m 20s physical/hypervisor host repair)
+- B13 (+35m 25s): VM RUNNING + GKE Node Ready=True with all 8 allocatable B200 GPUs!
+  (Note: Sibling node -6df3 remained Ready=True with 8 GPUs untouched the entire time.)`,
+            acceptedKeywords: ["perform-maintenance=true", "cloud.google.com/perform-maintenance=true", "perform-maintenance", "35m", "35 min", "34m"],
+            warmKeywords: ["kubectl label", "maintenance", "repairing"],
+            warmMessage: "Almost! Enter the exact label `cloud.google.com/perform-maintenance=true` (or `35m`).",
+            explanationTitle: "Correct! Applying `cloud.google.com/perform-maintenance=true` repairs the node in-place in ~35 minutes!",
             explanationHtml: `
-              <p>Congratulations! Here are the three golden rules of GCE/GKE Host Repair verification from our 11-run study:</p>
+              <p>In Runs 10 and 11, pulling forward maintenance via <code>cloud.google.com/perform-maintenance=true</code> delivered fast, deterministic recovery:</p>
               <ul>
-                <li><strong>1. The Node Is Repaired In-Place (Same Node Name, UID, and Instance ID):</strong> GKE does not delete the Kubernetes Node object or change its GCE Instance ID (<code>174490015860863227</code>). The VM transitions <code>RUNNING → REPAIRING → RUNNING</code> in <strong>~35 minutes</strong> from applying the label, returning with a fresh <code>lastStartTimestamp</code> and <code>8</code> healthy B200 GPUs.</li>
-                <li><strong>2. Never Wait for <code>upcomingMaintenance</code> to Clear (+4 Hours):</strong> GCE keeps <code>maintenanceStatus: ONGOING</code> until the 4-hour <code>windowEndTime</code> expires—<strong>~3.5 hours after your node is already repaired and Ready</strong>. Waiting for <code>CLEAR</code> wastes 3.5 hours of cluster capacity ($630 on 2 nodes; $20,200 on 64 nodes).</li>
-                <li><strong>3. Never Gate on Reservation <code>HEALTHY</code> Alone (-5.5 Minutes Early):</strong> Reservation health flips back to <code>HEALTHY</code> ~5.5 minutes <em>before</em> the VM finishes booting. Always verify: <strong>(a)</strong> GCE <code>lastStartTimestamp</code> has advanced, and <strong>(b)</strong> K8s Node is <code>Ready=True</code> with <code>nvidia.com/gpu: 8</code>!</li>
+                <li><strong>34m 44s (Run 10) &amp; 35m 25s (Run 11)</strong> from applying the label to the Kubernetes node returning <code>Ready=True</code> with all 8 B200 GPUs.</li>
+                <li><strong>Scoped to a Single Node:</strong> Even though the reservation uses <code>schedulingType: GROUPED</code>, triggering maintenance on node <code>-34t3</code> only repaired <code>-34t3</code>—leaving sibling node <code>-6df3</code> completely untouched.</li>
+              </ul>
+            `
+          }
+        ]
+      },
+      {
+        id: "mission-4",
+        number: "Mission 4 · Day 4",
+        title: "Planned Maintenance Visibility (30–60d), Readiness Traps & Cluster Health Scanner",
+        subtitle: "GROUPED vs. Staggered Maintenance, +4h windowEndTime Trap & Post-Repair NCCL Validation",
+        scenario: `<strong>Day 4 User Journey (Overall Cluster Health &amp; Planning for Upcoming Maintenance):</strong> In Day 4, you audit <strong>30–60 day planned maintenance visibility</strong> on reservations, compare <strong><code>GROUPED</code> vs. staggered upgrade strategies</strong> (for Training vs. Inference workloads), avoid the <strong>two post-maintenance readiness traps</strong> we discovered in Runs 10 &amp; 11, and verify post-maintenance hardware health using the <strong>Cluster Health Scanner (CHS) / NCCL bandwidth test</strong> before resuming training.`,
+        clues: [
+          {
+            id: "m4-c1",
+            stepLabel: "Breadcrumb 4.1 · Auditing 30–60 Day Planned Maintenance & Reservation `schedulingType`",
+            title: "Inspect Reservation `schedulingType` (`GROUPED` vs. `INDEPENDENT`)",
+            prompt: `In Day 4.1 &amp; Day 4 Lab, we query upcoming <strong>30–60 day planned maintenance notifications</strong> across Compute Engine Reservations and Instances.<br><br>Inspect the reservation metadata for <code>nvidia-b200-6bsoymep8ylww</code> (<code>gcloud compute reservations describe nvidia-b200-6bsoymep8ylww --zone=europe-west4-b</code> or <code>kubectl get configmap day4-planned-maintenance -n default -o yaml</code>).<br><br><strong>Question:</strong> What <code>schedulingType</code> value (<code>GROUPED</code> vs. <code>INDEPENDENT</code>) is configured on the reservation so that planned host maintenance occurs simultaneously across the reservation block rather than staggering/rolling one node at a time across a tightly coupled training job?`,
+            inputType: "text",
+            placeholder: "e.g., GROUPED",
+            hint: `Inspect the reservation description or the pre-staged ConfigMap <code>day4-planned-maintenance</code>:
+<div class="code-block">kubectl get configmap day4-planned-maintenance -n default -o yaml
+
+gcloud compute reservations describe nvidia-b200-6bsoymep8ylww \\
+  --zone=europe-west4-b --project=gpu-launchpad-playground \\
+  --format="yaml(enableEmergentMaintenance, schedulingType, resourceStatus)"</div>`,
+            telemetrySample: `$ kubectl get configmap day4-planned-maintenance -n default -o yaml
+data:
+  reservation_describe.yaml: |
+    name: nvidia-b200-6bsoymep8ylww
+    zone: europe-west4-b
+    enableEmergentMaintenance: true
+    schedulingType: GROUPED
+    specificReservation:
+      count: "2"
+      inUseCount: "2"
+      assuredCount: "2"
+    resourceStatus:
+      healthInfo:
+        healthStatus: HEALTHY
+        healthyBlockCount: 1
+        degradedBlockCount: 0
+      reservationMaintenance:
+        maintenanceOngoingCount: 0
+        maintenancePendingCount: 1
+        schedulingType: GROUPED
+        upcomingGroupMaintenance:
+          type: SCHEDULED
+          maintenanceStatus: PENDING
+          canReschedule: true
+          windowStartTime: "2026-11-15T08:00:00Z"
+          windowEndTime: "2026-11-15T12:00:00Z"
+          maintenanceReasons:
+          - PLANNED_UPDATE`,
+            acceptedKeywords: ["grouped", "planned_update", "upcominggroupmaintenance", "scheduled"],
+            warmKeywords: ["independent", "reservation", "maintenance", "window"],
+            warmMessage: "Look at the `schedulingType` field in `reservation_describe.yaml`—what is its exact value (`GROUPED`)?",
+            explanationTitle: "Correct! `schedulingType: GROUPED` coordinates planned maintenance across the reservation block in a single window.",
+            explanationHtml: `
+              <p>Why <code>schedulingType: GROUPED</code> + 30–60 day visibility transforms planned maintenance for GPU training:</p>
+              <ul>
+                <li><strong>Why Staggered Maintenance Hurts Synchronous Training:</strong> In a 64-node synchronous FSDP2 training job without spare nodes, rolling maintenance 1 node at a time (<code>INDEPENDENT</code>) interrupts the training run <strong>64 separate times</strong>!</li>
+                <li><strong>Coordinated Group Maintenance:</strong> With <code>schedulingType: GROUPED</code> and 30–60 day visibility on <code>resourceStatus.reservationMaintenance.upcomingGroupMaintenance</code>, you can pick a convenient time right after a checkpoint and run:<br>
+                <code>gcloud compute reservations perform-maintenance RESERVATION_NAME --scope=running --zone=ZONE</code><br>
+                so all hosts are maintained in parallel during a single planned window.</li>
+              </ul>
+            `
+          },
+          {
+            id: "m4-c2",
+            stepLabel: "Breadcrumb 4.2 · Avoiding the Two Post-Maintenance Readiness Traps",
+            title: "Verify True Node Readiness at +35m Instead of Waiting 4 Hours for `windowEndTime`",
+            prompt: `After a node undergoes maintenance (like node <code>-34t3</code> in Run 11), how does your automation or runbook know the exact second the node is repaired and safe to use?<br><br>Inspect the measured post-repair timeline in <code>kubectl get configmap day4-readiness-traps -n default -o yaml</code>. Notice two critical traps:<br>1) <strong>Trap #1 (-5.5m Early):</strong> Reservation <code>healthStatus</code> flipped back to <code>HEALTHY</code> at <strong>+27m 58s</strong>—<code>5m 29s</code> <em>before</em> the VM finished repairing and booted!<br>2) <strong>Trap #2 (+3.5h Late):</strong> Instance <code>upcomingMaintenance.maintenanceStatus</code> stayed <strong><code>ONGOING</code> until <code>windowEndTime</code> (+4 hours 00 minutes)</strong>—nearly <strong>3.5 hours after</strong> the node was already <code>Ready=True</code> with 8 GPUs at <strong>+35m 25s</strong>!<br><br><strong>Question:</strong> Does GCE repair the GKE node <strong>in-place</strong> (keeping the same Node Name &amp; Instance ID <code>174490015860863227</code>), and what GCE instance field (<code>lastStartTimestamp</code>) + K8s Node status (<code>Ready=True</code> with <code>8</code> GPUs) must you check to resume at +35m?`,
+            inputType: "text",
+            placeholder: "e.g., In-place repair; gate on lastStartTimestamp + Ready=True with 8 GPUs",
+            hint: `Inspect the readiness traps ConfigMap and live node/instance metadata:
+<div class="code-block">kubectl get configmap day4-readiness-traps -n default -o yaml
+
+kubectl get node gke-ikwak-reliabilit-a4-highgpu-8g-a4-0256e2f1-34t3 \\
+  -o jsonpath='{.metadata.name}{" | UID="}{.metadata.uid}{" | Ready="}{.status.conditions[?(@.type=="Ready")].status}{" | GPUs="}{.status.allocatable.nvidia\\.com/gpu}{"\\n"}'</div>`,
+            telemetrySample: `$ kubectl get configmap day4-readiness-traps -n default -o yaml
+data:
+  repair_mechanism: "IN-PLACE (Same K8s Node Name, Same K8s UID, Same GCE Instance ID 174490015860863227)"
+  pre_repair_lastStartTimestamp: "2026-09-24T15:12:19.474Z"
+  post_repair_lastStartTimestamp: "2026-09-24T21:31:26.374Z (+33m 27s after label: VM RUNNING)"
+  k8s_node_ready_8_gpus_at: "+35m 25s (Ready=True | allocatable nvidia.com/gpu: 8)"
+  trap_1_reservation_healthy_early: "+27m 58s (Reservation flipped HEALTHY 5m 29s BEFORE VM booted!)"
+  trap_2_windowEndTime_ongoing_late: "+4h 00m 06s (upcomingMaintenance stayed ONGOING until windowEndTime — 3h 24m AFTER node was Ready!)"
+  correct_readiness_gate: "Check (lastStartTimestamp != OLD_START) AND (Node Ready == True) AND (allocatable nvidia.com/gpu == 8)"`,
+            acceptedKeywords: ["laststarttimestamp", "in-place", "in place", "true|8", "8", "ready", "unchanged", "same"],
+            warmKeywords: ["windowendtime", "ongoing", "healthy", "35"],
+            warmMessage: "Almost there! Mention `lastStartTimestamp` (or `in-place` / `Ready` with `8` GPUs) to unlock.",
+            explanationTitle: "Correct! Gate on `lastStartTimestamp` advancing + K8s `Ready=True` with `8` GPUs (in-place repair at ~35m).",
+            explanationHtml: `
+              <p>These three empirical findings from Runs 10 &amp; 11 save hours of wasted cluster cost:</p>
+              <ul>
+                <li><strong>1. In-Place Repair (~35m):</strong> The Kubernetes Node name, UID, and GCE Instance ID (<code>174490015860863227</code>) do not change. The VM transitions <code>RUNNING → REPAIRING → RUNNING</code> and updates <code>lastStartTimestamp</code>.</li>
+                <li><strong>2. Never Wait for <code>upcomingMaintenance</code> to Clear at <code>windowEndTime</code> (+4h):</strong> Waiting for <code>ONGOING</code> to clear idles a healthy cluster for <strong>3.5 extra hours</strong> ($630 on 2 nodes; $20,200 on 64 nodes).</li>
+                <li><strong>3. Never Gate on Reservation <code>HEALTHY</code> Alone (-5.5m):</strong> Always verify <code>lastStartTimestamp != OLD_START</code> + K8s <code>Ready=True</code> + <code>nvidia.com/gpu == 8</code>.</li>
+              </ul>
+            `
+          },
+          {
+            id: "m4-c3",
+            stepLabel: "Breadcrumb 4.3 · Post-Maintenance Cluster Health Scanner & NCCL Validation",
+            title: "Verify Post-Repair Hardware & Fabric Health Before Admitting Training Jobs",
+            prompt: `In Day 4.1 &amp; Day 4 Lab, after a node returns from maintenance (<code>Ready=True, 8 GPUs</code>), we run the <strong>Cluster Health Scanner (CHS) / NCCL validation benchmark (<code>all_reduce_perf</code>)</strong> before removing scheduling taints or resuming the training job.<br><br>Why? Because a repaired host can boot with all 8 GPUs visible in <code>nvidia-smi</code>, yet have a degraded PCIe link (e.g., downgraded from <code>PCIe Gen5 x16</code> to <code>Gen1</code>) or a flaky gIB RDMA NIC that will silently cripple training!<br><br>Inspect the post-maintenance health scan report in <code>kubectl get configmap day4-chs-nccl-scan -n default -o yaml</code>.<br><br><strong>Question:</strong> What post-repair <strong>2-node NCCL <code>all_reduce_perf</code> bus bandwidth (<code>busbw</code> in GB/s, e.g., <code>365.4 GB/s</code>)</strong> or <strong>scan status (<code>PASS</code>)</strong> confirmed that all 16 B200 GPUs, NVLink 5, and 8× gIB RDMA NICs were operating at full line rate?`,
+            inputType: "text",
+            placeholder: "e.g., 365.4 GB/s (or 365 / PASS / all_reduce_perf)",
+            hint: `Inspect the post-maintenance Cluster Health Scanner & NCCL validation ConfigMap:
+<div class="code-block">kubectl get configmap day4-chs-nccl-scan -n default -o yaml</div>`,
+            telemetrySample: `$ kubectl get configmap day4-chs-nccl-scan -n default -o yaml
+data:
+  scanner_tool: "Google Cloud Cluster Health Scanner (CHS) + nccl-tests (all_reduce_perf)"
+  post_repair_scan_node_34t3_and_6df3: |
+    [1/4] GPU Inventory & Driver Check: 16/16 NVIDIA B200 GPUs online, Driver 570.124.06 -> PASS
+    [2/4] ECC & Row Remap Check: 0 volatile DBEs, 0 pending row remaps, bank availability 100% -> PASS
+    [3/4] PCIe & NVLink Topology Check: All 16 GPUs at PCIe Gen5 x16 (64 GB/s), 18/18 NVLink5 links ACTIVE -> PASS
+    [4/4] Multi-Node 16-GPU NCCL all_reduce_perf (8 GiB payload over gIB RDMA eth2-eth9 + NVLink):
+          size(B)      count        type   redop    time(us)   algbw(GB/s)   busbw(GB/s)   #wrong
+          8589934592   2147483648   float  sum      44082      194.86        365.36        0
+          Threshold: >= 320.0 GB/s busbw (Degraded PCIe Gen1 / bad NIC baseline: 24.8 GB/s)
+          Result: PASS (365.4 GB/s busbw) -> Node taint removed, ready for job admission!`,
+            acceptedKeywords: ["365", "365.36", "365.4", "194.86", "pass", "all_reduce_perf", "busbw", "cluster health scanner", "chs"],
+            warmKeywords: ["nccl", "pcie", "gen5", "320", "24.8"],
+            warmMessage: "You found the CHS / NCCL report! Enter the measured bus bandwidth (`365.4` GB/s) or `PASS` to unlock.",
+            explanationTitle: "Correct! Post-repair `all_reduce_perf` achieved `365.36 GB/s` busbw (`PASS`), validating PCIe Gen5, NVLink 5, and gIB RDMA.",
+            explanationHtml: `
+              <p>Why running a <strong>Cluster Health Scanner (CHS)</strong> check in the admission path (after maintenance and before large job launches) is a Day-0 requirement:</p>
+              <ul>
+                <li><strong>Catching "Dead-on-Arrival" or "Slow-on-Arrival" Repairs:</strong> A newly repaired or provisioned node can pass basic Kubernetes <code>DevicePlugin</code> checks (<code>8 GPUs</code>) while suffering from an unseated RDMA NIC, an unactivated NVLink lane, or a PCIe link width/speed downgrade.</li>
+                <li><strong>60-Second Gate Saves Hours:</strong> Running a 60-second <code>all_reduce_perf</code> + DCGM diagnostic check before removing the post-maintenance taint prevents a degraded replacement host from poisoning a 512-GPU training run.</li>
+              </ul>
+            `
+          },
+          {
+            id: "m4-c4",
+            stepLabel: "Breadcrumb 4.4 · Upgrade & Maintenance Strategy: Training vs. Inference",
+            title: "Select the Optimal GKE Maintenance & Upgrade Strategy by Workload Type",
+            prompt: `In Day 4.1, we contrast <strong>Cluster/Nodepool Upgrade Strategies and Maintenance Exclusions</strong> for <strong>Synchronous Training Workloads</strong> vs. <strong>Multi-Replica Inference Workloads</strong>.<br><br><strong>Question:</strong> Select the correct architectural policy for managing upgrades and planned maintenance across these two workload classes on GKE:`,
+            inputType: "choice",
+            choices: [
+              {
+                id: "a",
+                text: "Use rolling 1-node-at-a-time surge upgrades with no maintenance exclusions during active multi-node FSDP2 training runs so nodes stay on the newest patch version daily."
+              },
+              {
+                id: "b",
+                text: "For Synchronous Training: configure `GROUPED` reservation maintenance, apply GKE Maintenance Exclusions during critical training campaigns to block disruptive auto-upgrades, and trigger group maintenance right after a checkpoint followed by Cluster Health Scanner validation. For Inference: use multi-replica rolling surge upgrades (`maxSurge`/`maxUnavailable`), PodDisruptionBudgets (PDBs), and graceful termination drains."
+              },
+              {
+                id: "c",
+                text: "Disable all node health checks and run `GROUPED` simultaneous maintenance across 100% of production Inference replicas at peak traffic."
+              },
+              {
+                id: "d",
+                text: "Never upgrade or maintain GPU nodes; ignore all 30–60 day `upcomingGroupMaintenance` notices."
+              }
+            ],
+            correctChoice: "b",
+            explanationTitle: "Correct! Synchronous Training requires coordinated `GROUPED` windows + Maintenance Exclusions; Inference uses rolling surge upgrades + PDBs.",
+            explanationHtml: `
+              <p>Training and Inference have opposite availability topologies:</p>
+              <ul>
+                <li><strong>Synchronous Training (All-or-Nothing Gang Topology):</strong> Losing 1 node halts the entire gang. Use <strong>GKE Maintenance Exclusions</strong> to block mid-run node pool auto-upgrades, use <code>GROUPED</code> reservation scheduling, and proactively trigger maintenance right after a checkpoint.</li>
+                <li><strong>Online Inference (Stateless N+M Replica Topology):</strong> Losing all nodes at once causes a total service outage! Instead, spread inference replicas across zones/blocks, enforce <code>PodDisruptionBudgets</code>, and use staggered rolling upgrades with pre-stop hooks so active requests drain cleanly.</li>
+              </ul>
+            `
+          }
+        ]
+      },
+      {
+        id: "mission-5",
+        number: "Mission 5 · Day 5",
+        title: "GPU Reliability Best Practices: SLA/SLOs, Raw vs. Managed Mode, K8s vs. Slurm & Capstone",
+        subtitle: "Goodput SLOs, A3U/A4 vs. A4X NVL72 Modes, GKE vs. Slurm & Final End-to-End Triage",
+        scenario: `<strong>Day 5 User Journey (Best Practices, Architecture Trade-offs &amp; End-to-End Capstone):</strong> In our final mission, you evaluate <strong>GPU SLA/SLOs &amp; Goodput math</strong>, compare <strong>All Capacity (Raw) Mode vs. HA (Managed) Mode</strong> across <code>A3 Ultra / A4</code> and rack-scale <code>A4X (GB200 NVL72)</code>, map <strong>Kubernetes (GKE) vs. Slurm</strong> operational primitives, and solve a multi-signal <strong>End-to-End Capstone Incident</strong>.`,
+        clues: [
+          {
+            id: "m5-c1",
+            stepLabel: "Breadcrumb 5.1 · GPU SLA/SLOs & End-to-End Goodput Optimization",
+            title: "Compare Naive (16h 04m) vs. Automated (1h 18m) Recovery & Goodput SLOs",
+            prompt: `In Day 5.1, we examine <strong>SLA/SLO considerations for large-scale GPU clusters</strong>.<br><br>Why doesn't a standard 99.9% single-VM uptime SLA guarantee 99.9% training productivity? Because in a synchronous 512-GPU (64-node) or 16,384-GPU job, if any single node fails, the <em>entire job</em> halts—multiplying failure arrival rates by $N$! That is why industry leaders track <strong>Runtime Goodput / Effective Training Time Ratio (ETTR &gt; 90%)</strong> as their operational SLO.<br><br>Inspect the Run 7 vs. Run 11 comparison in <code>kubectl get configmap day5-architecture-matrix -n default -o yaml</code>.<br><br><strong>Question:</strong> By automating XID detection, pulling forward <code>perform-maintenance=true</code>, gating on <code>lastStartTimestamp</code> + <code>Ready|8 GPUs</code>, and running <code>prep-pods.sh</code>, we cut end-to-end recovery from <strong>16h 04m (Run 7 manual gates)</strong> down to what exact total duration in <strong>Run 11</strong> (e.g., <code>1h 18m 18s</code> or <code>78 minutes</code> / <code>92% reduction</code>)?`,
+            inputType: "text",
+            placeholder: "e.g., 1h 18m 18s (or 78 minutes / 92% reduction)",
+            hint: `Inspect the <code>day5-architecture-matrix</code> ConfigMap in namespace <code>default</code>:
+<div class="code-block">kubectl get configmap day5-architecture-matrix -n default -o yaml</div>`,
+            telemetrySample: `$ kubectl get configmap day5-architecture-matrix -n default -o yaml
+data:
+  slo_and_goodput_summary: |
+    - Operational North Star SLO: Runtime Goodput / Effective Training Time Ratio (ETTR) >= 90% (Llama 3 achieved >90% across 16K H100s; ByteRobust achieved 97% across 9,600 GPUs).
+    - Run 7 (Naive Manual Approval Gates on ikwak-reliability): 16h 04m 00s total outage ($1,940 wasted on 2 nodes; $57,740 equivalent on 64 nodes).
+    - Run 11 (Automated orchestrate.sh on genuine PCIe SBR XID 79): 1h 18m 18s (78 minutes, 92% outage reduction!):
+        * Fault -> Maintenance Reason (B5): 26m 12s
+        * Reason -> Apply perform-maintenance=true (B7): 9.9s (automated)
+        * Label -> In-Place Node Repair Ready with 8 GPUs (B13): 35m 25s
+        * Node Ready -> Ray 2/2 + Job Init -> Step 1 (B14): 16m 39s`,
+            acceptedKeywords: ["1h 18m", "1h18m", "78", "92%", "1:18", "1 h 18 m"],
+            warmKeywords: ["16h", "35m", "goodput", "ettr", "90%"],
+            warmMessage: "Look at `Run 11` in `slo_and_goodput_summary`—what was the total end-to-end recovery time (`1h 18m 18s` or `78` minutes)?",
+            explanationTitle: "Correct! Automated orchestration cut end-to-end recovery from 16h 04m down to 1h 18m 18s (78 minutes — a 92% reduction!).",
+            explanationHtml: `
+              <p>Operator idle latency—not physical repair time—is the #1 killer of Goodput on unautomated clusters:</p>
+              <ul>
+                <li>In <strong>Run 7</strong>, waiting for human approval gates wasted <strong>10h 45m</strong> after the node was already repaired.</li>
+                <li>In <strong>Run 11</strong>, automating the transition from <code>FAILURE_GPU_XID</code> $\to$ <code>perform-maintenance=true</code> (<code>9.9s</code>) and from <code>lastStartTimestamp + Ready|8 GPUs</code> $\to$ job resubmit (<code>52.4s</code>) brought total recovery to <strong>1h 18m 18s</strong> (and with warm container images / pre-cached weights, under 66 minutes!).</li>
+              </ul>
+            `
+          },
+          {
+            id: "m5-c2",
+            stepLabel: "Breadcrumb 5.2 · Raw (All Capacity) vs. Managed (HA) Mode (`A3U/A4` vs. `A4X NVL72`)",
+            title: "Compare All Capacity (Raw) Mode vs. HA (Managed) Mode Across GPU Generations",
+            prompt: `In Day 5.1, we compare <strong>HA (Managed) Mode vs. All Capacity (Raw) Mode</strong> across 8-GPU host architectures (<code>A3 Ultra</code> H200 / <code>A4</code> B200) and rack-scale 72-GPU NVLink domains (<code>A4X</code> GB200 NVL72).<br><br>Inspect the architecture comparison in <code>kubectl get configmap day5-architecture-matrix -n default -o yaml</code> and select the accurate statement:`,
+            inputType: "choice",
+            choices: [
+              {
+                id: "a",
+                text: "All Capacity (Raw) Mode hides spare capacity from the customer and automatically live-migrates running GPU training containers across hosts with zero interruption."
+              },
+              {
+                id: "b",
+                text: "HA (Managed) Mode maintains a Google-managed spare buffer for automated host swaps on hardware failure, whereas All Capacity (Raw) Mode exposes 100% of allocated physical capacity (including spare buffer nodes) directly to the customer—allowing customer-managed warm standby pools, topology-aware scheduling, and explicit control over maintenance across 8-GPU A3U/A4 nodes and 72-GPU A4X NVL72 racks."
+              },
+              {
+                id: "c",
+                text: "A4X (GB200 NVL72) uses Ethernet between GPUs in a rack, so losing a compute tray has zero impact on NVLink collectives."
+              },
+              {
+                id: "d",
+                text: "Raw Mode cannot be used with GKE or Slurm."
+              }
+            ],
+            correctChoice: "b",
+            explanationTitle: "Correct! Managed (HA) Mode provides Google-managed spare swaps; Raw (All Capacity) Mode gives customers 100% capacity visibility to manage their own warm standby buffer.",
+            explanationHtml: `
+              <p>Why customers choose between <strong>Managed (HA) Mode</strong> and <strong>All Capacity (Raw) Mode</strong>:</p>
+              <ul>
+                <li><strong>Managed (HA) Mode:</strong> Ideal when customers want Google Cloud to hold buffer capacity behind the scenes and automatically replace unhealthy nodes during maintenance/repairs.</li>
+                <li><strong>All Capacity (Raw) Mode:</strong> Exposes every physical node in the reservation (including buffer capacity) to the customer's orchestrator (GKE or Slurm). Customers can pre-pull 20 GB container images and keep warm standby workers running on spare nodes—slashing <code>t_re</code> (node replacement) from 35 minutes to seconds via fast hot-spare promotion!</li>
+                <li><strong><code>A3U/A4</code> (8-GPU Host) vs. <code>A4X</code> (GB200 NVL72 Rack):</strong> On <code>A4</code>, NVLink spans 8 GPUs inside one VM (<code>a4-highgpu-8g</code>). On <code>A4X</code>, NVLink spans 72 GPUs across 18 compute trays in a rack—making sub-rack topology awareness and coordinated rack/tray maintenance essential.</li>
+              </ul>
+            `
+          },
+          {
+            id: "m5-c3",
+            stepLabel: "Breadcrumb 5.3 · Orchestrator Comparison: GKE (Kubernetes) vs. Slurm on GCP",
+            title: "Map Slurm Reliability Primitives (`Prolog`, `scontrol drain`, Gang Scheduling) to GKE",
+            prompt: `In Day 5.1, we spend ~30 minutes comparing <strong>Kubernetes (GKE) vs. Slurm</strong> features and operational gaps for GPU reliability.<br><br>Inspect the <code>gke_vs_slurm_mapping</code> table in <code>kubectl get configmap day5-architecture-matrix -n default -o yaml</code>.<br><br><strong>Question:</strong> In GKE, which workload/queueing primitives correspond to Slurm's gang scheduler &amp; job queue (e.g., <code>Kueue</code> + <code>JobSet</code> / <code>LeaderWorkerSet</code>), OR what GKE component corresponds to Slurm's node health check &amp; <code>Prolog</code>/<code>Epilog</code> scripts (<code>Node Problem Detector</code> / <code>Cluster Health Scanner</code>)?`,
+            inputType: "text",
+            placeholder: "e.g., Kueue + JobSet (or Node Problem Detector / Cluster Health Scanner)",
+            hint: `Check the <code>gke_vs_slurm_mapping</code> section of <code>day5-architecture-matrix</code>:
+<div class="code-block">kubectl get configmap day5-architecture-matrix -n default -o yaml</div>`,
+            telemetrySample: `$ kubectl get configmap day5-architecture-matrix -n default -o yaml
+data:
+  gke_vs_slurm_mapping: |
+    | Reliability Capability         | Slurm on GCP                                  | GKE (Kubernetes) Equivalent                                           |
+    | ------------------------------ | --------------------------------------------- | --------------------------------------------------------------------- |
+    | Gang Scheduling & Job Queueing | sbatch / Slurm Scheduler + TopologyPlugin     | Kueue + JobSet (or KubeRay / LeaderWorkerSet) + TAS                   |
+    | Pre-Job Health Check (Prolog)  | Slurm Prolog script (NHC / DCGM / NCCL check) | Cluster Health Scanner (CHS) + InitContainers + Node Problem Detector |
+    | Post-Job Cleanup (Epilog)      | Slurm Epilog script (GPU reset / shm clean)   | Job completion hooks / DaemonSet GPU reset tool                       |
+    | Quarantine / Drain Bad Node    | scontrol update NodeName=X State=DRAIN        | kubectl cordon <NODE> + kubectl drain                                 |
+    | Trigger Host Repair / R&R      | slurm-gcp auto-repair / gcloud perform-maint  | cloud.google.com/perform-maintenance=true or report-faulty-host       |`,
+            acceptedKeywords: ["kueue", "jobset", "leaderworkerset", "kuberay", "node problem detector", "npd", "cluster health scanner", "chs", "initcontainer"],
+            warmKeywords: ["slurm", "prolog", "epilog", "scontrol", "gang"],
+            warmMessage: "Look at the right-hand column (`GKE (Kubernetes) Equivalent`) in the table—enter `Kueue`, `JobSet`, `Node Problem Detector`, or `Cluster Health Scanner`!",
+            explanationTitle: "Correct! `Kueue` + `JobSet` provide gang scheduling/queueing, while `Node Problem Detector` (NPD) + `Cluster Health Scanner` (CHS) provide continuous & Prolog health gating.",
+            explanationHtml: `
+              <p>When advising customers choosing between <strong>GKE</strong> and <strong>Slurm on GCP</strong>:</p>
+              <ul>
+                <li><strong>Slurm Strengths:</strong> Native HPC ergonomics (<code>sbatch</code>, <code>srun</code>, synchronous <code>Prolog</code>/<code>Epilog</code> scripts via NVIDIA Health Checks / NHC, and <code>scontrol update State=DRAIN</code>). However, containers (Pyxis/Enroot), multi-service observability, and cloud-native admission controllers require extra tooling.</li>
+                <li><strong>GKE Strengths:</strong> Unified Kubernetes control plane with <strong>Kueue</strong> (quota/priority queueing + Topology-Aware Scheduling), <strong>JobSet</strong> (coordinated restart policies across replica groups), <strong>Node Problem Detector (NPD)</strong>, and native GKE node labels (<code>perform-maintenance=true</code>, <code>perform-reboot=true</code>, <code>report-faulty-host</code>) integrated directly with GCE Reservations.</li>
+              </ul>
+            `
+          },
+          {
+            id: "m5-c4",
+            stepLabel: "Breadcrumb 5.4 · Final Day 5 Capstone: End-to-End Multi-Signal Incident Triage",
+            title: "Solve Incident #500 Using All 4 Detective Layers & the XID Remediation Matrix",
+            prompt: `<strong>Final Capstone Challenge (Day 5 Lab Wrap-Up):</strong> A 16-GPU production training run (<code>dapo-gemma3-capstone</code>) just aborted at Step 42! Inspect the complete multi-layer forensic bundle in <code>kubectl get configmap day5-capstone-incident -n default -o yaml</code>:<br>• <strong>Layer 0 (Pod Log):</strong> <code>RuntimeError: NCCL watchdog timed out after 120s on Rank 11</code><br>• <strong>Layer 1 (Serial Console <code>serial_port_1_output</code> on <code>-6df3</code>):</strong> Three consecutive <code>NVRM: Xid (PCI:0000:89:00): 63, Row Remapper: Row remapping event</code> logs over 4 minutes, followed by <strong><code>NVRM: Xid (PCI:0000:89:00): 64, Row Remapper: All reserved rows for bank are remapped ( Row Remap Failure )</code></strong>!<br>• <strong>Layer 2 (Reservation Health):</strong> <code>healthStatus: DEGRADED</code><br>• <strong>Layer 4 (Instance <code>upcomingMaintenance</code> on <code>-6df3</code>):</strong> <code>maintenanceStatus: PENDING</code>, <code>canReschedule: true</code>, <code>maintenanceReasons: ["FAILURE_GPU_XID"]</code>, <code>windowStartTime: +7 days</code>.<br><br><strong>Question:</strong> Select the exact end-to-end recovery playbook to restore the cluster to 100% Goodput in minimum time:`,
+            inputType: "choice",
+            choices: [
+              {
+                id: "a",
+                text: "Run `nvidia-smi --gpu-reset` in a loop on `-6df3` and immediately resubmit the job onto `-6df3` without host repair."
+              },
+              {
+                id: "b",
+                text: "Wait 7 days for the scheduled `windowStartTime` to arrive naturally so you don't have to run any `kubectl` commands."
+              },
+              {
+                id: "c",
+                text: "Cordon `-6df3` and pull the repair forward immediately via `kubectl label node ...-6df3 cloud.google.com/perform-maintenance=true` (since 3× XID 63 + XID 64 row-remap bank exhaustion cannot be fixed by a GPU reset and `upcomingMaintenance` is `PENDING` with `canReschedule: true`). Monitor `lastStartTimestamp` + `Ready=True|8 GPUs` (~35m in-place repair; do NOT wait 4h for `windowEndTime`), validate with Cluster Health Scanner / `all_reduce_perf`, and resume from Step 40's shared GCS FUSE / Lustre checkpoint."
+              },
+              {
+                id: "d",
+                text: "Apply `perform-maintenance=true`, then wait 4 full hours for `upcomingMaintenance.maintenanceStatus` to clear at `windowEndTime` before running any health checks or resuming training."
+              }
+            ],
+            correctChoice: "c",
+            hint: `Inspect the capstone incident bundle in namespace <code>default</code>:
+<div class="code-block">kubectl get configmap day5-capstone-incident -n default -o yaml</div>`,
+            telemetrySample: `$ kubectl get configmap day5-capstone-incident -n default -o yaml
+data:
+  incident_id: "INC-500 (dapo-gemma3-capstone aborted at Step 42/100)"
+  last_durable_checkpoint: "gs://ikwak-reliability-ckpts/dapo-gemma3-capstone/step_40 (Async checkpoint on GCS FUSE)"
+  layer1_serial_console_node_6df3: |
+    [28104.112] NVRM: Xid (PCI:0000:89:00): 63, Row Remapper: Row remapping event (1/3)
+    [28219.440] NVRM: Xid (PCI:0000:89:00): 63, Row Remapper: Row remapping event (2/3)
+    [28341.809] NVRM: Xid (PCI:0000:89:00): 63, Row Remapper: Row remapping event (3/3)
+    [28342.004] NVRM: Xid (PCI:0000:89:00): 64, Row Remapper: All reserved rows for bank are remapped (Row Remap Failure)
+  layer2_reservation_health: "DEGRADED (degradedBlockCount: 1)"
+  layer4_upcoming_maintenance_node_6df3: |
+    maintenanceStatus: PENDING
+    type: UNSCHEDULED
+    canReschedule: true
+    maintenanceReasons: ["FAILURE_GPU_XID", "FAILURE_GPU"]
+    windowStartTime: "2026-10-14T00:00:00Z (+7 days)"`,
+            explanationTitle: "Mission & Lab Complete! You mastered the full 5-Day Google Cloud GPU Reliability Playbook!",
+            explanationHtml: `
+              <p>🎉 <strong>Congratulations, Reliability Detective!</strong> You have completed all 5 Missions (20 Breadcrumbs) across the 5-Day GPU Reliability curriculum:</p>
+              <ul>
+                <li><strong>Day 1 (Baseline &amp; Resiliency):</strong> Audited baseline step times (<code>116.4s</code>), warm resume cost (<code>t_rm = 721.5s</code>), In-Band DCGM (missing field <code>319</code>) vs. Out-of-Band GCE/CLAM telemetry, shared GCS FUSE/Lustre checkpoint integrity, and application <code>CUDA OOM</code> triage.</li>
+                <li><strong>Day 2 (Crashes, HostError &amp; R&amp;R API):</strong> Diagnosed gIB RDMA (<code>eth3</code>) NCCL collective hangs, identified unplanned VM terminations via <code>compute.instances.hostError</code> (Veritas/CLAM RCA), cordoned "bad magnet" nodes, and invoked <code>report-faulty-host</code> (R&amp;R API) for customer-detected faults.</li>
+                <li><strong>Day 3 (HotGPU, XIDs &amp; Emergent Maintenance):</strong> Isolated a single-GPU <code>89°C</code> thermal straggler vs. rack cooling, queried <code>serialconsole.googleapis.com/serial_port_1_output</code> for <code>"NVRM: Xid"</code>, distinguished local GPU reset (<code>XID 48</code> / 1–2× <code>XID 63</code>) from host repair triggers (3× <code>XID 63</code> / <code>XID 64</code> / <code>XID 79</code>), and pulled forward 7-day Emergent Maintenance via <code>cloud.google.com/perform-maintenance=true</code>.</li>
+                <li><strong>Day 4 (Planned Maintenance &amp; Health Scanner):</strong> Audited 30–60d <code>GROUPED</code> reservation maintenance, avoided the <code>-5.5m</code> Reservation <code>HEALTHY</code> and <code>+4h</code> <code>windowEndTime</code> traps by gating on <code>lastStartTimestamp</code> + <code>Ready|8 GPUs</code> (~35m in-place repair), and verified <code>365.4 GB/s</code> NCCL bandwidth with the Cluster Health Scanner.</li>
+                <li><strong>Day 5 (Best Practices &amp; End-to-End Capstone):</strong> Connected Goodput/ETTR SLOs (&gt;90%), Raw vs. Managed Mode (<code>A3U/A4</code> vs. <code>A4X NVL72</code>), and GKE vs. Slurm primitives into a single 78-minute end-to-end recovery workflow!</li>
               </ul>
             `
           }
@@ -1563,7 +1993,7 @@ gcloud compute instances describe gke-ikwak-reliabilit-a4-highgpu-8g-a4-0256e2f1
       }
     ];
 
-    const STORAGE_KEY = "operation_goodput_ce_lab_v2";
+    const STORAGE_KEY = "operation_goodput_ce_lab_v3_5day";
     const INSTRUCTOR_PASSWORD = "ilovejensen";
     const QUESTION_DURATION_SEC = 600; // 10 minutes per question
     const MAX_POINTS_PER_QUESTION = 1000;
@@ -1611,7 +2041,7 @@ gcloud compute instances describe gke-ikwak-reliabilit-a4-highgpu-8g-a4-0256e2f1
           state.savedInputs = parsed.savedInputs || {};
           state.clueStartTimes = parsed.clueStartTimes || {};
           state.clueScores = parsed.clueScores || {};
-          if (typeof parsed.currentMissionIdx === "number") {
+          if (typeof parsed.currentMissionIdx === "number" && parsed.currentMissionIdx < MISSIONS.length) {
             state.currentMissionIdx = parsed.currentMissionIdx;
           }
         } else {
@@ -1858,6 +2288,7 @@ gcloud compute instances describe gke-ikwak-reliabilit-a4-highgpu-8g-a4-0256e2f1
     }
 
     function renderScoreboardUI() {
+      const totalClues = totalCluesCount();
       const countEl = document.getElementById("sb-player-count");
       if (countEl) {
         countEl.textContent = `${liveLeaderboard.length} ${liveLeaderboard.length === 1 ? "CE" : "CEs"}`;
@@ -1871,13 +2302,13 @@ gcloud compute instances describe gke-ikwak-reliabilit-a4-highgpu-8g-a4-0256e2f1
           sidebarList.innerHTML = liveLeaderboard.map(p => {
             const isMe = p.playerId === state.playerId;
             const medal = p.rank === 1 ? "🥇" : (p.rank === 2 ? "🥈" : (p.rank === 3 ? "🥉" : `#${p.rank}`));
-            const mNum = Math.min(3, (Number(p.currentMissionIdx) || 0) + 1);
+            const mNum = Math.min(MISSIONS.length, (Number(p.currentMissionIdx) || 0) + 1);
             return `
               <div class="sb-row ${isMe ? "is-me" : ""}">
                 <div class="sb-rank">${medal}</div>
                 <div style="min-width: 0;">
                   <div class="sb-name">${escapeHtml(p.nickname)}${isMe ? " (You)" : ""}</div>
-                  <div class="sb-meta">${p.solvedCount || 0}/10 Clues · Mission ${mNum}</div>
+                  <div class="sb-meta">${p.solvedCount || 0}/${totalClues} Clues · Day ${mNum}</div>
                 </div>
                 <div class="sb-score">${(Number(p.totalScore) || 0).toLocaleString()} pts</div>
               </div>
@@ -1889,7 +2320,7 @@ gcloud compute instances describe gke-ikwak-reliabilit-a4-highgpu-8g-a4-0256e2f1
       const fullTbody = document.getElementById("full-scoreboard-tbody");
       if (fullTbody) {
         if (liveLeaderboard.length === 0) {
-          fullTbody.innerHTML = `<tr><td colspan="7" style="text-align: center; color: var(--text-muted);">No players registered yet.</td></tr>`;
+          fullTbody.innerHTML = `<tr><td colspan="9" style="text-align: center; color: var(--text-muted);">No players registered yet.</td></tr>`;
         } else {
           fullTbody.innerHTML = liveLeaderboard.map(p => {
             const isMe = p.playerId === state.playerId;
@@ -1897,14 +2328,18 @@ gcloud compute instances describe gke-ikwak-reliabilit-a4-highgpu-8g-a4-0256e2f1
             const m1 = missionScoreForPlayer(p, "m1-");
             const m2 = missionScoreForPlayer(p, "m2-");
             const m3 = missionScoreForPlayer(p, "m3-");
+            const m4 = missionScoreForPlayer(p, "m4-");
+            const m5 = missionScoreForPlayer(p, "m5-");
             return `
               <tr class="${isMe ? "is-me" : ""}">
                 <td style="font-family: var(--mono); font-weight: 700;">${medal}</td>
                 <td>${escapeHtml(p.nickname)}${isMe ? ' <span class="badge in-progress" style="margin-left:4px;">You</span>' : ""}</td>
-                <td style="font-family: var(--mono);">${p.solvedCount || 0} / 10</td>
+                <td style="font-family: var(--mono);">${p.solvedCount || 0} / ${totalClues}</td>
                 <td style="font-family: var(--mono);">${m1.toLocaleString()} pts</td>
                 <td style="font-family: var(--mono);">${m2.toLocaleString()} pts</td>
                 <td style="font-family: var(--mono);">${m3.toLocaleString()} pts</td>
+                <td style="font-family: var(--mono);">${m4.toLocaleString()} pts</td>
+                <td style="font-family: var(--mono);">${m5.toLocaleString()} pts</td>
                 <td style="font-family: var(--mono); font-weight: 700; color: var(--green-text); text-align: right;">
                   ${(Number(p.totalScore) || 0).toLocaleString()} pts
                 </td>
@@ -2033,7 +2468,7 @@ gcloud compute instances describe gke-ikwak-reliabilit-a4-highgpu-8g-a4-0256e2f1
 
       const instructorNotice = state.instructorMode
         ? `<div style="margin-bottom: 14px; padding: 10px 14px; border-radius: 8px; background: var(--amber-dim); border: 1px solid rgba(210,153,34,0.45); color: var(--amber-text); font-size: 13px;">
-             <strong>🎓 Instructor Preview Mode is ON:</strong> All 3 missions (use left sidebar to switch), all breadcrumb clues, accepted answer keys, CLI hints, captured telemetry, and educational deep-dive explanations are unlocked below.
+             <strong>🎓 Instructor Preview Mode is ON:</strong> All 5 missions (use left sidebar to switch), all 20 breadcrumb clues, accepted answer keys, CLI hints, captured telemetry, and educational deep-dive explanations are unlocked below.
            </div>`
         : "";
 
