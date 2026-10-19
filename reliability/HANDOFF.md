@@ -20,7 +20,8 @@ This repository (`reliability/`) contains our empirical research, technical blog
    - *"Operation Goodput: How to Slash MTTD and MTTR on Large-Scale GPU Training Clusters"*
    - Covers the Goodput equation, why `kubectl get nodes` lies during GPU faults, how to use detective tools (`serialconsole.googleapis.com/serial_port_1_output`, Log-Based Alerts, GCE Reservation Health, Emergent Maintenance `upcomingMaintenance`), and the exact remediation playbook for every class of NVIDIA XID error (including the 35-minute in-place repair timeline vs. the 4-hour `windowEndTime` trap).
 
-3. **Gamified Read-Only CE Breadcrumb Lab ([`lab-webapp/`](./lab-webapp/) & [`CE_BREADCRUMB_LAB_GUIDE.md`](./CE_BREADCRUMB_LAB_GUIDE.md)):**
+3. **Gamified 5-Day CE Breadcrumb Lab ([`lab-webapp/`](./lab-webapp/) & [`CE_BREADCRUMB_LAB_GUIDE.md`](./CE_BREADCRUMB_LAB_GUIDE.md)):**
+   - Aligned 1:1 with the **GPU Reliability and Observability Training - Agenda 09/2026** (**5 Lab Sections: `Day 1 Lab` through `Day 5 Lab`, 16 Breadcrumb Clues, 16,000 Max Points**).
    - A self-paced, individual forensic web application where CEs investigate pre-staged failures on a read-only GKE cluster, enter answers into a fuzzy-matched text box (or multiple-choice selector) without seeing other people's answers, unlock deep-dive educational explanations, and compete on a **Real-Time Live Scoreboard**.
 
 ---
@@ -79,7 +80,7 @@ chmod +x reliability/lab-webapp/prestage-scenarios.sh
 ### Password-Protected Actions (Password: `ilovejensen`)
 All instructor controls use the password **`ilovejensen`**:
 1. **`🔒 Instructor Preview: OFF / ON` (Top Bar):**
-   - Prompts for `ilovejensen`. When enabled, unlocks all 3 missions in the left sidebar, unlocks all 10 breadcrumb clues, displays an amber **`🔑 Instructor Answer Key`** banner on every question, and auto-expands all CLI hints, captured telemetry drawers, and educational explanations.
+   - Prompts for `ilovejensen`. When enabled, unlocks all 5 daily lab sections in the left sidebar, unlocks all 16 breadcrumb clues, displays an amber **`🔑 Instructor Answer Key`** banner on every question, and auto-expands all CLI hints, captured telemetry drawers, and educational explanations.
 2. **`🔓 Reveal Answer` (On Every Active Question Card):**
    - Prompts for `ilovejensen`. Helps a stuck CE get past a question without turning on full Instructor Preview: fills in the answer, reveals the educational explanation, awards **`0 pts` (`Answer Revealed`)**, and immediately unlocks the next breadcrumb.
 3. **`🔒 Reset All Scores` (Inside `🏆 Live Scoreboard` Modal):**
@@ -90,23 +91,25 @@ All instructor controls use the password **`ilovejensen`**:
    - On first load, CEs are prompted to choose a nickname (`#nickname-modal`).
    - **Important:** The 10-minute timer for Question 1 does **not** start until the CE submits their nickname.
 2. **10:00 Countdown per Question (`1,000 pts` → `0 pts`):**
-   - Each of the 10 breadcrumb questions has a `600s` (10-minute) countdown timer (`QUESTION_DURATION_SEC = 600`, `MAX_POINTS_PER_QUESTION = 1000`).
+   - Each of the 16 breadcrumb questions has a `600s` (10-minute) countdown timer (`QUESTION_DURATION_SEC = 600`, `MAX_POINTS_PER_QUESTION = 1000`, `16,000` max total points).
    - Available points scale linearly with remaining time:
      $$\text{Points} = \left\lfloor 1000 \times \frac{t_{\text{remaining}}}{600} \right\rfloor$$
    - Once the timer reaches `00:00`, the player receives **`0 pts`** for that question (they can still submit the correct answer to unlock the next clue).
 3. **Real-Time Live Scoreboard:**
-   - Displayed both in the **Left Sidebar** (`● Live CE Scoreboard`) and in an expandable **Full Leaderboard Modal (`🏆 Live Scoreboard`)**.
+   - Displayed both in the **Left Sidebar** (`● Live CE Scoreboard`) and in an expandable **Full Leaderboard Modal (`🏆 Live Scoreboard`)** with per-day score columns (`Day 1` – `Day 5`).
    - Synced across all connected browsers every 2 seconds via `GET /api/scoreboard` and updated immediately on `POST /api/register`, `POST /api/score`, and `POST /api/reset-player`.
 
 ---
 
-## 5. Summary of the 3 Missions (10 Breadcrumbs)
+## 5. Summary of the 5 Daily Lab Sections (16 Breadcrumbs)
 
-| Mission | Scenario | Breadcrumbs & Core Learning Objectives |
+| Lab Section | Training Agenda Modules | Breadcrumbs & Core Learning Objectives |
 | :--- | :--- | :--- |
-| **Mission 1**<br>*The Midnight Pager* | `dapo-gemma3-run1` died at Step 1; ML engineer blames GPU hardware. | **1.1** Verify `kubectl get nodes` (`16` healthy B200 GPUs) & find `dapo-gemma3-run1-driver` in `Error`.<br>**1.2** Inspect pod logs to find job-level `torch.OutOfMemoryError: CUDA out of memory` (not hardware!).<br>**1.3** Choose optimal fix: reduce batch/sequence config & resubmit immediately ($t_{re} = 0$, no node reboot/repair). |
-| **Mission 2**<br>*The Second Crash* | `dapo-gemma3-run2` died at Step 18 with `NCCL error: unhandled cuda error`. | **2.1** Query Cloud Logging using `log_id("serialconsole.googleapis.com/serial_port_1_output")` and `"NVRM: Xid"`.<br>**2.2** Identify `XID 48` (uncorrectable Double-Bit ECC error) on node `-6df3`.<br>**2.3** Consult [GCP XID Handling Docs](https://docs.cloud.google.com/compute/docs/troubleshooting/troubleshooting-gpus#xid-handling): do *not* report host faulty; stop workloads & reset GPU (`nvidia-smi --gpu-reset`) or reboot node (`kubectl label nodes <NODE> cloud.google.com/perform-reboot=true`). |
-| **Mission 3**<br>*The Catastrophic Fault* | Alert fires on `dapo-gemma3-run3` (`Socket closed`). | **3.1** Find `XID 79` (`GPU has fallen off the bus`) + cascading `XID 154` across all 8 GPUs on node `-34t3`.<br>**3.2** Confirm platform detection in GCE Reservation (`DEGRADED`) & Instance `upcomingMaintenance` (`FAILURE_GPU_XID`, `PENDING`, `canReschedule: true`).<br>**3.3** Request immediate emergency maintenance via `kubectl label node <NODE> cloud.google.com/perform-maintenance=true`.<br>**3.4** Verify in-place host repair (~35m): same Node Name/Instance ID, advanced `lastStartTimestamp`, and `Ready=True` with `8` GPUs (avoiding the 4-hour `windowEndTime` `ONGOING` trap). |
+| **Day 1 Lab**<br>*Primer, Job Metrics & Brownouts* | `[Day 1.1]`, `[Day 1.2]`, `[Day 1 Lab]` | **1.1** Audit in-band GKE DCGM (`DCGM_FI_DEV_*`, missing Field `319` `DCGM_FI_DEV_XID_ERRORS`) vs. out-of-band GCE telemetry across `16` B200 GPUs.<br>**1.2** Diagnose Run 6's silent PCIe Gen5 → Gen1 brownout (`116.4s/step` → `167.2s/step`, `30.4%` Goodput loss, `0` XIDs).<br>**1.3** Optimize software resiliency & async/hierarchical checkpointing to minimize $t_{cp}$ and $t_{rw}$. |
+| **Day 2 Lab**<br>*Job Crashes, RCA & R&R API* | `[Day 2.1]`, `[Day 2.2]`, `[Day 2.3]` | **2.1** Separate application crashes (`torch.OutOfMemoryError: CUDA out of memory`) from infrastructure faults.<br>**2.2** Trace unplanned VM terminations via Cloud Audit Logs (`cloudaudit.googleapis.com/system_event` → `compute.instances.hostError`) + Veritas/CLAM.<br>**2.3** Isolate a faulty node (`kubectl cordon`/`drain`) and call the Report & Replace (R&R) API (`gcloud compute instances report-faulty-host`). |
+| **Day 3 Lab**<br>*Hot GPUs, XIDs & Emergent Maintenance* | `[Day 3.1]`, `[Day 3.2]`, `[Day 3 Lab]` | **3.1** Query `serialconsole.googleapis.com/serial_port_1_output` (`"NVRM: Xid"`) to catch `XID 48` (Double-Bit ECC) on `-6df3`.<br>**3.2** Apply the official remediation for isolated `XID 48` (`nvidia-smi --gpu-reset` or `cloud.google.com/perform-reboot=true`) & understand `HotGPU` thermal throttling.<br>**3.3** Trace `XID 79` (`GPU has fallen off the bus`) + `XID 154` into a 7-day `UNSCHEDULED` / `PENDING` Emergent Maintenance window (`FAILURE_GPU_XID`, `canReschedule: true`).<br>**3.4** Pull the repair forward immediately via `kubectl label node <NODE> cloud.google.com/perform-maintenance=true`. |
+| **Day 4 Lab**<br>*Planned Maintenance & Health Scanner* | `[Day 4.1]`, `[Day 4 Lab]` | **4.1** Audit 30–60 day upcoming maintenance & choose group/synchronized maintenance at checkpoints for training vs. rolling maintenance for inference.<br>**4.2** Verify ~35m in-place host repair via `lastStartTimestamp` + K8s `Ready=True` (`8` GPUs) without waiting 4 hours for `windowEndTime` (`ONGOING`).<br>**4.3** Qualify the repaired node with **Cluster Health Scanner (CHS)** / multi-node NCCL `all_reduce_perf` (`368.4 GB/s` `PASS`). |
+| **Day 5 Lab**<br>*Best Practices & Capstone* | `[Day 5.1]`, `[Day 5 Lab]` | **5.1** Compare HA (Managed) Mode vs. All-Capacity (Raw) Mode + `N + K` hot-spares across `a4-highgpu-8g` & `a4x` NVL72.<br>**5.2** Compare GKE (Kubernetes) vs. Slurm fault isolation & recovery primitives.<br>**5.3** Master 4-Incident Capstone Dispatch across `XID 31`, `1× XID 48`, `3× XID 63`, and `XID 79`. |
 
 ---
 
