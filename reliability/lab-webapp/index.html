@@ -1068,6 +1068,9 @@
               <a href="https://console.cloud.google.com/logs/query?project=gpu-launchpad-playground" target="_blank" rel="noopener">
                 Cloud Logging (Logs Explorer) ↗
               </a>
+              <a href="https://console.cloud.google.com/monitoring/metrics-explorer?project=gpu-launchpad-playground" target="_blank" rel="noopener">
+                Cloud Monitoring (DCGM Metrics) ↗
+              </a>
               <a href="https://console.cloud.google.com/kubernetes/clusters/details/europe-west4/ikwak-reliability/details?project=gpu-launchpad-playground" target="_blank" rel="noopener">
                 GKE Cluster &amp; Workloads Console ↗
               </a>
@@ -1194,108 +1197,109 @@
       {
         id: "day-1",
         number: "Day 1 Lab",
-        title: "GPU Platform Engineer Detective: Cloud Console Observability, Goodput & Silent Brownouts",
-        subtitle: "DCGM Telemetry Audit · Step-Time & Goodput Tracking · PCIe Gen1 Straggler RCA",
-        scenario: `<strong>Role-Play Scenario (Day 1):</strong> You are a <strong>GPU Platform Engineer</strong> supporting an ML team running 16-GPU <code>dapo-gemma3-27b</code> RL training on our live GKE cluster (<code>ikwak-reliability</code> in <code>gpu-launchpad-playground</code>, <code>europe-west4-b</code>).<br><br><strong>🕒 Recorded / Simulated Incident Window (No Pre-Staging Required):</strong> <code>2026-10-20T00:53:00Z</code> – <code>2026-10-20T00:55:00Z</code>.<br>The ML developers ping you: <em>"During our run recorded at <code>2026-10-20 00:53:54 UTC</code>, Cloud Monitoring showed all 16 B200 GPUs at ~99% <code>DCGM_FI_DEV_GPU_UTIL</code> and <code>0</code> XID errors, yet our training run slowed down dramatically mid-run! Can you check Cloud Console (GKE Workloads, Cloud Monitoring &amp; Cloud Logging) at that timestamp to figure out if we met expected Goodput and find the silent brownout straggler?"</em>`,
+        title: "GPU Platform Engineer Detective: Interpreting DCGM Metrics, Goodput & Silent Brownouts",
+        subtitle: "Step 1: GPU_UTIL vs. Goodput · Step 2: PIPE_TENSOR_ACTIVE & Power · Step 3: Per-GPU PCIE_RX_BYTES Isolation",
+        scenario: `<strong>Role-Play Scenario (Day 1):</strong> You are a <strong>GPU Platform Engineer</strong> supporting an ML team running 16-GPU <code>dapo-gemma3-27b</code> RL training on our live GKE cluster (<code>ikwak-reliability</code> in <code>gpu-launchpad-playground</code>, <code>europe-west4-b</code>).<br><br><strong>🕒 Recorded DCGM &amp; Job Telemetry Window (No Pre-Staging Required):</strong> <code>2026-10-22T05:45:00Z</code> – <code>2026-10-22T05:46:00Z</code> (plus live DCGM metrics in <a href="https://console.cloud.google.com/monitoring/metrics-explorer?project=gpu-launchpad-playground" target="_blank" rel="noopener">Cloud Monitoring Metrics Explorer ↗</a>).<br>The ML developers ping you: <em>"During our training run, we checked <code>DCGM_FI_DEV_GPU_UTIL</code> (GPU Utilization %) and <code>DCGM_FI_DEV_FB_USED</code> (Framebuffer Memory Used) and saw all 16 B200 GPUs at <code>~99.1%</code> utilization with <code>145,408 MiB</code> (~142 GiB) memory allocated and <code>0</code> XID errors—yet our training steps suddenly slowed down! Can you walk us through how to look at DCGM metrics and job telemetry to understand what is happening and isolate the culprit GPU?"</em>`,
         clues: [
           {
             id: "d1-c1",
-            stepLabel: "Breadcrumb 1.1 · Cloud Console Observability & Default DCGM Exporter Audit (2026-10-20 00:53:56 UTC)",
-            title: "Audit the Live Cluster & Default GKE Managed DCGM Exporter Blind Spot",
-            prompt: `Open <a href="https://console.cloud.google.com/kubernetes/clusters/details/europe-west4/ikwak-reliability/details?project=gpu-launchpad-playground" target="_blank" rel="noopener">GKE Console</a> and <a href="https://console.cloud.google.com/logs/query?project=gpu-launchpad-playground" target="_blank" rel="noopener">Cloud Logging (Logs Explorer)</a> in read-only mode.<br><br>First, verify that both <code>a4-highgpu-8g</code> nodes (<code>-34t3</code> and <code>-6df3</code>) are online with all <code>16</code> NVIDIA B200 GPUs. Next, query the cluster diagnostic pod <code>gpu-straggler-diag</code> recorded at <strong><code>2026-10-20T00:53:56Z</code></strong> in Cloud Logging (the query below includes the exact <code>timestamp</code> filter so you don't even need to adjust the Logs Explorer time picker):<br><code>resource.type="k8s_container" AND resource.labels.cluster_name="ikwak-reliability" AND resource.labels.pod_name="gpu-straggler-diag" AND timestamp&gt;="2026-10-20T00:53:00Z" AND timestamp&lt;="2026-10-20T00:55:00Z"</code><br><br><strong>Question:</strong> While the default GKE Managed DCGM Exporter exposes <code>21</code> metric families (168 series per node for utilization, memory, and clocks), how many <strong>GPU error/XID metric families</strong> (<code>EXPORTER_ERROR_METRICS</code>, or missing DCGM field ID <code>319</code> / <code>DCGM_FI_DEV_XID_ERRORS</code>) does it export by default (or how many total B200 GPUs are online across the 2 nodes)?`,
-            inputType: "text",
-            placeholder: "e.g., 0 error metrics / 319 / DCGM_FI_DEV_XID_ERRORS / 16 GPUs",
-            hint: `Paste this exact timestamp-bounded query in <a href="https://console.cloud.google.com/logs/query?project=gpu-launchpad-playground" target="_blank" rel="noopener">Cloud Logging (Logs Explorer)</a>:
-<div class="code-block">resource.type="k8s_container"
-resource.labels.cluster_name="ikwak-reliability"
-resource.labels.pod_name="gpu-straggler-diag"
-timestamp>="2026-10-20T00:53:00Z" AND timestamp<="2026-10-20T00:55:00Z"</div>`,
-            telemetrySample: `TIMESTAMP: 2026-10-20T00:53:56.051901Z (k8s_container / pod_name=gpu-straggler-diag)
-=== [GKE Managed DCGM Exporter (:9400/metrics) Audit on ikwak-reliability] ===
-EXPORTER_METRICS_COUNT=21 | EXPORTER_ERROR_METRICS=0 (Default GKE DCGM Exporter omits all XID, ECC_DBE, and ROW_REMAP error fields! Missing Field 319: DCGM_FI_DEV_XID_ERRORS)
-
-$ kubectl get nodes -l cloud.google.com/gke-accelerator=nvidia-b200 -o custom-columns=NAME:.metadata.name,READY:.status.conditions[-1].status,GPUS:.status.allocatable."nvidia\\.com/gpu"
-NAME                                                  READY   GPUS
-gke-ikwak-reliabilit-a4-highgpu-8g-a4-0256e2f1-34t3   True    8
-gke-ikwak-reliabilit-a4-highgpu-8g-a4-0256e2f1-6df3   True    8`,
-            acceptedKeywords: ["0", "zero", "none", "319", "dcgm_fi_dev_xid_errors", "xid_errors", "21", "16"],
-            warmKeywords: ["dcgm", "exporter", "xid", "ecc"],
-            warmMessage: "Look at the `EXPORTER_ERROR_METRICS` line in `gpu-straggler-diag` at `2026-10-20T00:53:56Z`! Enter `0` (or `319` / `DCGM_FI_DEV_XID_ERRORS` / `16`).",
-            explanationTitle: "Correct! Default GKE Managed DCGM Exporter exports `0` error/XID metrics (`DCGM_FI_DEV_XID_ERRORS` Field `319` is omitted), and `GPU_UTIL` alone cannot distinguish useful work from NCCL spin-waiting!",
-            explanationHtml: `
-              <p>As a GPU Platform Engineer supporting ML developers, this is your first critical observability insight:</p>
-              <ul>
-                <li><strong>Why <code>DCGM_FI_DEV_GPU_UTIL</code> Misleads Developers:</strong> During synchronous multi-GPU training, if 1 GPU slows down, the other 15 healthy GPUs spin-poll inside NCCL collective wait kernels—keeping <code>DCGM_FI_DEV_GPU_UTIL</code> near <code>99–100%</code> across the entire cluster even while training throughput collapses!</li>
-                <li><strong>Default DCGM Exporter Blind Spot:</strong> Default GKE Managed DCGM exports <code>21</code> utilization/clock/memory metric families (<code>168</code> series per 8-GPU node) but <strong><code>0</code> error metric families</strong> (<code>XID_ERRORS</code>, <code>ECC_DBE</code>, <code>ROW_REMAP_FAILURE</code> are omitted). You must combine <strong>job-level step-time/Goodput logs</strong>, <strong>Tensor Core active profiling (<code>DCGM_FI_PROF_PIPE_TENSOR_ACTIVE</code>)</strong>, and <strong>GCE Serial Console / Audit Logs</strong>.</li>
-              </ul>
-            `
-          },
-          {
-            id: "d1-c2",
-            stepLabel: "Breadcrumb 1.2 · Tracking Job Execution & Goodput in Cloud Logging (2026-10-20 00:53:54 UTC)",
-            title: "Measure the Silent Brownout Goodput Loss in dapo-gemma3-straggler-driver",
-            prompt: `To verify the ML developers' claim that expected performance was not met, query the training job execution logs for pod <code>dapo-gemma3-straggler-driver</code> recorded at <strong><code>2026-10-20T00:53:54Z</code></strong> in <strong>Cloud Logging (Logs Explorer)</strong>:<br><code>resource.type="k8s_container" AND resource.labels.cluster_name="ikwak-reliability" AND resource.labels.pod_name="dapo-gemma3-straggler-driver" AND timestamp&gt;="2026-10-20T00:53:00Z" AND timestamp&lt;="2026-10-20T00:55:00Z"</code><br><br>Compare the healthy baseline during <strong>Steps 1–5</strong> (<code>step_time: 116.4s</code>, <code>baseline: 116.4s</code>, <code>goodput: 100.0%</code>) against <strong>Steps 6–10</strong> when the silent hardware brownout began (with <code>xid_errors: 0</code> and <code>cluster_gpu_util: 99.1%</code>).<br><br><strong>Question:</strong> During Steps 6–10, what did <code>step_time</code> slow down to (in seconds per step, e.g., <code>167.2s</code>), OR what was the effective <strong>Goodput %</strong> (<code>69.6%</code>) / <strong>Goodput loss %</strong> (<code>30.4%</code>)?`,
+            stepLabel: "Breadcrumb 1.1 · Step 1 of DCGM Triage: Coarse GPU_UTIL vs. Job Step-Time & Goodput (2026-10-22 05:45:22 UTC)",
+            title: "Compare DCGM_FI_DEV_GPU_UTIL (99.1%) Against Actual Training Step-Time & Goodput",
+            prompt: `When an ML developer reports that training feels slow, your first step is to compare <strong>coarse DCGM utilization &amp; memory metrics</strong> (<code>DCGM_FI_DEV_GPU_UTIL</code> and <code>DCGM_FI_DEV_FB_USED</code>) against <strong>actual job execution step-time (Goodput)</strong>.<br><br>Open <a href="https://console.cloud.google.com/logs/query?project=gpu-launchpad-playground" target="_blank" rel="noopener">Cloud Logging (Logs Explorer)</a> and run this timestamp-bounded query for <code>dapo-gemma3-straggler-driver</code> (recorded at <strong><code>2026-10-22T05:45:22Z</code></strong>):<br><code>resource.type="k8s_container" AND resource.labels.cluster_name="ikwak-reliability" AND resource.labels.pod_name="dapo-gemma3-straggler-driver" AND timestamp&gt;="2026-10-22T05:45:00Z" AND timestamp&lt;="2026-10-22T05:46:00Z"</code><br><br>Compare <strong>Steps 1–5 (Healthy Baseline)</strong>—where <code>DCGM_FI_DEV_GPU_UTIL</code> is <code>99.4%</code>, <code>DCGM_FI_DEV_FB_USED</code> is <code>145,408 MiB / 183,359 MiB</code>, and <code>step_time</code> is <strong><code>116.4s</code></strong> (<code>100.0%</code> Goodput)—against <strong>Steps 6–10 (Silent Brownout)</strong>, where <code>DCGM_FI_DEV_GPU_UTIL</code> <em>still</em> reports <strong><code>99.1%</code></strong> across all 16 GPUs.<br><br><strong>Question:</strong> During Steps 6–10 (while <code>DCGM_FI_DEV_GPU_UTIL</code> stayed at <code>99.1%</code>), what did <strong><code>step_time</code></strong> degrade to (in seconds per step, e.g., <code>167.2s</code>), OR what did effective <strong>Goodput %</strong> drop to (<code>69.6%</code> / <code>30.4%</code> Goodput loss)?`,
             inputType: "text",
             placeholder: "e.g., 167.2s / 69.6% goodput / 30.4% loss / 1.44x",
             hint: `Paste this timestamp-bounded query in <a href="https://console.cloud.google.com/logs/query?project=gpu-launchpad-playground" target="_blank" rel="noopener">Cloud Logging (Logs Explorer)</a>:
 <div class="code-block">resource.type="k8s_container"
 resource.labels.cluster_name="ikwak-reliability"
 resource.labels.pod_name="dapo-gemma3-straggler-driver"
-timestamp>="2026-10-20T00:53:00Z" AND timestamp<="2026-10-20T00:55:00Z"</div>`,
-            telemetrySample: `TIMESTAMP: 2026-10-20T00:53:54.381Z (k8s_container / pod_name=dapo-gemma3-straggler-driver)
-[NeMo-RL] Job=dapo-gemma3-27b-straggler | Nodes=2 (gke-ikwak-reliabilit-a4-highgpu-8g-a4-0256e2f1-34t3, -6df3) | GPUs=16x NVIDIA B200
-[Step 1/50] step_time: 116.4s | baseline: 116.4s | tokens/sec: 14,120 | goodput: 100.0% | cluster_gpu_util: 99.4% | xid_errors: 0
+timestamp>="2026-10-22T05:45:00Z" AND timestamp<="2026-10-22T05:46:00Z"</div>`,
+            telemetrySample: `TIMESTAMP: 2026-10-22T05:45:22.729Z (k8s_container / pod_name=dapo-gemma3-straggler-driver)
+[Day 1 Observability & DCGM Telemetry] Job: dapo-gemma3-straggler (Model: google/gemma-3-27b-it, Nodes: 2x a4-highgpu-8g = 16x NVIDIA B200 GPUs)
+[Baseline Reference (Steps 1-5)] step_time: 116.4s | DCGM_FI_DEV_GPU_UTIL: 99.4% | DCGM_FI_DEV_FB_USED: 145408 MiB / 183359 MiB | DCGM_FI_PROF_PIPE_TENSOR_ACTIVE: 98.1% (0.981) | DCGM_FI_DEV_POWER_USAGE: 885 W | goodput: 100.0%
+[Step 1/50] step_time: 116.2s | DCGM_FI_DEV_GPU_UTIL: 99.4% | DCGM_FI_PROF_PIPE_TENSOR_ACTIVE: 98.2% | DCGM_FI_DEV_POWER_USAGE: 886 W | tokens/sec: 14,120 | goodput: 100.0% | status: HEALTHY
 ...
-[Step 5/50] step_time: 116.4s | baseline: 116.4s | tokens/sec: 14,118 | goodput: 100.0% | cluster_gpu_util: 99.3% | xid_errors: 0
-[Step 6/50] WARNING: Step time SLO breach! step_time: 167.2s | baseline: 116.4s (1.44x slowdown) | tokens/sec: 9,830 | goodput: 69.6% (-30.4% goodput loss!) | cluster_gpu_util: 99.1% | xid_errors: 0
-[Step 7/50] WARNING: Step time SLO breach! step_time: 167.2s | baseline: 116.4s (1.44x slowdown) | tokens/sec: 9,828 | goodput: 69.6% (-30.4% goodput loss!) | cluster_gpu_util: 99.2% | xid_errors: 0
-[Step 10/50] [Goodput Watchdog] Brownout detected: 5 consecutive steps > 150.0s threshold (avg=167.2s vs 116.4s baseline). Suspecting single-GPU PCIe/NVLink or thermal straggler. Run gpu-straggler-diag for per-GPU link inspection.`,
+[Step 5/50] step_time: 116.4s | DCGM_FI_DEV_GPU_UTIL: 99.5% | DCGM_FI_PROF_PIPE_TENSOR_ACTIVE: 98.1% | DCGM_FI_DEV_POWER_USAGE: 885 W | tokens/sec: 14,118 | goodput: 100.0% | status: HEALTHY
+[WARN] Step-time SLO breach detected starting at Step 6 (threshold > 130.0s/step)! Note that DCGM_FI_DEV_GPU_UTIL still reports 99.1% because 15 healthy GPUs spin-poll inside NCCL AllReduce wait kernels while waiting on 1 straggler GPU!
+[Step 6/50] step_time: 167.2s | DCGM_FI_DEV_GPU_UTIL: 99.1% | DCGM_FI_PROF_PIPE_TENSOR_ACTIVE: 68.1% (0.681) | DCGM_FI_DEV_POWER_USAGE: 612 W | tokens/sec: 9,830 | effective_goodput: 69.6% (goodput_loss: 30.4%, slowdown: 1.44x) | status: BROWNOUT_STRAGGLER`,
             acceptedKeywords: ["167.2", "167", "69.6", "30.4", "30%", "1.44", "9,830", "9830"],
-            warmKeywords: ["116.4", "goodput", "slowdown", "brownout"],
-            warmMessage: "You see the `116.4s` healthy baseline! Now enter the degraded step time (`167.2s`), degraded Goodput (`69.6%`), or Goodput loss (`30.4%`).",
-            explanationTitle: "Correct! Step time degraded from `116.4s` to `167.2s` (`1.44×` slowdown), dropping cluster Goodput to `69.6%` (`30.4%` Goodput loss) with `0` XID errors!",
+            warmKeywords: ["116.4", "99.1", "goodput", "slowdown", "brownout"],
+            warmMessage: "You see the `116.4s` healthy baseline and `99.1%` `DCGM_FI_DEV_GPU_UTIL`! Now enter the degraded step time (`167.2s`), degraded Goodput (`69.6%`), or Goodput loss (`30.4%`).",
+            explanationTitle: "Correct! Step time slowed from `116.4s` to `167.2s` (`69.6%` Goodput / `30.4%` loss) even while `DCGM_FI_DEV_GPU_UTIL` stayed at `99.1%`!",
             explanationHtml: `
-              <p>Why did <code>cluster_gpu_util</code> stay at <code>99.1%</code> while Goodput fell to <strong>69.6%</strong>?</p>
+              <p><strong>How to Interpret What You See in <code>DCGM_FI_DEV_GPU_UTIL</code>:</strong></p>
               <ul>
-                <li><strong>Blackout vs. Brownout:</strong> Unlike a blackout (where the job crashes and stops), a <strong>silent brownout straggler</strong> keeps all 16 GPUs allocated and burning power while wasting <code>30.4%</code> of every training hour.</li>
-                <li><strong>Step-Time Watchdog SLOs:</strong> Tracking step duration (<code>step_time: 167.2s vs 116.4s baseline</code>) and tokens/sec (<code>9,830 vs 14,120</code>) in Cloud Logging / Goodput API is the fastest way to catch silent stragglers that don't emit XIDs.</li>
+                <li><strong>What <code>DCGM_FI_DEV_GPU_UTIL</code> Actually Measures:</strong> It measures the percentage of sample intervals during which <em>at least one CUDA kernel was executing on the GPU</em>—regardless of how many SMs or Tensor Cores that kernel uses.</li>
+                <li><strong>Why It Stays at <code>~99%</code> During a Straggler Brownout:</strong> In synchronous FSDP/NCCL training, when 1 GPU slows down, the other 15 healthy GPUs enter an active NCCL collective polling loop waiting at the barrier. Because that polling kernel is actively running on the GPU, <code>DCGM_FI_DEV_GPU_UTIL</code> stays pinned at <code>99.1%</code> even while cluster Goodput drops to <strong><code>69.6%</code></strong>!</li>
+                <li><strong>Next Step:</strong> To see what the GPUs are <em>actually</em> doing inside those kernels, we need to look at <strong>DCGM Profiling &amp; Power metrics</strong> in Breadcrumb 1.2.</li>
+              </ul>
+            `
+          },
+          {
+            id: "d1-c2",
+            stepLabel: "Breadcrumb 1.2 · Step 2 of DCGM Triage: Interpreting PIPE_TENSOR_ACTIVE & POWER_USAGE (2026-10-22 05:45:23 UTC)",
+            title: "Use DCGM_FI_PROF_PIPE_TENSOR_ACTIVE & POWER_USAGE to Separate Real Math from Spin-Wait",
+            prompt: `Since <code>DCGM_FI_DEV_GPU_UTIL</code> (<code>99.1%</code>) cannot distinguish productive matrix multiplication from an NCCL spin-wait loop, which <strong>DCGM Profiling and Hardware metrics</strong> reveal the truth?<br><br>Query the DCGM diagnostic breakdown pod <code>gpu-straggler-diag</code> recorded at <strong><code>2026-10-22T05:45:23Z</code></strong> in <strong>Cloud Logging (Logs Explorer)</strong>:<br><code>resource.type="k8s_container" AND resource.labels.cluster_name="ikwak-reliability" AND resource.labels.pod_name="gpu-straggler-diag" AND timestamp&gt;="2026-10-22T05:45:00Z" AND timestamp&lt;="2026-10-22T05:46:00Z"</code><br><br>Inspect Section <code>[1] Cluster-Wide DCGM Metric Comparison: Steps 1-5 (Healthy Baseline) vs. Steps 6-10 (Silent Brownout)</code>:<br>• During <strong>Steps 1–5 (Healthy)</strong>: <code>DCGM_FI_PROF_PIPE_TENSOR_ACTIVE</code> = <code>98.1% (0.981)</code> and <code>DCGM_FI_DEV_POWER_USAGE</code> = <code>885 W</code>.<br><br><strong>Question:</strong> During <strong>Steps 6–10 (Silent Brownout)</strong>—while <code>DCGM_FI_DEV_GPU_UTIL</code> stayed at <code>99.1%</code>—what did <strong><code>DCGM_FI_PROF_PIPE_TENSOR_ACTIVE</code></strong> drop to (e.g., <code>68.1%</code> / <code>0.681</code>), OR what did average <strong><code>DCGM_FI_DEV_POWER_USAGE</code></strong> drop to (in Watts, e.g., <code>612 W</code>)?`,
+            inputType: "text",
+            placeholder: "e.g., 68.1% (or 0.681) / 612 W",
+            hint: `Paste this timestamp-bounded query in <a href="https://console.cloud.google.com/logs/query?project=gpu-launchpad-playground" target="_blank" rel="noopener">Cloud Logging (Logs Explorer)</a> and read Section <code>[1]</code>:
+<div class="code-block">resource.type="k8s_container"
+resource.labels.cluster_name="ikwak-reliability"
+resource.labels.pod_name="gpu-straggler-diag"
+timestamp>="2026-10-22T05:45:00Z" AND timestamp<="2026-10-22T05:46:00Z"</div>`,
+            telemetrySample: `TIMESTAMP: 2026-10-22T05:45:23.098Z (k8s_container / pod_name=gpu-straggler-diag)
+[GPU Platform Engineer DCGM Telemetry Breakdown] Cluster: ikwak-reliability (2x a4-highgpu-8g = 16x NVIDIA B200)
+[1] Cluster-Wide DCGM Metric Comparison: Steps 1-5 (Healthy Baseline) vs. Steps 6-10 (Silent Brownout)
+    Metric Name                                 | Steps 1-5 (Healthy) | Steps 6-10 (Brownout) | How to Interpret What You See
+    --------------------------------------------+---------------------+-----------------------+-------------------------------------------------------------------------
+    DCGM_FI_DEV_GPU_UTIL (Coarse GPU Util %)    | 99.4%               | 99.1% (UNCHANGED!)    | Misleading during brownouts: counts NCCL spin-wait polling loops as 100% busy!
+    DCGM_FI_DEV_FB_USED / FB_TOTAL (Memory MiB) | 145,408 / 183,359   | 145,408 / 183,359     | Model weights + KV/activations remain allocated in HBM3e (~142 GiB / 179 GiB).
+    DCGM_FI_PROF_PIPE_TENSOR_ACTIVE (HMMA Math) | 98.1% (0.981)       | 68.1% (0.681) (-30%!) | True compute indicator: Tensor Cores are idle 30% of the step waiting on barrier!
+    DCGM_FI_DEV_POWER_USAGE (Avg GPU Power W)   | 885 W               | 612 W (-273 W drop!)  | Spinning in NCCL wait draws much less power than Tensor Core FP16/BF16 GEMMs.`,
+            acceptedKeywords: ["68.1", "68.1%", "0.681", "68", "612", "612w", "612 w", "273"],
+            warmKeywords: ["98.1", "885", "tensor", "power"],
+            warmMessage: "You found Section `[1]` (`98.1%` and `885 W` in Steps 1–5)! Now enter the brownout value in Steps 6–10 (`68.1%` / `0.681` or `612 W`).",
+            explanationTitle: "Correct! `DCGM_FI_PROF_PIPE_TENSOR_ACTIVE` dropped from `98.1%` to `68.1%` (`0.681`) and `DCGM_FI_DEV_POWER_USAGE` dropped from `885 W` to `612 W`!",
+            explanationHtml: `
+              <p><strong>How to Interpret What You See in DCGM Profiling &amp; Power Metrics:</strong></p>
+              <ul>
+                <li><strong><code>DCGM_FI_PROF_PIPE_TENSOR_ACTIVE</code> (The True Goodput Signal):</strong> Unlike <code>GPU_UTIL</code>, <code>PIPE_TENSOR_ACTIVE</code> measures the exact ratio of cycles the B200 Tensor Core (HMMA) pipelines are executing matrix operations. A drop from <code>98.1%</code> to <strong><code>68.1%</code></strong> immediately tells you the GPUs are spending <code>~30%</code> of every step stalled at a synchronization barrier!</li>
+                <li><strong><code>DCGM_FI_DEV_POWER_USAGE</code> Confirming the Stall:</strong> Executing dense BF16/FP8 Tensor Core GEMMs draws <code>~885 W</code> per B200 GPU, whereas spinning in an NCCL barrier wait loop draws far less power—pulling average power down to <strong><code>612 W</code></strong>.</li>
+                <li><strong>Next Step:</strong> Why did <code>PIPE_TENSOR_ACTIVE</code> drop to <code>~68%</code> across <em>all 16 GPUs</em>? Because all 16 GPUs wait at the same NCCL barrier! In Breadcrumb 1.3, you will group per-GPU interconnect &amp; power metrics to isolate the <strong>1 culprit GPU</strong> from the <strong>15 victim GPUs</strong>.</li>
               </ul>
             `
           },
           {
             id: "d1-c3",
-            stepLabel: "Breadcrumb 1.3 · Pinpointing the Silent Brownout Straggler GPU (2026-10-20 00:53:56 UTC)",
-            title: "Identify Which GPU & Hardware Link Caused the 30.4% Goodput Brownout",
-            prompt: `Now help the ML developer find the exact culprit GPU! Inspect the per-GPU diagnostic table logged by <code>gpu-straggler-diag</code> at <strong><code>2026-10-20T00:53:56Z</code></strong> in <strong>Cloud Logging (Logs Explorer)</strong>:<br><code>resource.type="k8s_container" AND resource.labels.cluster_name="ikwak-reliability" AND resource.labels.pod_name="gpu-straggler-diag" AND timestamp&gt;="2026-10-20T00:53:00Z" AND timestamp&lt;="2026-10-20T00:55:00Z"</code><br><br>Compare the 15 healthy GPUs (<code>PCIE_GEN: Gen5 (max Gen5)</code>, <code>H2D_BW: 19.77 GB/s</code>, <code>PIPE_TENSOR_ACTIVE: 98.1%</code>) against the single degraded GPU on node <code>gke-ikwak-reliabilit-a4-highgpu-8g-a4-0256e2f1-34t3</code>.<br><br><strong>Question:</strong> Which <strong>GPU index / PCI bus address</strong> on node <code>-34t3</code> is the silent straggler (e.g., <code>GPU 7</code> / <code>0000:cc:00.0</code>), OR what hardware degradation hit it (e.g., <code>PCIe Gen1</code> / <code>1.54 GB/s</code> / <code>68.1%</code> Tensor Core active)?`,
+            stepLabel: "Breadcrumb 1.3 · Step 3 of DCGM Triage: Isolating the 1 Culprit GPU from 15 Victim GPUs (2026-10-22 05:45:23 UTC)",
+            title: "Inspect Per-GPU DCGM_FI_PROF_PCIE_RX_BYTES & POWER_USAGE to Pinpoint the Straggler",
+            prompt: `Because synchronous FSDP/NCCL training forces all 15 healthy GPUs to wait for the slowest GPU at every step barrier, <code>DCGM_FI_PROF_PIPE_TENSOR_ACTIVE</code> drops to <code>~68.1%</code> across <strong>all 16 GPUs</strong>.<br><br>To separate the <strong>1 root-cause straggler GPU</strong> from the <strong>15 victim GPUs waiting on it</strong>, inspect Section <code>[2] Per-Node &amp; Per-GPU DCGM Breakdown During Steps 6-10 Brownout</code> in <code>gpu-straggler-diag</code> at <strong><code>2026-10-22T05:45:23Z</code></strong>:<br><code>resource.type="k8s_container" AND resource.labels.cluster_name="ikwak-reliability" AND resource.labels.pod_name="gpu-straggler-diag" AND timestamp&gt;="2026-10-22T05:45:00Z" AND timestamp&lt;="2026-10-22T05:46:00Z"</code><br><br>Compare the 15 healthy victim GPUs (<code>PCIE_RX_BYTES=19.77 GB/s</code> at <code>PCIe Gen5 x16</code>, <code>POWER_USAGE=612–617 W</code>) against the single degraded GPU on node <code>gke-ikwak-reliabilit-a4-highgpu-8g-a4-0256e2f1-34t3</code>.<br><br><strong>Question:</strong> Which <strong>GPU index / PCI bus address</strong> on node <code>-34t3</code> is the root-cause straggler (e.g., <code>GPU 7</code> / <code>0000:cc:00.0</code>), OR what degraded DCGM metric value (e.g., <code>1.54 GB/s</code> <code>PCIE_RX_BYTES</code> / <code>PCIe Gen1</code> / <code>342 W</code>) isolates it?`,
             inputType: "text",
-            placeholder: "e.g., GPU 7 / 0000:cc:00.0 / PCIe Gen1 / 1.54 GB/s",
-            hint: `Paste this timestamp-bounded query in <a href="https://console.cloud.google.com/logs/query?project=gpu-launchpad-playground" target="_blank" rel="noopener">Cloud Logging (Logs Explorer)</a>:
+            placeholder: "e.g., GPU 7 / 0000:cc:00.0 / 1.54 GB/s / PCIe Gen1 / 342 W",
+            hint: `Look at Section <code>[2]</code> of <code>gpu-straggler-diag</code> in <a href="https://console.cloud.google.com/logs/query?project=gpu-launchpad-playground" target="_blank" rel="noopener">Cloud Logging (Logs Explorer)</a>:
 <div class="code-block">resource.type="k8s_container"
 resource.labels.cluster_name="ikwak-reliability"
 resource.labels.pod_name="gpu-straggler-diag"
-timestamp>="2026-10-20T00:53:00Z" AND timestamp<="2026-10-20T00:55:00Z"</div>`,
-            telemetrySample: `TIMESTAMP: 2026-10-20T00:53:56.051997Z (k8s_container / pod_name=gpu-straggler-diag)
-=== [Per-GPU Link & Tensor Core Diagnostics: Node gke-ikwak-reliabilit-a4-highgpu-8g-a4-0256e2f1-34t3] ===
-GPU | PCI_BUS_ID   | PCIE_GEN        | PCIE_WIDTH | H2D_BW     | GPU_UTIL | PIPE_TENSOR_ACTIVE | NVLINK_BW  | STATUS
-----+--------------+-----------------+------------+------------+----------+--------------------+------------+------------------------
-0   | 0000:04:00.0 | Gen5 (max Gen5) | x16        | 19.77 GB/s | 99.2%    | 98.1%              | 368.4 GB/s | HEALTHY
-1   | 0000:0c:00.0 | Gen5 (max Gen5) | x16        | 19.75 GB/s | 99.1%    | 98.0%              | 368.5 GB/s | HEALTHY
-...
-6   | 0000:c4:00.0 | Gen5 (max Gen5) | x16        | 19.76 GB/s | 99.2%    | 98.2%              | 368.4 GB/s | HEALTHY
-7   | 0000:cc:00.0 | Gen1 (max Gen5) | x16        |  1.54 GB/s | 99.4%    | 68.1%              | 368.2 GB/s | BROWNOUT_STRAGGLER (PCIe Gen1 2.5GT/s = 12.8x slower H2D!)
-
-=== [Per-GPU Link & Tensor Core Diagnostics: Node gke-ikwak-reliabilit-a4-highgpu-8g-a4-0256e2f1-6df3] ===
-GPUs 0..7: All at PCIe Gen5 x16 (19.77 GB/s H2D), GPU_UTIL=99.1%, PIPE_TENSOR_ACTIVE=68.4% (blocked waiting in NCCL AllReduce for Node -34t3 GPU 7!)`,
-            acceptedKeywords: ["gpu 7", "gpu7", "7", "0000:cc:00", "cc:00", "gen1", "gen 1", "pcie gen1", "1.54", "68.1", "34t3"],
+timestamp>="2026-10-22T05:45:00Z" AND timestamp<="2026-10-22T05:46:00Z"</div>`,
+            telemetrySample: `TIMESTAMP: 2026-10-22T05:45:23.098Z (k8s_container / pod_name=gpu-straggler-diag)
+[2] Per-Node & Per-GPU DCGM Breakdown During Steps 6-10 Brownout (Isolating the 1 Culprit GPU from the 15 Victim GPUs):
+    Node: gke-ikwak-reliabilit-a4-highgpu-8g-a4-0256e2f1-6df3 (instance_id=921428950843228374)
+      GPUs 0..7 (PCI 0000:8f:00.0 .. 0000:cc:00.0): GPU_UTIL=99.1% | PIPE_TENSOR_ACTIVE=68.4% (0.684) | POWER_USAGE=615 W | PCIE_RX_BYTES=19.78 GB/s (PCIe Gen5 x16) | NVLINK_TX_BYTES=368.4 GB/s | STATUS=VICTIM_WAITING_IN_NCCL_BARRIER
+    Node: gke-ikwak-reliabilit-a4-highgpu-8g-a4-0256e2f1-34t3 (instance_id=174490015860863227, machine=yugrqvu-tl3)
+      GPU 0 (PCI 0000:8f:00.0): GPU_UTIL=99.2% | PIPE_TENSOR_ACTIVE=68.2% (0.682) | POWER_USAGE=614 W | PCIE_RX_BYTES=19.77 GB/s (PCIe Gen5 x16) | NVLINK_TX_BYTES=368.4 GB/s | STATUS=VICTIM_WAITING_IN_NCCL_BARRIER
+      ...
+      GPU 6 (PCI 0000:cb:00.0): GPU_UTIL=99.0% | PIPE_TENSOR_ACTIVE=68.0% (0.680) | POWER_USAGE=612 W | PCIE_RX_BYTES=19.76 GB/s (PCIe Gen5 x16) | NVLINK_TX_BYTES=368.3 GB/s | STATUS=VICTIM_WAITING_IN_NCCL_BARRIER
+      GPU 7 (PCI 0000:cc:00.0): GPU_UTIL=99.4% | PIPE_TENSOR_ACTIVE=68.1% (0.681) | POWER_USAGE=342 W | PCIE_RX_BYTES=1.54 GB/s  (PCIe Gen1 x16 - 12.8x SLOWER!) | NVLINK_TX_BYTES=368.2 GB/s | STATUS=ROOT_CAUSE_STRAGGLER`,
+            acceptedKeywords: ["gpu 7", "gpu7", "7", "0000:cc:00", "cc:00", "gen1", "gen 1", "pcie gen1", "1.54", "342", "34t3"],
             warmKeywords: ["pcie", "tensor", "straggler", "19.77"],
-            warmMessage: "Look at row `7` of Node `-34t3` in `gpu-straggler-diag`! Enter the GPU (`GPU 7` / `0000:cc:00.0`) or its degraded link (`PCIe Gen1` / `1.54 GB/s`).",
-            explanationTitle: "Correct! Node `-34t3` `GPU 7` (`0000:cc:00.0`) down-trained from PCIe Gen5 (`19.77 GB/s`) to `PCIe Gen1` (`1.54 GB/s` — `12.8×` slower), pulling `PIPE_TENSOR_ACTIVE` down from `98.1%` to `68.1%` across the cluster!",
+            warmMessage: "Look at the last row of Node `-34t3` in Section `[2]`! Enter the GPU (`GPU 7` / `0000:cc:00.0`) or its degraded metric (`1.54 GB/s` / `PCIe Gen1` / `342 W`).",
+            explanationTitle: "Correct! Node `-34t3` `GPU 7` (`0000:cc:00.0`) is the culprit: its `DCGM_FI_PROF_PCIE_RX_BYTES` dropped from `19.77 GB/s` (PCIe Gen5) to `1.54 GB/s` (PCIe Gen1 — `12.8×` slower) and power fell to `342 W`!",
             explanationHtml: `
-              <p>Here is the complete <strong>Day 1 Detective Takeaway</strong> for GPU Platform Engineers:</p>
-              <ul>
-                <li><strong>How to Separate Busy-Wait from Real Compute:</strong> While coarse <code>DCGM_FI_DEV_GPU_UTIL</code> showed <code>99.1%</code> on every GPU, Tensor Core active utilization (<code>DCGM_FI_PROF_PIPE_TENSOR_ACTIVE</code>) dropped from <code>98.1%</code> to <code>68.1%</code> because all 16 ranks spent 30% of every step waiting on <code>GPU 7</code>'s slow PCIe Gen1 host-to-device staging!</li>
-                <li><strong>Checking PCIe Link State:</strong> Comparing <code>pcie.link.gen.current</code> (<code>1</code>) against <code>pcie.link.gen.max</code> (<code>5</code>) via <code>nvidia-smi</code> or DCGM immediately exposes PCIe link down-training without needing an XID crash.</li>
-              </ul>
+              <p><strong>Complete Day 1 Playbook — How to Read &amp; Interpret DCGM Metrics Like an Expert:</strong></p>
+              <ol>
+                <li><strong>Step 1 — Don't Stop at <code>DCGM_FI_DEV_GPU_UTIL</code>:</strong> High <code>GPU_UTIL</code> (<code>~99%</code>) only means a kernel is active on the GPU. Always check job <code>step_time</code> / Goodput (<code>116.4s → 167.2s</code>, <code>69.6%</code> Goodput) to detect brownouts.</li>
+                <li><strong>Step 2 — Check <code>DCGM_FI_PROF_PIPE_TENSOR_ACTIVE</code> &amp; <code>DCGM_FI_DEV_POWER_USAGE</code>:</strong> When <code>GPU_UTIL</code> is <code>99.1%</code> but <code>PIPE_TENSOR_ACTIVE</code> drops from <code>98.1%</code> to <code>68.1%</code> (and power drops from <code>885 W</code> to <code>612 W</code>), your GPUs are spending 30% of each step spin-waiting at an NCCL synchronization barrier.</li>
+                <li><strong>Step 3 — Isolate the Culprit vs. Victim GPUs via Per-GPU Link &amp; Power Metrics:</strong> Because all ranks wait at the barrier, <code>PIPE_TENSOR_ACTIVE</code> drops on all 16 GPUs. Grouping <code>DCGM_FI_PROF_PCIE_RX_BYTES</code> (or <code>NVLINK_TX_BYTES</code>, <code>SM_CLOCK</code>, and <code>POWER_USAGE</code>) by <code>Hostname</code> and <code>gpu</code> immediately isolates <strong>Node <code>-34t3</code> <code>GPU 7</code> (<code>0000:cc:00.0</code>)</strong> running at <code>1.54 GB/s</code> (PCIe Gen1) and <code>342 W</code>!</li>
+              </ol>
             `
           }
         ]

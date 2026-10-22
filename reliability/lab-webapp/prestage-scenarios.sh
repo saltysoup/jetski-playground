@@ -59,20 +59,20 @@ spec:
     args:
     - |
       cat <<'LOG'
-      [Day 1 Observability Telemetry] Job: dapo-gemma3-straggler (Model: google/gemma-3-27b-it, Nodes: 2x a4-highgpu-8g = 16x B200 GPUs)
-      [Baseline Reference] Expected Healthy Step Time: 116.4s / step (1m 56.4s) | Expected Goodput: 100.0%
-      [Step 1/50] step_time: 116.2s | cluster_gpu_util: 99.4% | xid_errors: 0 | runtime_goodput: 100.0% | status: HEALTHY
-      [Step 2/50] step_time: 116.5s | cluster_gpu_util: 99.6% | xid_errors: 0 | runtime_goodput: 99.8%  | status: HEALTHY
-      [Step 3/50] step_time: 116.3s | cluster_gpu_util: 99.5% | xid_errors: 0 | runtime_goodput: 100.0% | status: HEALTHY
-      [Step 4/50] step_time: 116.6s | cluster_gpu_util: 99.7% | xid_errors: 0 | runtime_goodput: 99.7%  | status: HEALTHY
-      [Step 5/50] step_time: 116.4s | cluster_gpu_util: 99.5% | xid_errors: 0 | runtime_goodput: 100.0% | status: HEALTHY
-      [WARN] Step-time SLO breach detected starting at Step 6 (threshold > 130.0s/step) — 0 XID errors reported!
-      [Step 6/50] step_time: 167.2s | cluster_gpu_util: 99.1% | xid_errors: 0 | effective_goodput: 69.6% (goodput_loss: 30.4%, slowdown: 1.44x) | status: BROWNOUT_STRAGGLER
-      [Step 7/50] step_time: 167.5s | cluster_gpu_util: 99.2% | xid_errors: 0 | effective_goodput: 69.5% (goodput_loss: 30.5%, slowdown: 1.44x) | status: BROWNOUT_STRAGGLER
-      [Step 8/50] step_time: 167.1s | cluster_gpu_util: 99.0% | xid_errors: 0 | effective_goodput: 69.7% (goodput_loss: 30.3%, slowdown: 1.44x) | status: BROWNOUT_STRAGGLER
-      [Step 9/50] step_time: 167.2s | cluster_gpu_util: 99.1% | xid_errors: 0 | effective_goodput: 69.6% (goodput_loss: 30.4%, slowdown: 1.44x) | status: BROWNOUT_STRAGGLER
-      [Step 10/50] step_time: 167.0s | cluster_gpu_util: 99.1% | xid_errors: 0 | effective_goodput: 69.7% (goodput_loss: 30.3%, slowdown: 1.44x) | status: BROWNOUT_STRAGGLER
-      [Diag Hint] All 16 GPUs report ~99% DCGM_FI_DEV_GPU_UTIL because 15 healthy ranks are spinning inside NCCL all-reduce barriers waiting for 1 throttled straggler rank. Inspect pod 'gpu-straggler-diag' in Cloud Logging to pinpoint the straggler node and GPU!
+      [Day 1 Observability & DCGM Telemetry] Job: dapo-gemma3-straggler (Model: google/gemma-3-27b-it, Nodes: 2x a4-highgpu-8g = 16x NVIDIA B200 GPUs)
+      [Baseline Reference (Steps 1-5)] step_time: 116.4s | DCGM_FI_DEV_GPU_UTIL: 99.4% | DCGM_FI_DEV_FB_USED: 145408 MiB / 183359 MiB | DCGM_FI_PROF_PIPE_TENSOR_ACTIVE: 98.1% (0.981) | DCGM_FI_DEV_POWER_USAGE: 885 W | goodput: 100.0%
+      [Step 1/50] step_time: 116.2s | DCGM_FI_DEV_GPU_UTIL: 99.4% | DCGM_FI_PROF_PIPE_TENSOR_ACTIVE: 98.2% | DCGM_FI_DEV_POWER_USAGE: 886 W | tokens/sec: 14,120 | goodput: 100.0% | status: HEALTHY
+      [Step 2/50] step_time: 116.5s | DCGM_FI_DEV_GPU_UTIL: 99.6% | DCGM_FI_PROF_PIPE_TENSOR_ACTIVE: 98.0% | DCGM_FI_DEV_POWER_USAGE: 884 W | tokens/sec: 14,115 | goodput: 99.9%  | status: HEALTHY
+      [Step 3/50] step_time: 116.3s | DCGM_FI_DEV_GPU_UTIL: 99.5% | DCGM_FI_PROF_PIPE_TENSOR_ACTIVE: 98.1% | DCGM_FI_DEV_POWER_USAGE: 885 W | tokens/sec: 14,122 | goodput: 100.0% | status: HEALTHY
+      [Step 4/50] step_time: 116.6s | DCGM_FI_DEV_GPU_UTIL: 99.7% | DCGM_FI_PROF_PIPE_TENSOR_ACTIVE: 98.1% | DCGM_FI_DEV_POWER_USAGE: 887 W | tokens/sec: 14,110 | goodput: 99.8%  | status: HEALTHY
+      [Step 5/50] step_time: 116.4s | DCGM_FI_DEV_GPU_UTIL: 99.5% | DCGM_FI_PROF_PIPE_TENSOR_ACTIVE: 98.1% | DCGM_FI_DEV_POWER_USAGE: 885 W | tokens/sec: 14,118 | goodput: 100.0% | status: HEALTHY
+      [WARN] Step-time SLO breach detected starting at Step 6 (threshold > 130.0s/step)! Note that DCGM_FI_DEV_GPU_UTIL still reports 99.1% because 15 healthy GPUs spin-poll inside NCCL AllReduce wait kernels while waiting on 1 straggler GPU!
+      [Step 6/50] step_time: 167.2s | DCGM_FI_DEV_GPU_UTIL: 99.1% | DCGM_FI_PROF_PIPE_TENSOR_ACTIVE: 68.1% (0.681) | DCGM_FI_DEV_POWER_USAGE: 612 W | tokens/sec: 9,830 | effective_goodput: 69.6% (goodput_loss: 30.4%, slowdown: 1.44x) | status: BROWNOUT_STRAGGLER
+      [Step 7/50] step_time: 167.5s | DCGM_FI_DEV_GPU_UTIL: 99.2% | DCGM_FI_PROF_PIPE_TENSOR_ACTIVE: 68.0% (0.680) | DCGM_FI_DEV_POWER_USAGE: 610 W | tokens/sec: 9,825 | effective_goodput: 69.5% (goodput_loss: 30.5%, slowdown: 1.44x) | status: BROWNOUT_STRAGGLER
+      [Step 8/50] step_time: 167.1s | DCGM_FI_DEV_GPU_UTIL: 99.0% | DCGM_FI_PROF_PIPE_TENSOR_ACTIVE: 68.2% (0.682) | DCGM_FI_DEV_POWER_USAGE: 613 W | tokens/sec: 9,832 | effective_goodput: 69.7% (goodput_loss: 30.3%, slowdown: 1.44x) | status: BROWNOUT_STRAGGLER
+      [Step 9/50] step_time: 167.2s | DCGM_FI_DEV_GPU_UTIL: 99.1% | DCGM_FI_PROF_PIPE_TENSOR_ACTIVE: 68.1% (0.681) | DCGM_FI_DEV_POWER_USAGE: 611 W | tokens/sec: 9,828 | effective_goodput: 69.6% (goodput_loss: 30.4%, slowdown: 1.44x) | status: BROWNOUT_STRAGGLER
+      [Step 10/50] step_time: 167.0s | DCGM_FI_DEV_GPU_UTIL: 99.1% | DCGM_FI_PROF_PIPE_TENSOR_ACTIVE: 68.1% (0.681) | DCGM_FI_DEV_POWER_USAGE: 612 W | tokens/sec: 9,830 | effective_goodput: 69.7% (goodput_loss: 30.3%, slowdown: 1.44x) | status: BROWNOUT_STRAGGLER
+      [DCGM Interpretation Guide] Why is DCGM_FI_DEV_GPU_UTIL still 99.1% during a 30.4% Goodput drop? Because DCGM_FI_DEV_GPU_UTIL only measures whether any CUDA kernel (including an NCCL spin-wait polling loop) is active on the GPU. Inspect 'gpu-straggler-diag' to compare DCGM_FI_PROF_PIPE_TENSOR_ACTIVE, DCGM_FI_DEV_POWER_USAGE, and DCGM_FI_PROF_PCIE_RX_BYTES across all 16 GPUs!
       LOG
       exit 0
 EOF
@@ -95,23 +95,27 @@ spec:
     args:
     - |
       cat <<'LOG'
-      [GPU Platform Engineer Diagnostic Audit] Cluster: ikwak-reliability (2x a4-highgpu-8g = 16x NVIDIA B200)
-      [1] Default GKE Managed DCGM Exporter (:9400/metrics) Audit:
-          EXPORTED_METRICS_COUNT=21 (FB_FREE, FB_USED, FB_TOTAL, GPU_TEMP, MEMORY_TEMP, GPU_UTIL, MEM_COPY_UTIL, SM_CLOCK, POWER_USAGE, TOTAL_ENERGY_CONSUMPTION, 11x DCGM_FI_PROF_*)
-          EXPORTER_ERROR_METRICS=0 (No DCGM_FI_DEV_XID_ERRORS, no DCGM_FI_DEV_ECC_*, no ROW_REMAP exported by default!)
-      [2] Per-Node & Per-GPU PCIe Link / Bandwidth / Tensor Core Active Audit during Step 6-10 Brownout:
+      [GPU Platform Engineer DCGM Telemetry Breakdown] Cluster: ikwak-reliability (2x a4-highgpu-8g = 16x NVIDIA B200)
+      [1] Cluster-Wide DCGM Metric Comparison: Steps 1-5 (Healthy Baseline) vs. Steps 6-10 (Silent Brownout)
+          Metric Name                                 | Steps 1-5 (Healthy) | Steps 6-10 (Brownout) | How to Interpret What You See
+          --------------------------------------------+---------------------+-----------------------+-------------------------------------------------------------------------
+          DCGM_FI_DEV_GPU_UTIL (Coarse GPU Util %)    | 99.4%               | 99.1% (UNCHANGED!)    | Misleading during brownouts: counts NCCL spin-wait polling loops as 100% busy!
+          DCGM_FI_DEV_FB_USED / FB_TOTAL (Memory MiB) | 145,408 / 183,359   | 145,408 / 183,359     | Model weights + KV/activations remain allocated in HBM3e (~142 GiB / 179 GiB).
+          DCGM_FI_PROF_PIPE_TENSOR_ACTIVE (HMMA Math) | 98.1% (0.981)       | 68.1% (0.681) (-30%!) | True compute indicator: Tensor Cores are idle 30% of the step waiting on barrier!
+          DCGM_FI_DEV_POWER_USAGE (Avg GPU Power W)   | 885 W               | 612 W (-273 W drop!)  | Spinning in NCCL wait draws much less power than Tensor Core FP16/BF16 GEMMs.
+      [2] Per-Node & Per-GPU DCGM Breakdown During Steps 6-10 Brownout (Isolating the 1 Culprit GPU from the 15 Victim GPUs):
           Node: gke-ikwak-reliabilit-a4-highgpu-8g-a4-0256e2f1-6df3 (instance_id=921428950843228374)
-            GPU 0..7 (PCI 0000:8f:00.0 .. 0000:cc:00.0): pcie.link.gen.current=5 (max=5, width=x16) | H2D_bw=19.78 GB/s | GPU_UTIL=99% | PIPE_TENSOR_ACTIVE=98.2% | STATUS=HEALTHY
+            GPUs 0..7 (PCI 0000:8f:00.0 .. 0000:cc:00.0): GPU_UTIL=99.1% | PIPE_TENSOR_ACTIVE=68.4% (0.684) | POWER_USAGE=615 W | PCIE_RX_BYTES=19.78 GB/s (PCIe Gen5 x16) | NVLINK_TX_BYTES=368.4 GB/s | STATUS=VICTIM_WAITING_IN_NCCL_BARRIER
           Node: gke-ikwak-reliabilit-a4-highgpu-8g-a4-0256e2f1-34t3 (instance_id=174490015860863227, machine=yugrqvu-tl3)
-            GPU 0 (PCI 0000:8f:00.0): pcie.link.gen.current=5 (max=5, width=x16) | H2D_bw=19.77 GB/s | GPU_UTIL=99% | PIPE_TENSOR_ACTIVE=98.1% | STATUS=HEALTHY
-            GPU 1 (PCI 0000:90:00.0): pcie.link.gen.current=5 (max=5, width=x16) | H2D_bw=19.76 GB/s | GPU_UTIL=99% | PIPE_TENSOR_ACTIVE=98.3% | STATUS=HEALTHY
-            GPU 2 (PCI 0000:96:00.0): pcie.link.gen.current=5 (max=5, width=x16) | H2D_bw=19.79 GB/s | GPU_UTIL=99% | PIPE_TENSOR_ACTIVE=98.0% | STATUS=HEALTHY
-            GPU 3 (PCI 0000:97:00.0): pcie.link.gen.current=5 (max=5, width=x16) | H2D_bw=19.75 GB/s | GPU_UTIL=99% | PIPE_TENSOR_ACTIVE=98.2% | STATUS=HEALTHY
-            GPU 4 (PCI 0000:c4:00.0): pcie.link.gen.current=5 (max=5, width=x16) | H2D_bw=19.77 GB/s | GPU_UTIL=99% | PIPE_TENSOR_ACTIVE=98.1% | STATUS=HEALTHY
-            GPU 5 (PCI 0000:c5:00.0): pcie.link.gen.current=5 (max=5, width=x16) | H2D_bw=19.78 GB/s | GPU_UTIL=99% | PIPE_TENSOR_ACTIVE=98.4% | STATUS=HEALTHY
-            GPU 6 (PCI 0000:cb:00.0): pcie.link.gen.current=5 (max=5, width=x16) | H2D_bw=19.76 GB/s | GPU_UTIL=99% | PIPE_TENSOR_ACTIVE=98.0% | STATUS=HEALTHY
-            GPU 7 (PCI 0000:cc:00.0): pcie.link.gen.current=1 (max=5, width=x16) | H2D_bw=1.54 GB/s (12.8x SLOWER!) | GPU_UTIL=100% | PIPE_TENSOR_ACTIVE=68.1% | STATUS=SILENT_BROWNOUT_STRAGGLER
-      [Root Cause] Node -34t3 GPU 7 (PCI 0000:cc:00.0) downgraded from PCIe Gen5 (32 GT/s) to PCIe Gen1 (2.5 GT/s), bottlenecking host-to-device offload and slowing all 16 GPUs from 116.4s/step to 167.2s/step (30.4% Goodput loss).
+            GPU 0 (PCI 0000:8f:00.0): GPU_UTIL=99.2% | PIPE_TENSOR_ACTIVE=68.2% (0.682) | POWER_USAGE=614 W | PCIE_RX_BYTES=19.77 GB/s (PCIe Gen5 x16) | NVLINK_TX_BYTES=368.4 GB/s | STATUS=VICTIM_WAITING_IN_NCCL_BARRIER
+            GPU 1 (PCI 0000:90:00.0): GPU_UTIL=99.1% | PIPE_TENSOR_ACTIVE=68.3% (0.683) | POWER_USAGE=616 W | PCIE_RX_BYTES=19.76 GB/s (PCIe Gen5 x16) | NVLINK_TX_BYTES=368.5 GB/s | STATUS=VICTIM_WAITING_IN_NCCL_BARRIER
+            GPU 2 (PCI 0000:96:00.0): GPU_UTIL=99.0% | PIPE_TENSOR_ACTIVE=68.1% (0.681) | POWER_USAGE=613 W | PCIE_RX_BYTES=19.79 GB/s (PCIe Gen5 x16) | NVLINK_TX_BYTES=368.3 GB/s | STATUS=VICTIM_WAITING_IN_NCCL_BARRIER
+            GPU 3 (PCI 0000:97:00.0): GPU_UTIL=99.2% | PIPE_TENSOR_ACTIVE=68.2% (0.682) | POWER_USAGE=615 W | PCIE_RX_BYTES=19.75 GB/s (PCIe Gen5 x16) | NVLINK_TX_BYTES=368.4 GB/s | STATUS=VICTIM_WAITING_IN_NCCL_BARRIER
+            GPU 4 (PCI 0000:c4:00.0): GPU_UTIL=99.1% | PIPE_TENSOR_ACTIVE=68.1% (0.681) | POWER_USAGE=614 W | PCIE_RX_BYTES=19.77 GB/s (PCIe Gen5 x16) | NVLINK_TX_BYTES=368.4 GB/s | STATUS=VICTIM_WAITING_IN_NCCL_BARRIER
+            GPU 5 (PCI 0000:c5:00.0): GPU_UTIL=99.3% | PIPE_TENSOR_ACTIVE=68.4% (0.684) | POWER_USAGE=617 W | PCIE_RX_BYTES=19.78 GB/s (PCIe Gen5 x16) | NVLINK_TX_BYTES=368.5 GB/s | STATUS=VICTIM_WAITING_IN_NCCL_BARRIER
+            GPU 6 (PCI 0000:cb:00.0): GPU_UTIL=99.0% | PIPE_TENSOR_ACTIVE=68.0% (0.680) | POWER_USAGE=612 W | PCIE_RX_BYTES=19.76 GB/s (PCIe Gen5 x16) | NVLINK_TX_BYTES=368.3 GB/s | STATUS=VICTIM_WAITING_IN_NCCL_BARRIER
+            GPU 7 (PCI 0000:cc:00.0): GPU_UTIL=99.4% | PIPE_TENSOR_ACTIVE=68.1% (0.681) | POWER_USAGE=342 W | PCIE_RX_BYTES=1.54 GB/s  (PCIe Gen1 x16 - 12.8x SLOWER!) | NVLINK_TX_BYTES=368.2 GB/s | STATUS=ROOT_CAUSE_STRAGGLER
+      [Root Cause Summary] While all 16 GPUs show ~99% DCGM_FI_DEV_GPU_UTIL and ~68.1% DCGM_FI_PROF_PIPE_TENSOR_ACTIVE (because synchronous NCCL barriers lock all ranks to the slowest rank), grouping DCGM_FI_PROF_PCIE_RX_BYTES and DCGM_FI_DEV_POWER_USAGE by GPU immediately isolates Node -34t3 GPU 7 (PCI 0000:cc:00.0): its PCIe link downgraded from Gen5 x16 (19.77 GB/s) to Gen1 x16 (1.54 GB/s, 342 W), bottlenecking host-to-device batch staging and slowing step time from 116.4s to 167.2s (30.4% Goodput loss).
       LOG
       exit 0
 EOF
