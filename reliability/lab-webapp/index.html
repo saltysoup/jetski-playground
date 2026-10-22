@@ -1196,31 +1196,31 @@
         number: "Day 1 Lab",
         title: "GPU Platform Engineer Detective: Cloud Console Observability, Goodput & Silent Brownouts",
         subtitle: "DCGM Telemetry Audit · Step-Time & Goodput Tracking · PCIe Gen1 Straggler RCA",
-        scenario: `<strong>Role-Play Scenario (Day 1):</strong> You are a <strong>GPU Platform Engineer</strong> supporting an ML team running 16-GPU <code>dapo-gemma3-27b</code> RL training on our live GKE cluster (<code>ikwak-reliability</code> in <code>gpu-launchpad-playground</code>, <code>europe-west4-b</code>).<br><br>The ML developers ping you: <em>"Our Cloud Monitoring dashboard shows all 16 B200 GPUs at ~99% <code>DCGM_FI_DEV_GPU_UTIL</code> and <code>0</code> XID errors, yet our training run slowed down dramatically mid-run! Can you check Cloud Console (GKE Workloads, Cloud Monitoring &amp; Cloud Logging) to figure out if we are meeting expected Goodput and find the silent brownout straggler?"</em>`,
+        scenario: `<strong>Role-Play Scenario (Day 1):</strong> You are a <strong>GPU Platform Engineer</strong> supporting an ML team running 16-GPU <code>dapo-gemma3-27b</code> RL training on our live GKE cluster (<code>ikwak-reliability</code> in <code>gpu-launchpad-playground</code>, <code>europe-west4-b</code>).<br><br><strong>🕒 Recorded / Simulated Incident Window (No Pre-Staging Required):</strong> <code>2026-10-20T00:53:00Z</code> – <code>2026-10-20T00:55:00Z</code>.<br>The ML developers ping you: <em>"During our run recorded at <code>2026-10-20 00:53:54 UTC</code>, Cloud Monitoring showed all 16 B200 GPUs at ~99% <code>DCGM_FI_DEV_GPU_UTIL</code> and <code>0</code> XID errors, yet our training run slowed down dramatically mid-run! Can you check Cloud Console (GKE Workloads, Cloud Monitoring &amp; Cloud Logging) at that timestamp to figure out if we met expected Goodput and find the silent brownout straggler?"</em>`,
         clues: [
           {
             id: "d1-c1",
-            stepLabel: "Breadcrumb 1.1 · Cloud Console Observability & Default DCGM Exporter Audit",
+            stepLabel: "Breadcrumb 1.1 · Cloud Console Observability & Default DCGM Exporter Audit (2026-10-20 00:53:56 UTC)",
             title: "Audit the Live Cluster & Default GKE Managed DCGM Exporter Blind Spot",
-            prompt: `Open <a href="https://console.cloud.google.com/kubernetes/clusters/details/europe-west4/ikwak-reliability/details?project=gpu-launchpad-playground" target="_blank" rel="noopener">GKE Console</a> and <a href="https://console.cloud.google.com/logs/query?project=gpu-launchpad-playground" target="_blank" rel="noopener">Cloud Logging (Logs Explorer)</a> in read-only mode.<br><br>First, verify that both <code>a4-highgpu-8g</code> nodes (<code>-34t3</code> and <code>-6df3</code>) are online with all <code>16</code> NVIDIA B200 GPUs. Next, query the cluster diagnostic pod <code>gpu-straggler-diag</code> in Cloud Logging to inspect what the default <strong>GKE Managed DCGM Exporter</strong> (<code>:9400/metrics</code>) actually exports:<br><code>resource.type="k8s_container" AND resource.labels.cluster_name="ikwak-reliability" AND resource.labels.pod_name="gpu-straggler-diag"</code><br><br><strong>Question:</strong> While the default GKE Managed DCGM Exporter exposes <code>21</code> metric families (168 series per node for utilization, memory, and clocks), how many <strong>GPU error/XID metric families</strong> (<code>EXPORTER_ERROR_METRICS</code>, or missing DCGM field ID <code>319</code> / <code>DCGM_FI_DEV_XID_ERRORS</code>) does it export by default (or how many total B200 GPUs are online across the 2 nodes)?`,
+            prompt: `Open <a href="https://console.cloud.google.com/kubernetes/clusters/details/europe-west4/ikwak-reliability/details?project=gpu-launchpad-playground" target="_blank" rel="noopener">GKE Console</a> and <a href="https://console.cloud.google.com/logs/query?project=gpu-launchpad-playground" target="_blank" rel="noopener">Cloud Logging (Logs Explorer)</a> in read-only mode.<br><br>First, verify that both <code>a4-highgpu-8g</code> nodes (<code>-34t3</code> and <code>-6df3</code>) are online with all <code>16</code> NVIDIA B200 GPUs. Next, query the cluster diagnostic pod <code>gpu-straggler-diag</code> recorded at <strong><code>2026-10-20T00:53:56Z</code></strong> in Cloud Logging (the query below includes the exact <code>timestamp</code> filter so you don't even need to adjust the Logs Explorer time picker):<br><code>resource.type="k8s_container" AND resource.labels.cluster_name="ikwak-reliability" AND resource.labels.pod_name="gpu-straggler-diag" AND timestamp&gt;="2026-10-20T00:53:00Z" AND timestamp&lt;="2026-10-20T00:55:00Z"</code><br><br><strong>Question:</strong> While the default GKE Managed DCGM Exporter exposes <code>21</code> metric families (168 series per node for utilization, memory, and clocks), how many <strong>GPU error/XID metric families</strong> (<code>EXPORTER_ERROR_METRICS</code>, or missing DCGM field ID <code>319</code> / <code>DCGM_FI_DEV_XID_ERRORS</code>) does it export by default (or how many total B200 GPUs are online across the 2 nodes)?`,
             inputType: "text",
             placeholder: "e.g., 0 error metrics / 319 / DCGM_FI_DEV_XID_ERRORS / 16 GPUs",
-            hint: `Paste this Logs Explorer query in <a href="https://console.cloud.google.com/logs/query?project=gpu-launchpad-playground" target="_blank" rel="noopener">Cloud Logging</a> (or run via CLI):
+            hint: `Paste this exact timestamp-bounded query in <a href="https://console.cloud.google.com/logs/query?project=gpu-launchpad-playground" target="_blank" rel="noopener">Cloud Logging (Logs Explorer)</a>:
 <div class="code-block">resource.type="k8s_container"
 resource.labels.cluster_name="ikwak-reliability"
-resource.labels.pod_name="gpu-straggler-diag"</div>
-<div class="code-block">kubectl logs gpu-straggler-diag -n default</div>`,
-            telemetrySample: `$ kubectl get nodes -l cloud.google.com/gke-accelerator=nvidia-b200 -o custom-columns=NAME:.metadata.name,READY:.status.conditions[-1].status,GPUS:.status.allocatable."nvidia\\.com/gpu"
+resource.labels.pod_name="gpu-straggler-diag"
+timestamp>="2026-10-20T00:53:00Z" AND timestamp<="2026-10-20T00:55:00Z"</div>`,
+            telemetrySample: `TIMESTAMP: 2026-10-20T00:53:56.051901Z (k8s_container / pod_name=gpu-straggler-diag)
+=== [GKE Managed DCGM Exporter (:9400/metrics) Audit on ikwak-reliability] ===
+EXPORTER_METRICS_COUNT=21 | EXPORTER_ERROR_METRICS=0 (Default GKE DCGM Exporter omits all XID, ECC_DBE, and ROW_REMAP error fields! Missing Field 319: DCGM_FI_DEV_XID_ERRORS)
+
+$ kubectl get nodes -l cloud.google.com/gke-accelerator=nvidia-b200 -o custom-columns=NAME:.metadata.name,READY:.status.conditions[-1].status,GPUS:.status.allocatable."nvidia\\.com/gpu"
 NAME                                                  READY   GPUS
 gke-ikwak-reliabilit-a4-highgpu-8g-a4-0256e2f1-34t3   True    8
-gke-ikwak-reliabilit-a4-highgpu-8g-a4-0256e2f1-6df3   True    8
-
-$ kubectl logs gpu-straggler-diag -n default
-=== [GKE Managed DCGM Exporter (:9400/metrics) Audit on ikwak-reliability] ===
-EXPORTER_METRICS_COUNT=21 | EXPORTER_ERROR_METRICS=0 (Default GKE DCGM Exporter omits all XID, ECC_DBE, and ROW_REMAP error fields! Missing Field 319: DCGM_FI_DEV_XID_ERRORS)`,
+gke-ikwak-reliabilit-a4-highgpu-8g-a4-0256e2f1-6df3   True    8`,
             acceptedKeywords: ["0", "zero", "none", "319", "dcgm_fi_dev_xid_errors", "xid_errors", "21", "16"],
             warmKeywords: ["dcgm", "exporter", "xid", "ecc"],
-            warmMessage: "Look at the `EXPORTER_ERROR_METRICS` line in `gpu-straggler-diag`! Enter `0` (or `319` / `DCGM_FI_DEV_XID_ERRORS` / `16`).",
+            warmMessage: "Look at the `EXPORTER_ERROR_METRICS` line in `gpu-straggler-diag` at `2026-10-20T00:53:56Z`! Enter `0` (or `319` / `DCGM_FI_DEV_XID_ERRORS` / `16`).",
             explanationTitle: "Correct! Default GKE Managed DCGM Exporter exports `0` error/XID metrics (`DCGM_FI_DEV_XID_ERRORS` Field `319` is omitted), and `GPU_UTIL` alone cannot distinguish useful work from NCCL spin-waiting!",
             explanationHtml: `
               <p>As a GPU Platform Engineer supporting ML developers, this is your first critical observability insight:</p>
@@ -1232,24 +1232,24 @@ EXPORTER_METRICS_COUNT=21 | EXPORTER_ERROR_METRICS=0 (Default GKE DCGM Exporter 
           },
           {
             id: "d1-c2",
-            stepLabel: "Breadcrumb 1.2 · Tracking Job Execution & Goodput in Cloud Logging",
+            stepLabel: "Breadcrumb 1.2 · Tracking Job Execution & Goodput in Cloud Logging (2026-10-20 00:53:54 UTC)",
             title: "Measure the Silent Brownout Goodput Loss in dapo-gemma3-straggler-driver",
-            prompt: `To verify the ML developers' claim that expected performance is not being met, query the training job execution logs for pod <code>dapo-gemma3-straggler-driver</code> in <strong>Cloud Logging (Logs Explorer)</strong>:<br><code>resource.type="k8s_container" AND resource.labels.cluster_name="ikwak-reliability" AND resource.labels.pod_name="dapo-gemma3-straggler-driver"</code><br><br>Compare the healthy baseline during <strong>Steps 1–5</strong> (<code>step_time: 116.4s</code>, <code>baseline: 116.4s</code>, <code>goodput: 100.0%</code>) against <strong>Steps 6–10</strong> when the silent hardware brownout began (with <code>xid_errors: 0</code> and <code>cluster_gpu_util: 99.1%</code>).<br><br><strong>Question:</strong> During Steps 6–10, what did <code>step_time</code> slow down to (in seconds per step, e.g., <code>167.2s</code>), OR what was the effective <strong>Goodput %</strong> (<code>69.6%</code>) / <strong>Goodput loss %</strong> (<code>30.4%</code>)?`,
+            prompt: `To verify the ML developers' claim that expected performance was not met, query the training job execution logs for pod <code>dapo-gemma3-straggler-driver</code> recorded at <strong><code>2026-10-20T00:53:54Z</code></strong> in <strong>Cloud Logging (Logs Explorer)</strong>:<br><code>resource.type="k8s_container" AND resource.labels.cluster_name="ikwak-reliability" AND resource.labels.pod_name="dapo-gemma3-straggler-driver" AND timestamp&gt;="2026-10-20T00:53:00Z" AND timestamp&lt;="2026-10-20T00:55:00Z"</code><br><br>Compare the healthy baseline during <strong>Steps 1–5</strong> (<code>step_time: 116.4s</code>, <code>baseline: 116.4s</code>, <code>goodput: 100.0%</code>) against <strong>Steps 6–10</strong> when the silent hardware brownout began (with <code>xid_errors: 0</code> and <code>cluster_gpu_util: 99.1%</code>).<br><br><strong>Question:</strong> During Steps 6–10, what did <code>step_time</code> slow down to (in seconds per step, e.g., <code>167.2s</code>), OR what was the effective <strong>Goodput %</strong> (<code>69.6%</code>) / <strong>Goodput loss %</strong> (<code>30.4%</code>)?`,
             inputType: "text",
             placeholder: "e.g., 167.2s / 69.6% goodput / 30.4% loss / 1.44x",
-            hint: `Run this query in <a href="https://console.cloud.google.com/logs/query?project=gpu-launchpad-playground" target="_blank" rel="noopener">Cloud Logging (Logs Explorer)</a>:
+            hint: `Paste this timestamp-bounded query in <a href="https://console.cloud.google.com/logs/query?project=gpu-launchpad-playground" target="_blank" rel="noopener">Cloud Logging (Logs Explorer)</a>:
 <div class="code-block">resource.type="k8s_container"
 resource.labels.cluster_name="ikwak-reliability"
-resource.labels.pod_name="dapo-gemma3-straggler-driver"</div>
-<div class="code-block">kubectl logs dapo-gemma3-straggler-driver -n default</div>`,
-            telemetrySample: `$ kubectl logs dapo-gemma3-straggler-driver -n default
-[2026-10-19T17:00:01Z] [NeMo-RL] Job=dapo-gemma3-27b-straggler | Nodes=2 (gke-ikwak-reliabilit-a4-highgpu-8g-a4-0256e2f1-34t3, -6df3) | GPUs=16x NVIDIA B200
-[2026-10-19T17:01:57Z] [Step 1/50] step_time: 116.4s | baseline: 116.4s | tokens/sec: 14,120 | goodput: 100.0% | cluster_gpu_util: 99.4% | xid_errors: 0
+resource.labels.pod_name="dapo-gemma3-straggler-driver"
+timestamp>="2026-10-20T00:53:00Z" AND timestamp<="2026-10-20T00:55:00Z"</div>`,
+            telemetrySample: `TIMESTAMP: 2026-10-20T00:53:54.381Z (k8s_container / pod_name=dapo-gemma3-straggler-driver)
+[NeMo-RL] Job=dapo-gemma3-27b-straggler | Nodes=2 (gke-ikwak-reliabilit-a4-highgpu-8g-a4-0256e2f1-34t3, -6df3) | GPUs=16x NVIDIA B200
+[Step 1/50] step_time: 116.4s | baseline: 116.4s | tokens/sec: 14,120 | goodput: 100.0% | cluster_gpu_util: 99.4% | xid_errors: 0
 ...
-[2026-10-19T17:09:42Z] [Step 5/50] step_time: 116.4s | baseline: 116.4s | tokens/sec: 14,118 | goodput: 100.0% | cluster_gpu_util: 99.3% | xid_errors: 0
-[2026-10-19T17:12:29Z] [Step 6/50] WARNING: Step time SLO breach! step_time: 167.2s | baseline: 116.4s (1.44x slowdown) | tokens/sec: 9,830 | goodput: 69.6% (-30.4% goodput loss!) | cluster_gpu_util: 99.1% | xid_errors: 0
-[2026-10-19T17:15:16Z] [Step 7/50] WARNING: Step time SLO breach! step_time: 167.2s | baseline: 116.4s (1.44x slowdown) | tokens/sec: 9,828 | goodput: 69.6% (-30.4% goodput loss!) | cluster_gpu_util: 99.2% | xid_errors: 0
-[2026-10-19T17:23:38Z] [Step 10/50] [Goodput Watchdog] Brownout detected: 5 consecutive steps > 150.0s threshold (avg=167.2s vs 116.4s baseline). Suspecting single-GPU PCIe/NVLink or thermal straggler. Run gpu-straggler-diag for per-GPU link inspection.`,
+[Step 5/50] step_time: 116.4s | baseline: 116.4s | tokens/sec: 14,118 | goodput: 100.0% | cluster_gpu_util: 99.3% | xid_errors: 0
+[Step 6/50] WARNING: Step time SLO breach! step_time: 167.2s | baseline: 116.4s (1.44x slowdown) | tokens/sec: 9,830 | goodput: 69.6% (-30.4% goodput loss!) | cluster_gpu_util: 99.1% | xid_errors: 0
+[Step 7/50] WARNING: Step time SLO breach! step_time: 167.2s | baseline: 116.4s (1.44x slowdown) | tokens/sec: 9,828 | goodput: 69.6% (-30.4% goodput loss!) | cluster_gpu_util: 99.2% | xid_errors: 0
+[Step 10/50] [Goodput Watchdog] Brownout detected: 5 consecutive steps > 150.0s threshold (avg=167.2s vs 116.4s baseline). Suspecting single-GPU PCIe/NVLink or thermal straggler. Run gpu-straggler-diag for per-GPU link inspection.`,
             acceptedKeywords: ["167.2", "167", "69.6", "30.4", "30%", "1.44", "9,830", "9830"],
             warmKeywords: ["116.4", "goodput", "slowdown", "brownout"],
             warmMessage: "You see the `116.4s` healthy baseline! Now enter the degraded step time (`167.2s`), degraded Goodput (`69.6%`), or Goodput loss (`30.4%`).",
@@ -1264,14 +1264,18 @@ resource.labels.pod_name="dapo-gemma3-straggler-driver"</div>
           },
           {
             id: "d1-c3",
-            stepLabel: "Breadcrumb 1.3 · Pinpointing the Silent Brownout Straggler GPU",
+            stepLabel: "Breadcrumb 1.3 · Pinpointing the Silent Brownout Straggler GPU (2026-10-20 00:53:56 UTC)",
             title: "Identify Which GPU & Hardware Link Caused the 30.4% Goodput Brownout",
-            prompt: `Now help the ML developer find the exact culprit GPU! Inspect the per-GPU diagnostic table logged by <code>gpu-straggler-diag</code> in <strong>Cloud Logging (Logs Explorer)</strong>:<br><code>resource.type="k8s_container" AND resource.labels.cluster_name="ikwak-reliability" AND resource.labels.pod_name="gpu-straggler-diag"</code><br><br>Compare the 15 healthy GPUs (<code>PCIE_GEN: Gen5 (max Gen5)</code>, <code>H2D_BW: 19.77 GB/s</code>, <code>PIPE_TENSOR_ACTIVE: 98.1%</code>) against the single degraded GPU on node <code>gke-ikwak-reliabilit-a4-highgpu-8g-a4-0256e2f1-34t3</code>.<br><br><strong>Question:</strong> Which <strong>GPU index / PCI bus address</strong> on node <code>-34t3</code> is the silent straggler (e.g., <code>GPU 7</code> / <code>0000:cc:00.0</code>), OR what hardware degradation hit it (e.g., <code>PCIe Gen1</code> / <code>1.54 GB/s</code> / <code>68.1%</code> Tensor Core active)?`,
+            prompt: `Now help the ML developer find the exact culprit GPU! Inspect the per-GPU diagnostic table logged by <code>gpu-straggler-diag</code> at <strong><code>2026-10-20T00:53:56Z</code></strong> in <strong>Cloud Logging (Logs Explorer)</strong>:<br><code>resource.type="k8s_container" AND resource.labels.cluster_name="ikwak-reliability" AND resource.labels.pod_name="gpu-straggler-diag" AND timestamp&gt;="2026-10-20T00:53:00Z" AND timestamp&lt;="2026-10-20T00:55:00Z"</code><br><br>Compare the 15 healthy GPUs (<code>PCIE_GEN: Gen5 (max Gen5)</code>, <code>H2D_BW: 19.77 GB/s</code>, <code>PIPE_TENSOR_ACTIVE: 98.1%</code>) against the single degraded GPU on node <code>gke-ikwak-reliabilit-a4-highgpu-8g-a4-0256e2f1-34t3</code>.<br><br><strong>Question:</strong> Which <strong>GPU index / PCI bus address</strong> on node <code>-34t3</code> is the silent straggler (e.g., <code>GPU 7</code> / <code>0000:cc:00.0</code>), OR what hardware degradation hit it (e.g., <code>PCIe Gen1</code> / <code>1.54 GB/s</code> / <code>68.1%</code> Tensor Core active)?`,
             inputType: "text",
             placeholder: "e.g., GPU 7 / 0000:cc:00.0 / PCIe Gen1 / 1.54 GB/s",
-            hint: `Inspect the full output of <code>gpu-straggler-diag</code> in Cloud Logging or run:
-<div class="code-block">kubectl logs gpu-straggler-diag -n default</div>`,
-            telemetrySample: `=== [Per-GPU Link & Tensor Core Diagnostics: Node gke-ikwak-reliabilit-a4-highgpu-8g-a4-0256e2f1-34t3] ===
+            hint: `Paste this timestamp-bounded query in <a href="https://console.cloud.google.com/logs/query?project=gpu-launchpad-playground" target="_blank" rel="noopener">Cloud Logging (Logs Explorer)</a>:
+<div class="code-block">resource.type="k8s_container"
+resource.labels.cluster_name="ikwak-reliability"
+resource.labels.pod_name="gpu-straggler-diag"
+timestamp>="2026-10-20T00:53:00Z" AND timestamp<="2026-10-20T00:55:00Z"</div>`,
+            telemetrySample: `TIMESTAMP: 2026-10-20T00:53:56.051997Z (k8s_container / pod_name=gpu-straggler-diag)
+=== [Per-GPU Link & Tensor Core Diagnostics: Node gke-ikwak-reliabilit-a4-highgpu-8g-a4-0256e2f1-34t3] ===
 GPU | PCI_BUS_ID   | PCIE_GEN        | PCIE_WIDTH | H2D_BW     | GPU_UTIL | PIPE_TENSOR_ACTIVE | NVLINK_BW  | STATUS
 ----+--------------+-----------------+------------+------------+----------+--------------------+------------+------------------------
 0   | 0000:04:00.0 | Gen5 (max Gen5) | x16        | 19.77 GB/s | 99.2%    | 98.1%              | 368.4 GB/s | HEALTHY
@@ -1301,28 +1305,28 @@ GPUs 0..7: All at PCIe Gen5 x16 (19.77 GB/s H2D), GPU_UTIL=99.1%, PIPE_TENSOR_AC
         number: "Day 2 Lab",
         title: "Troubleshooting Failures: CUDA OOM vs. XID 48 & Veritas Timeline RCA (Reset/Reboot vs. R&R)",
         subtitle: "App OOM vs. Infra XID · Serial Console Forensics · Veritas (yugrqvu-tl3) One-Off vs. Recurring XID 48",
-        scenario: `<strong>Role-Play Scenario (Day 2):</strong> Today you will troubleshoot three real failure escalations on <code>ikwak-reliability</code> using <strong>Cloud Logging</strong>, <strong>GCE Serial Console</strong>, <strong>Cloud Audit Logs</strong>, and <strong>Veritas</strong> (<a href="https://data.corp.google.com/sites/vm_stability_gpu_cluster_datasite/gce_veritas_machine_view/?p=MACHINE:yugrqvu-tl3&amp;p=DATE_FROM:2026-08-05&amp;f=package_name_odbr7g:in:cloud-cluster-node-bundle-version,cloud-cluster-node-bundle-version-disruptive,cloud-gpu-drivervm,diorite-hma,firmware-hgx-endurance-msvfud,kernel_selector,platforms-bundle-version,platforms-bundle-version-disruptive,usps_promethium&amp;av=bzgtll:85omjnu3&amp;av=u81fwb:le8y8rev" target="_blank" rel="noopener"><code>MACHINE:yugrqvu-tl3</code> ↗</a>):<br>1) Separate a job-level <strong>CUDA OOM</strong> from a hardware crash,<br>2) Hunt down an <strong><code>XID 48</code></strong> hardware fault in GCE Serial Console logs, and<br>3) Combine <strong>Cloud Logging + Veritas timeline analysis</strong> to determine when an <code>XID 48</code> is a <strong>transient one-off</strong> (fixed with a GPU reset / VM reboot) vs. a <strong>recurring host fault on the same machine (<code>yugrqvu-tl3</code>)</strong> that requires <strong>Report &amp; Replace (R&amp;R)</strong>.`,
+        scenario: `<strong>Role-Play Scenario (Day 2):</strong> Today you will troubleshoot three failure escalations recorded on <code>ikwak-reliability</code> using <strong>Cloud Logging</strong>, <strong>GCE Serial Console</strong>, <strong>Cloud Audit Logs</strong>, and <strong>Veritas</strong> (<a href="https://data.corp.google.com/sites/vm_stability_gpu_cluster_datasite/gce_veritas_machine_view/?p=MACHINE:yugrqvu-tl3&amp;p=DATE_FROM:2026-08-05&amp;f=package_name_odbr7g:in:cloud-cluster-node-bundle-version,cloud-cluster-node-bundle-version-disruptive,cloud-gpu-drivervm,diorite-hma,firmware-hgx-endurance-msvfud,kernel_selector,platforms-bundle-version,platforms-bundle-version-disruptive,usps_promethium&amp;av=bzgtll:85omjnu3&amp;av=u81fwb:le8y8rev" target="_blank" rel="noopener"><code>MACHINE:yugrqvu-tl3</code> ↗</a>):<br><br><strong>🕒 Recorded / Injected Incident Windows (No Pre-Staging Required):</strong><br>• <strong>Incident #1 (<code>dapo-gemma3-run1-driver</code>):</strong> Recorded at <code>2026-10-19T17:14:21Z</code> &amp; <code>2026-10-20T00:54:01Z</code><br>• <strong>Incident #2 (One-Off <code>XID 48</code> on Node <code>-6df3</code> / <code>921428950843228374</code>):</strong> Injected at <code>2026-10-19T17:14:25.341Z</code><br>• <strong>Incident #3 (5× Recurring <code>XID 48</code> on Node <code>-34t3</code> / <code>174490015860863227</code> / <code>MACHINE:yugrqvu-tl3</code>):</strong> Injected at <code>2026-10-20T00:54:06Z</code> – <code>00:54:10Z</code> (and visible in Veritas from <code>2026-08-27</code> to <code>2026-09-24</code>)`,
         clues: [
           {
             id: "d2-c1",
-            stepLabel: "Breadcrumb 2.1 · Incident #1: Job-Level Crash vs. Hardware Fault",
+            stepLabel: "Breadcrumb 2.1 · Incident #1: Job-Level Crash vs. Hardware Fault (2026-10-20 00:54:01 UTC)",
             title: "Investigate Why dapo-gemma3-run1 Died at Step 1 in Cloud Logging",
-            prompt: `<strong>Incident #1:</strong> The ML team launched <code>dapo-gemma3-run1</code> across both <code>a4-highgpu-8g</code> nodes, and the job died less than 3 minutes into Step 1. They ask you if a B200 GPU died.<br><br>Open <a href="https://console.cloud.google.com/logs/query?project=gpu-launchpad-playground" target="_blank" rel="noopener">Cloud Logging (Logs Explorer)</a> and query the failed job pod <code>dapo-gemma3-run1-driver</code>:<br><code>resource.type="k8s_container" AND resource.labels.cluster_name="ikwak-reliability" AND resource.labels.pod_name="dapo-gemma3-run1-driver"</code><br><br><strong>Question:</strong> What is the exact Python/CUDA error in <code>dapo-gemma3-run1-driver</code>'s logs that killed the job at Step 1 (with <code>0</code> XID errors)?`,
+            prompt: `<strong>Incident #1:</strong> At <strong><code>2026-10-20T00:54:01Z</code></strong> (and <code>2026-10-19T17:14:21Z</code>), the ML team launched <code>dapo-gemma3-run1</code> across both <code>a4-highgpu-8g</code> nodes, and the job died less than 3 minutes into Step 1. They ask you if a B200 GPU died.<br><br>Open <a href="https://console.cloud.google.com/logs/query?project=gpu-launchpad-playground" target="_blank" rel="noopener">Cloud Logging (Logs Explorer)</a> and run this timestamp-bounded query for <code>dapo-gemma3-run1-driver</code>:<br><code>resource.type="k8s_container" AND resource.labels.cluster_name="ikwak-reliability" AND resource.labels.pod_name="dapo-gemma3-run1-driver" AND timestamp&gt;="2026-10-20T00:53:00Z" AND timestamp&lt;="2026-10-20T00:55:00Z"</code><br><br><strong>Question:</strong> What is the exact Python/CUDA error in <code>dapo-gemma3-run1-driver</code>'s logs that killed the job at Step 1 (with <code>0</code> XID errors)?`,
             inputType: "text",
             placeholder: "e.g., CUDA out of memory / torch.OutOfMemoryError",
-            hint: `Run this query in <a href="https://console.cloud.google.com/logs/query?project=gpu-launchpad-playground" target="_blank" rel="noopener">Cloud Logging (Logs Explorer)</a>:
+            hint: `Paste this timestamp-bounded query in <a href="https://console.cloud.google.com/logs/query?project=gpu-launchpad-playground" target="_blank" rel="noopener">Cloud Logging (Logs Explorer)</a>:
 <div class="code-block">resource.type="k8s_container"
 resource.labels.cluster_name="ikwak-reliability"
-resource.labels.pod_name="dapo-gemma3-run1-driver"</div>
-<div class="code-block">kubectl logs dapo-gemma3-run1-driver -n default</div>`,
-            telemetrySample: `$ kubectl logs dapo-gemma3-run1-driver -n default
-[2026-10-19T17:10:02Z] [NeMo-RL] Launching job dapo-gemma3-run1 across 2 nodes (16x NVIDIA B200 GPUs)...
-[2026-10-19T17:10:15Z] [Step 1/100] Starting rollout generation (rollout.max_model_len=32768, train_micro_batch_size=8)...
+resource.labels.pod_name="dapo-gemma3-run1-driver"
+timestamp>="2026-10-20T00:53:00Z" AND timestamp<="2026-10-20T00:55:00Z"</div>`,
+            telemetrySample: `TIMESTAMP: 2026-10-20T00:54:01.024Z (k8s_container / pod_name=dapo-gemma3-run1-driver)
+[NeMo-RL] Launching job dapo-gemma3-run1 across 2 nodes (16x NVIDIA B200 GPUs)...
+[Step 1/100] Starting rollout generation (rollout.max_model_len=32768, train_micro_batch_size=8)...
 Traceback (most recent call last):
   File "/opt/nemo-rl/nemo_rl/algorithms/grpo.py", line 418, in grpo_train
     loss = policy.train_step(batch)
 torch.OutOfMemoryError: CUDA out of memory. Tried to allocate 14.50 GiB. GPU 0 has a total capacity of 178.35 GiB of which 2.12 GiB is free. Including non-PyTorch memory, this process has 176.18 GiB memory in use.
-[2026-10-19T17:10:19Z] [Job Status] dapo-gemma3-run1 FAILED (ExitCode: 1) — Application-level CUDA OOM (0 XID errors).`,
+[Job Status] dapo-gemma3-run1 FAILED (ExitCode: 1) — Application-level CUDA OOM (0 XID errors).`,
             acceptedKeywords: ["oom", "out of memory", "outofmemoryerror", "cuda out of memory", "14.50"],
             warmKeywords: ["cuda", "torch", "memory", "178.35"],
             warmMessage: "You found the traceback in `dapo-gemma3-run1-driver`! Enter the exact error (`CUDA out of memory` or `OutOfMemoryError`).",
@@ -1336,25 +1340,26 @@ torch.OutOfMemoryError: CUDA out of memory. Tried to allocate 14.50 GiB. GPU 0 h
           },
           {
             id: "d2-c2",
-            stepLabel: "Breadcrumb 2.2 · Incident #2: Hunting XID Errors in GCE Serial Console Logs",
-            title: "Find the Exact XID Error Code on Node -6df3 (Instance 921428950843228374)",
-            prompt: `<strong>Incident #2:</strong> After fixing the batch size, the team launches <code>dapo-gemma3-run2</code>. It runs smoothly for 18 steps (<code>116.4s/step</code>), then crashes at Step 19 with <code>RuntimeError: NCCL error: unhandled cuda error (run with NCCL_DEBUG=INFO)</code>.<br><br>First check <code>dapo-gemma3-run2-driver</code> in Cloud Logging to see which node aborted, then query the <strong>GCE Serial Console</strong> stream (<code>serialconsole.googleapis.com/serial_port_1_output</code>) for Node 2 (<code>gke-ikwak-reliabilit-a4-highgpu-8g-a4-0256e2f1-6df3</code>, <code>instance_id="921428950843228374"</code>):<br><code>resource.type="gce_instance" AND log_id("serialconsole.googleapis.com/serial_port_1_output") AND resource.labels.instance_id="921428950843228374" AND "NVRM: Xid"</code><br><br><strong>Question:</strong> What numeric <strong>XID error code</strong> fired on <code>PCI:0000:89:00</code> on node <code>-6df3</code>, and what GPU memory fault does it represent?`,
+            stepLabel: "Breadcrumb 2.2 · Incident #2: Hunting XID Errors in GCE Serial Console Logs (2026-10-19 17:14:25 UTC)",
+            title: "Find the Exact XID Error Code Injected on Node -6df3 (Instance 921428950843228374)",
+            prompt: `<strong>Incident #2:</strong> After fixing the batch size, the team launched <code>dapo-gemma3-run2</code>, which ran smoothly for 18 steps (<code>116.4s/step</code>) and then crashed at Step 19 (at <strong><code>2026-10-19T17:14:25Z</code></strong>) with <code>RuntimeError: NCCL error: unhandled cuda error (run with NCCL_DEBUG=INFO)</code>.<br><br>Query the <strong>GCE Serial Console</strong> stream (<code>serialconsole.googleapis.com/serial_port_1_output</code>) for Node 2 (<code>gke-ikwak-reliabilit-a4-highgpu-8g-a4-0256e2f1-6df3</code>, <code>instance_id="921428950843228374"</code>) during the exact injection window <strong><code>2026-10-19T17:14:00Z</code> – <code>2026-10-19T17:15:00Z</code></strong>:<br><code>resource.type="gce_instance" AND log_id("serialconsole.googleapis.com/serial_port_1_output") AND resource.labels.instance_id="921428950843228374" AND timestamp&gt;="2026-10-19T17:14:00Z" AND timestamp&lt;="2026-10-19T17:15:00Z" AND "NVRM: Xid"</code><br><br><strong>Question:</strong> What numeric <strong>XID error code</strong> fired on <code>PCI:0000:89:00</code> on node <code>-6df3</code> at <code>2026-10-19T17:14:25.341Z</code>, and what GPU memory fault does it represent?`,
             inputType: "text",
             placeholder: "e.g., XID 48 (or 48 / Double Bit ECC / DBE)",
-            hint: `Paste this query into <a href="https://console.cloud.google.com/logs/query?project=gpu-launchpad-playground" target="_blank" rel="noopener">Cloud Logging (Logs Explorer)</a>:
+            hint: `Paste this timestamp-bounded query into <a href="https://console.cloud.google.com/logs/query?project=gpu-launchpad-playground" target="_blank" rel="noopener">Cloud Logging (Logs Explorer)</a>:
 <div class="code-block">resource.type="gce_instance"
 log_id("serialconsole.googleapis.com/serial_port_1_output")
 resource.labels.instance_id="921428950843228374"
+timestamp>="2026-10-19T17:14:00Z" AND timestamp<="2026-10-19T17:15:00Z"
 "NVRM: Xid"</div>`,
-            telemetrySample: `TIMESTAMP: 2026-10-19T17:14:25.341Z
+            telemetrySample: `TIMESTAMP: 2026-10-19T17:14:25.341623941Z
 RESOURCE: gce_instance / instance_id="921428950843228374" (gke-ikwak-reliabilit-a4-highgpu-8g-a4-0256e2f1-6df3)
 LOG_NAME: projects/gpu-launchpad-playground/logs/serialconsole.googleapis.com%2Fserial_port_1_output
 TEXT_PAYLOAD:
-[14289.412088] NVRM: Xid (PCI:0000:89:00): 48, pid=218402, name=ray::DTensorPolicy, An uncorrectable double bit error (DBE) has been detected on GPU (0000:89:00).`,
+[735548.233624] [735548.020000] NVRM: Xid (PCI:0000:89:00): 48, pid=218402, name=ray::DTensorPolicy, An uncorrectable double bit error (DBE) has been detected on GPU (0000:89:00).`,
             acceptedKeywords: ["48", "xid 48", "xid48", "double bit ecc", "dbe"],
             warmKeywords: ["ecc", "uncorrectable", "89:00", "serialconsole"],
-            warmMessage: "You found the serial console log on `PCI:0000:89:00`! Enter the numeric XID code (`48` or `XID 48`).",
-            explanationTitle: "Correct! `XID 48` (Uncorrectable Double-Bit ECC Error) on `PCI:0000:89:00` in `serialconsole.googleapis.com/serial_port_1_output`.",
+            warmMessage: "You found the serial console log at `2026-10-19T17:14:25.341Z` on `PCI:0000:89:00`! Enter the numeric XID code (`48` or `XID 48`).",
+            explanationTitle: "Correct! `XID 48` (Uncorrectable Double-Bit ECC Error) on `PCI:0000:89:00` at `2026-10-19T17:14:25.341Z` in `serialconsole.googleapis.com/serial_port_1_output`.",
             explanationHtml: `
               <p>Why is <code>serialconsole.googleapis.com/serial_port_1_output</code> essential when an NCCL job crashes with a generic <code>unhandled cuda error</code>?</p>
               <ul>
@@ -1365,9 +1370,9 @@ TEXT_PAYLOAD:
           },
           {
             id: "d2-c3",
-            stepLabel: "Breadcrumb 2.3 · Incident #3: One-Off XID 48 (Reset/Reboot) vs. Recurring XID 48 on Same Host in Veritas (R&R)",
+            stepLabel: "Breadcrumb 2.3 · Incident #3: One-Off XID 48 vs. Recurring XID 48 at 2026-10-20 00:54:06 UTC & Veritas",
             title: "Use Cloud Logging & Veritas (yugrqvu-tl3) to Decide: GPU Reset/Reboot vs. R&R",
-            prompt: `<strong>Incident #3 (The Critical Day 2 Decision):</strong> Now compare <strong>two different nodes</strong> that experienced <code>XID 48</code>:<br><br>1. <strong>Node 2 (<code>-6df3</code> / <code>instance_id="921428950843228374"</code>):</strong> Experienced a <strong>single, one-off <code>XID 48</code></strong> during <code>dapo-gemma3-run2</code>.<br>2. <strong>Node 1 (<code>-34t3</code> / <code>instance_id="174490015860863227"</code> / physical machine <code>yugrqvu-tl3</code>):</strong> Crashed job <code>dapo-gemma3-run2b-recurring</code> even after a GPU reset! Query Cloud Logging for <code>dapo-gemma3-run2b-recurring-driver</code> AND query the serial console on <code>instance_id="174490015860863227"</code>:<br><code>resource.type="gce_instance" AND log_id("serialconsole.googleapis.com/serial_port_1_output") AND resource.labels.instance_id="174490015860863227" AND "Xid" AND "48"</code><br>Then cross-check the physical machine timeline in <strong><a href="https://data.corp.google.com/sites/vm_stability_gpu_cluster_datasite/gce_veritas_machine_view/?p=MACHINE:yugrqvu-tl3&amp;p=DATE_FROM:2026-08-05&amp;f=package_name_odbr7g:in:cloud-cluster-node-bundle-version,cloud-cluster-node-bundle-version-disruptive,cloud-gpu-drivervm,diorite-hma,firmware-hgx-endurance-msvfud,kernel_selector,platforms-bundle-version,platforms-bundle-version-disruptive,usps_promethium&amp;av=bzgtll:85omjnu3&amp;av=u81fwb:le8y8rev" target="_blank" rel="noopener">Veritas Machine View (<code>MACHINE:yugrqvu-tl3</code>) ↗</a></strong> and the <a href="https://docs.cloud.google.com/compute/docs/troubleshooting/troubleshooting-gpus#xid-handling" target="_blank" rel="noopener">GCP GPU XID Troubleshooting Guide</a>.<br><br><strong>Question:</strong> What do Cloud Logging and Veritas reveal on <code>-34t3</code> (<code>yugrqvu-tl3</code>), and what is the correct remediation for <strong>Node 2 (one-off <code>XID 48</code>)</strong> vs. <strong>Node 1 (recurring <code>XID 48</code> on the same host)</strong>?`,
+            prompt: `<strong>Incident #3 (The Critical Day 2 Decision):</strong> Now compare <strong>two different nodes</strong> that experienced <code>XID 48</code>:<br><br>1. <strong>Node 2 (<code>-6df3</code> / <code>instance_id="921428950843228374"</code>):</strong> Experienced a <strong>single, one-off <code>XID 48</code></strong> at <code>2026-10-19T17:14:25Z</code>.<br>2. <strong>Node 1 (<code>-34t3</code> / <code>instance_id="174490015860863227"</code> / physical machine <code>yugrqvu-tl3</code>):</strong> Crashed job <code>dapo-gemma3-run2b-recurring</code> even after a GPU reset! Query the serial console on <code>instance_id="174490015860863227"</code> during the injection window <strong><code>2026-10-20T00:54:00Z</code> – <code>2026-10-20T00:55:00Z</code></strong>:<br><code>resource.type="gce_instance" AND log_id("serialconsole.googleapis.com/serial_port_1_output") AND resource.labels.instance_id="174490015860863227" AND timestamp&gt;="2026-10-20T00:54:00Z" AND timestamp&lt;="2026-10-20T00:55:00Z" AND "NVRM: Xid" AND "48"</code><br>Then cross-check the physical machine timeline in <strong><a href="https://data.corp.google.com/sites/vm_stability_gpu_cluster_datasite/gce_veritas_machine_view/?p=MACHINE:yugrqvu-tl3&amp;p=DATE_FROM:2026-08-05&amp;f=package_name_odbr7g:in:cloud-cluster-node-bundle-version,cloud-cluster-node-bundle-version-disruptive,cloud-gpu-drivervm,diorite-hma,firmware-hgx-endurance-msvfud,kernel_selector,platforms-bundle-version,platforms-bundle-version-disruptive,usps_promethium&amp;av=bzgtll:85omjnu3&amp;av=u81fwb:le8y8rev" target="_blank" rel="noopener">Veritas Machine View (<code>MACHINE:yugrqvu-tl3</code>) ↗</a></strong> and the <a href="https://docs.cloud.google.com/compute/docs/troubleshooting/troubleshooting-gpus#xid-handling" target="_blank" rel="noopener">GCP GPU XID Troubleshooting Guide</a>.<br><br><strong>Question:</strong> What do Cloud Logging (at <code>2026-10-20T00:54:06Z–00:54:10Z</code>) and Veritas reveal on <code>-34t3</code> (<code>yugrqvu-tl3</code>), and what is the correct remediation for <strong>Node 2 (one-off <code>XID 48</code>)</strong> vs. <strong>Node 1 (recurring <code>XID 48</code> on the same host)</strong>?`,
             inputType: "choice",
             choices: [
               {
@@ -1388,20 +1393,25 @@ TEXT_PAYLOAD:
               }
             ],
             correctChoice: "b",
-            hint: `Check both the container log for <code>dapo-gemma3-run2b-recurring-driver</code> and the serial console logs on <code>instance_id="174490015860863227"</code> in <a href="https://console.cloud.google.com/logs/query?project=gpu-launchpad-playground" target="_blank" rel="noopener">Cloud Logging</a>:
+            hint: `Check both the serial console logs at <code>2026-10-20T00:54:06Z..00:54:10Z</code> on <code>instance_id="174490015860863227"</code> and <code>dapo-gemma3-run2b-recurring-driver</code> in <a href="https://console.cloud.google.com/logs/query?project=gpu-launchpad-playground" target="_blank" rel="noopener">Cloud Logging</a>:
 <div class="code-block">resource.type="gce_instance"
 log_id("serialconsole.googleapis.com/serial_port_1_output")
 resource.labels.instance_id="174490015860863227"
+timestamp>="2026-10-20T00:54:00Z" AND timestamp<="2026-10-20T00:55:00Z"
 "NVRM: Xid" AND "48"</div>
+<div class="code-block">resource.type="k8s_container"
+resource.labels.cluster_name="ikwak-reliability"
+resource.labels.pod_name="dapo-gemma3-run2b-recurring-driver"
+timestamp>="2026-10-20T00:53:00Z" AND timestamp<="2026-10-20T00:55:00Z"</div>
 And compare with <a href="https://data.corp.google.com/sites/vm_stability_gpu_cluster_datasite/gce_veritas_machine_view/?p=MACHINE:yugrqvu-tl3&amp;p=DATE_FROM:2026-08-05&amp;f=package_name_odbr7g:in:cloud-cluster-node-bundle-version,cloud-cluster-node-bundle-version-disruptive,cloud-gpu-drivervm,diorite-hma,firmware-hgx-endurance-msvfud,kernel_selector,platforms-bundle-version,platforms-bundle-version-disruptive,usps_promethium&amp;av=bzgtll:85omjnu3&amp;av=u81fwb:le8y8rev" target="_blank" rel="noopener">Veritas Machine View for <code>MACHINE:yugrqvu-tl3</code> ↗</a>.`,
             telemetrySample: `=== 1. Serial Console Logs on Node -34t3 (instance_id=174490015860863227 / Physical Host MACHINE:yugrqvu-tl3) ===
-2026-10-20T00:54:06.952Z [CLAUDE-SIM-RUN8-I1] NVRM: Xid (PCI:0000:cc:00): 48, pid=194821, name=ray::DTensorPolicy, An uncorrectable double bit error (DBE) has been detected on GPU (0000:cc:00).
-2026-10-20T00:54:07.610Z [CLAUDE-SIM-RUN8-I2] NVRM: Xid (PCI:0000:cc:00): 48, pid=195104, name=ray::DTensorPolicy, An uncorrectable double bit error (DBE) has been detected on GPU (0000:cc:00).
-2026-10-20T00:54:08.587Z [CLAUDE-SIM-RUN8-I3] NVRM: Xid (PCI:0000:cc:00): 48, pid=195892, name=ray::DTensorPolicy, An uncorrectable double bit error (DBE) has been detected on GPU (0000:cc:00).
-2026-10-20T00:54:09.591Z [CLAUDE-SIM-RUN8-I4] NVRM: Xid (PCI:0000:cc:00): 48, pid=196410, name=ray::DTensorPolicy, An uncorrectable double bit error (DBE) has been detected on GPU (0000:cc:00).
-2026-10-20T00:54:10.653Z [CLAUDE-SIM-RUN8-I5] NVRM: Xid (PCI:0000:cc:00): 48, pid=197012, name=ray::DTensorPolicy, An uncorrectable double bit error (DBE) has been detected on GPU (0000:cc:00).
+2026-10-20T00:54:06.584102Z | [763128.542873] NVRM: Xid (PCI:0000:cc:00): 48, pid=0, name=CLAUDE-SIM-RUN8-I1, An uncorrectable double bit error (DBE) has been detected on GPU (0000:cc:00).
+2026-10-20T00:54:07.602989Z | [763129.561926] NVRM: Xid (PCI:0000:cc:00): 48, pid=0, name=CLAUDE-SIM-RUN8-I2, An uncorrectable double bit error (DBE) has been detected on GPU (0000:cc:00).
+2026-10-20T00:54:08.622265Z | [763130.581064] NVRM: Xid (PCI:0000:cc:00): 48, pid=0, name=CLAUDE-SIM-RUN8-I3, An uncorrectable double bit error (DBE) has been detected on GPU (0000:cc:00).
+2026-10-20T00:54:09.641151Z | [763131.600080] NVRM: Xid (PCI:0000:cc:00): 48, pid=0, name=CLAUDE-SIM-RUN8-I4, An uncorrectable double bit error (DBE) has been detected on GPU (0000:cc:00).
+2026-10-20T00:54:10.660113Z | [763132.618915] NVRM: Xid (PCI:0000:cc:00): 48, pid=0, name=CLAUDE-SIM-RUN8-I5, An uncorrectable double bit error (DBE) has been detected on GPU (0000:cc:00).
 
-=== 2. Pod dapo-gemma3-run2b-recurring-driver Log ===
+=== 2. Pod dapo-gemma3-run2b-recurring-driver Log (2026-10-20T00:54:03.945Z) ===
 [RCA Summary] Unlike Node -6df3 (which had a single isolated XID 48 recoverable via GPU reset/VM reboot), Node -34t3 (Physical Machine: yugrqvu-tl3 in Veritas) exhibits RECURRING XID 48 errors across 5 consecutive runs on the same GPU (0000:cc:00.0).
 [Recommended Action] Cordon & drain Node -34t3 and invoke Report & Replace (R&R) API: gcloud compute instances report-faulty-host gke-ikwak-reliabilit-a4-highgpu-8g-a4-0256e2f1-34t3 --zone=europe-west4-b --fault-reasons=behavior=GPU_ERROR,description="Recurring XID 48 DBE on GPU 7 (0000:cc:00.0) confirmed in Serial Console and Veritas (machine yugrqvu-tl3)"`,
             explanationTitle: "Correct! One-off `XID 48` → GPU reset or VM reboot (~35s); Recurring `XID 48` on the same physical host (`yugrqvu-tl3` in Veritas) → Cordon/drain & R&R (`report-faulty-host`)!",
@@ -1420,30 +1430,29 @@ And compare with <a href="https://data.corp.google.com/sites/vm_stability_gpu_cl
         number: "Day 3 Lab",
         title: "Emergent Maintenance Deep Dive: Hard GPU Failures, Node Repair & Real Recovery Timeline",
         subtitle: "Historical 2026-09-24 Logs · XID 79 / 154 / 49 · perform-maintenance · Node & Ray Recovery Time",
-        scenario: `<strong>Role-Play Scenario (Day 3):</strong> On Day 3, we prepare the cluster with recommended best practices—such as enabling <strong>Emergent Maintenance</strong> to identify critical hard GPU failures (like <code>XID 79</code>, <code>XID 154</code>, or <code>XID 49</code>) and schedule a node repair.<br><br>To make this investigation 100% real, you will dig through the <strong>actual historical Cloud Logging records from <code>2026-09-24</code> (<code>20:30 UTC – 21:55 UTC</code>)</strong> on our live cluster (<code>ikwak-reliability</code>, node <code>-34t3</code> / <code>instance_id="174490015860863227"</code>) to:<br>1) Identify the exact hard XID failure that killed the training job in <code>9.4s</code>,<br>2) Verify the GCE <code>upcomingMaintenance</code> system audit event,<br>3) Determine the correct customer action to trigger immediate host repair, and<br>4) Calculate <strong>how long it took for the node to be replaced/repaired, report healthy in Ray (<code>2/2</code>), and resume training Step 1</strong>!`,
+        scenario: `<strong>Role-Play Scenario (Day 3):</strong> On Day 3, we prepare the cluster with recommended best practices—such as enabling <strong>Emergent Maintenance</strong> to identify critical hard GPU failures (like <code>XID 79</code>, <code>XID 154</code>, or <code>XID 49</code>) and schedule a node repair.<br><br><strong>🕒 Recorded / Injected Incident Windows (No Pre-Staging Required):</strong><br>• <strong>Real Hardware PCIe SBR Fault Injection (Run 11 on Node <code>-34t3</code> / <code>174490015860863227</code>):</strong> <code>2026-09-24T20:31:38Z</code> – <code>2026-09-24T21:49:55Z</code><br>• <strong>Recovery Orchestrator Summary Log (<code>dapo-run11-recovery-orchestrator</code>):</strong> <code>2026-10-20T00:54:22Z</code>`,
         clues: [
           {
             id: "d3-c1",
-            stepLabel: "Breadcrumb 3.1 · Historical Serial Console Investigation (2026-09-24)",
+            stepLabel: "Breadcrumb 3.1 · Historical Serial Console Investigation (2026-09-24 20:31:38 UTC)",
             title: "Dig Through Previous Serial Console Logs to Identify the Critical Hard XID Failure",
-            prompt: `Open <a href="https://console.cloud.google.com/logs/query?project=gpu-launchpad-playground" target="_blank" rel="noopener">Cloud Logging (Logs Explorer)</a> and query the real historical serial console logs on node <code>-34t3</code> (<code>instance_id="174490015860863227"</code>) from <strong><code>2026-09-24T20:31:00Z</code> to <code>2026-09-24T20:33:00Z</code></strong> (or inspect pod <code>dapo-gemma3-run3-driver</code>):<br><code>resource.type="gce_instance" AND log_id("serialconsole.googleapis.com/serial_port_1_output") AND resource.labels.instance_id="174490015860863227" AND timestamp&gt;="2026-09-24T20:31:00Z" AND timestamp&lt;="2026-09-24T20:33:00Z" AND "NVRM: Xid"</code><br><br>At <code>20:31:38.086Z</code>, GPU 7 (<code>PCI:0000:cc:00</code>) suffered a catastrophic hard failure (followed 0.65s later by <code>XID 154: Node Reboot Required</code>, <code>XID 145</code> NVLink RLW_RX_FAULT, and <code>XID 45</code>), killing the Ray training job in <code>9.4s</code>.<br><br><strong>Question:</strong> What fatal numeric <strong>XID error code</strong> (or error message on <code>PCI:0000:cc:00</code> at <code>20:31:38.086Z</code>) initiated this hard failure cascade?`,
+            prompt: `Open <a href="https://console.cloud.google.com/logs/query?project=gpu-launchpad-playground" target="_blank" rel="noopener">Cloud Logging (Logs Explorer)</a> and query the real historical serial console logs on node <code>-34t3</code> (<code>instance_id="174490015860863227"</code>) from <strong><code>2026-09-24T20:31:00Z</code> to <code>2026-09-24T20:33:00Z</code></strong> (or inspect pod <code>dapo-gemma3-run3-driver</code> at <code>2026-10-20T00:54:20Z</code>):<br><code>resource.type="gce_instance" AND log_id("serialconsole.googleapis.com/serial_port_1_output") AND resource.labels.instance_id="174490015860863227" AND timestamp&gt;="2026-09-24T20:31:00Z" AND timestamp&lt;="2026-09-24T20:33:00Z" AND "NVRM: Xid"</code><br><br>At <strong><code>2026-09-24T20:31:38.086Z</code></strong>, GPU 7 (<code>PCI:0000:cc:00</code>) suffered a catastrophic hard failure (followed 0.65s later at <code>20:31:38.738Z</code> by <code>XID 154: Node Reboot Required</code>, <code>XID 145</code> NVLink, and <code>XID 45</code>), killing the Ray training job in <code>9.4s</code>.<br><br><strong>Question:</strong> What fatal numeric <strong>XID error code</strong> (or error message on <code>PCI:0000:cc:00</code> at <code>20:31:38.086Z</code>) initiated this hard failure cascade?`,
             inputType: "text",
             placeholder: "e.g., XID 79 / GPU has fallen off the bus / XID 154",
-            hint: `Paste this exact historical query into <a href="https://console.cloud.google.com/logs/query?project=gpu-launchpad-playground" target="_blank" rel="noopener">Cloud Logging (Logs Explorer)</a> (make sure your Logs Explorer time picker includes <code>2026-09-24</code>, or include the <code>timestamp</code> filter below):
+            hint: `Paste this exact historical query into <a href="https://console.cloud.google.com/logs/query?project=gpu-launchpad-playground" target="_blank" rel="noopener">Cloud Logging (Logs Explorer)</a>:
 <div class="code-block">resource.type="gce_instance"
 log_id("serialconsole.googleapis.com/serial_port_1_output")
 resource.labels.instance_id="174490015860863227"
 timestamp>="2026-09-24T20:31:00Z" AND timestamp<="2026-09-24T20:33:00Z"
 "NVRM: Xid"</div>`,
-            telemetrySample: `2026-09-24T20:31:38.086Z | [ 4182.104821] NVRM: Xid (PCI:0000:cc:00): 79, pid=0, name=, GPU has fallen off the bus.
-2026-09-24T20:31:38.738Z | [ 4182.741902] NVRM: Xid (PCI:0000:04:00): 154, GPU recovery action changed from 0x0 (None) to 0x1 (Node Reboot Required)
-2026-09-24T20:31:38.739Z | [ 4182.742819] NVRM: Xid (PCI:0000:04:00): 145, NVLink: fatal error detected on link 6: RLW_RX_FAULT (0x1)
-2026-09-24T20:31:38.784Z | [ 4182.789120] NVRM: Xid (PCI:0000:cc:00): 154, GPU recovery action changed from 0x0 (None) to 0x3 (Drain and Reset)
-2026-09-24T20:31:38.803Z | [ 4182.808114] NVRM: Xid (PCI:0000:c4:00): 45, pid=384910, name=ray::RayWorkerW, Preemptive cleanup, due to previous errors -- Most likely to culpables: 79`,
+            telemetrySample: `2026-09-24T20:31:38.086240Z | [19151.954599] NVRM: Xid (PCI:0000:cc:00): 79, GPU has fallen off the bus.
+2026-09-24T20:31:38.738781Z | [19152.586446] NVRM: Xid (PCI:0000:8f:00): 154, GPU recovery action changed from 0x0 (None) to 0x2 (Node Reboot Required)
+2026-09-24T20:31:38.738855Z | [19152.610285] NVRM: Xid (PCI:0000:90:00): 145, RLW_SRC_TRACK Nonfatal XC1 i0 Link 00 (0x04080107 0x00000008)
+2026-09-24T20:31:38.738938Z | [19152.625353] NVRM: Xid (PCI:0000:90:00): 45, pid=107796, name=ray::RayWorkerW, channel 0x00000002 caused by previous errors`,
             acceptedKeywords: ["79", "xid 79", "xid79", "fallen off the bus", "154", "xid 154", "node reboot required", "145", "49", "xid 49"],
             warmKeywords: ["cc:00", "nvrm", "nvlink", "45"],
-            warmMessage: "Look at the very first `NVRM: Xid` entry at `20:31:38.086Z` on `PCI:0000:cc:00`! Enter the XID code (`79` / `XID 79` or `154`).",
-            explanationTitle: "Correct! `XID 79` (`GPU has fallen off the bus`) on `PCI:0000:cc:00` at `20:31:38.086Z` triggered `XID 154` (`Node Reboot Required`) and `XID 145` (NVLink fault).",
+            warmMessage: "Look at the very first `NVRM: Xid` entry at `2026-09-24T20:31:38.086Z` on `PCI:0000:cc:00`! Enter the XID code (`79` / `XID 79` or `154`).",
+            explanationTitle: "Correct! `XID 79` (`GPU has fallen off the bus`) on `PCI:0000:cc:00` at `2026-09-24T20:31:38.086Z` triggered `XID 154` (`Node Reboot Required`) and `XID 145` (NVLink fault).",
             explanationHtml: `
               <p>Why is <code>XID 79</code> (along with hard bus/NVLink/power faults like <code>XID 49</code>, <code>XID 74</code>, <code>XID 145</code>, <code>XID 154</code>) a catastrophic hard failure?</p>
               <ul>
@@ -1454,7 +1463,7 @@ timestamp>="2026-09-24T20:31:00Z" AND timestamp<="2026-09-24T20:33:00Z"
           },
           {
             id: "d3-c2",
-            stepLabel: "Breadcrumb 3.2 · Emergent Maintenance System Audit Event (2026-09-24)",
+            stepLabel: "Breadcrumb 3.2 · Emergent Maintenance System Audit Event (2026-09-24 20:57:46 UTC)",
             title: "Verify the Emergent Maintenance Notification in Cloud Audit Logs",
             prompt: `Because <strong>Emergent Maintenance</strong> was enabled on the cluster reservation, Google's host health detectors caught the fatal XID fault on <code>instance_id="174490015860863227"</code> (<code>-34t3</code>) and emitted a System Event Audit Log at <strong><code>2026-09-24T20:57:46.921Z</code></strong> (<code>+26m 09s</code> after the XID), scheduling an unscheduled repair window 7 days out (<code>windowStartTime: 2026-10-02T00:00:00Z</code>, <code>canReschedule: true</code>).<br><br>Query <code>cloudaudit.googleapis.com/system_event</code> in <a href="https://console.cloud.google.com/logs/query?project=gpu-launchpad-playground" target="_blank" rel="noopener">Cloud Logging (Logs Explorer)</a>:<br><code>resource.type="gce_instance" AND log_id("cloudaudit.googleapis.com/system_event") AND resource.labels.instance_id="174490015860863227" AND timestamp&gt;="2026-09-24T20:55:00Z" AND timestamp&lt;="2026-09-24T21:00:00Z"</code><br><br><strong>Question:</strong> What is the exact <code>protoPayload.methodName</code> (e.g., <code>compute.instances.upcomingMaintenance</code>) OR the specific XID reason code inside <code>maintenanceReasons</code> (e.g., <code>FAILURE_GPU_XID</code>) in that audit log?`,
             inputType: "text",
@@ -1464,13 +1473,13 @@ timestamp>="2026-09-24T20:31:00Z" AND timestamp<="2026-09-24T20:33:00Z"
 log_id("cloudaudit.googleapis.com/system_event")
 resource.labels.instance_id="174490015860863227"
 timestamp>="2026-09-24T20:55:00Z" AND timestamp<="2026-09-24T21:00:00Z"</div>`,
-            telemetrySample: `TIMESTAMP: 2026-09-24T20:57:46.921Z
+            telemetrySample: `TIMESTAMP: 2026-09-24T20:57:46.921675Z
 LOG_NAME: projects/gpu-launchpad-playground/logs/cloudaudit.googleapis.com%2Fsystem_event
 RESOURCE: gce_instance / instance_id="174490015860863227" (gke-ikwak-reliabilit-a4-highgpu-8g-a4-0256e2f1-34t3)
 PROTO_PAYLOAD:
   methodName: "compute.instances.upcomingMaintenance"
   status:
-    message: "Urgent repair is scheduled for this instance. During maintenance, the instance will be terminated and restarted on a healthy host."
+    message: "Urgent repair is scheduled for this instance as a fault was detected which requires repair."
   upcomingMaintenance:
     type: "UNSCHEDULED"
     maintenanceStatus: "PENDING"
@@ -1482,7 +1491,7 @@ PROTO_PAYLOAD:
       - "FAILURE_GPU"`,
             acceptedKeywords: ["upcomingmaintenance", "compute.instances.upcomingmaintenance", "failure_gpu_xid", "failure_gpu", "urgent repair", "unscheduled"],
             warmKeywords: ["maintenance", "pending", "system_event"],
-            warmMessage: "You found the audit log at `20:57:46.921Z`! Enter the `methodName` (`compute.instances.upcomingMaintenance`) or reason (`FAILURE_GPU_XID`).",
+            warmMessage: "You found the audit log at `2026-09-24T20:57:46.921Z`! Enter the `methodName` (`compute.instances.upcomingMaintenance`) or reason (`FAILURE_GPU_XID`).",
             explanationTitle: "Correct! `compute.instances.upcomingMaintenance` (`FAILURE_GPU_XID`, `PENDING`, `canReschedule: true`) notifies you that urgent host repair is scheduled.",
             explanationHtml: `
               <p>Why does <strong>Emergent Maintenance</strong> schedule the default window 7+ days out (<code>2026-10-02T00:00:00Z</code>) with <code>canReschedule: true</code>?</p>
@@ -1494,9 +1503,9 @@ PROTO_PAYLOAD:
           },
           {
             id: "d3-c3",
-            stepLabel: "Breadcrumb 3.3 · Triggering Immediate Host Repair for Hard Failures",
+            stepLabel: "Breadcrumb 3.3 · Triggering Immediate Host Repair (2026-09-24 20:57:59 UTC)",
             title: "What Is the Correct Action to Take for Hard GPU Failures Requiring Host Repair?",
-            prompt: `Consult the <a href="https://docs.cloud.google.com/compute/docs/troubleshooting/troubleshooting-gpus" target="_blank" rel="noopener">Google Cloud GPU Troubleshooting Guide</a> and inspect the Admin Activity Audit Logs (<code>cloudaudit.googleapis.com/activity</code>) recorded on <code>2026-09-24</code> at <strong><code>20:57:59Z</code></strong>:<br><code>(resource.type="k8s_cluster" OR resource.type="gce_instance") AND log_id("cloudaudit.googleapis.com/activity") AND timestamp&gt;="2026-09-24T20:57:00Z" AND timestamp&lt;="2026-09-24T21:00:00Z"</code><br><br><strong>Question:</strong> When a hard GPU failure (such as <code>XID 79</code>, <code>XID 154</code>, or <code>XID 49</code>) occurs and requires host repair / replacement, what is the correct operational action to take?`,
+            prompt: `Consult the <a href="https://docs.cloud.google.com/compute/docs/troubleshooting/troubleshooting-gpus" target="_blank" rel="noopener">Google Cloud GPU Troubleshooting Guide</a> and inspect the Admin Activity Audit Logs (<code>cloudaudit.googleapis.com/activity</code>) recorded on <strong><code>2026-09-24</code> at <code>20:57:59Z</code></strong>:<br><code>(resource.type="k8s_cluster" OR resource.type="gce_instance") AND log_id("cloudaudit.googleapis.com/activity") AND timestamp&gt;="2026-09-24T20:57:00Z" AND timestamp&lt;="2026-09-24T21:00:00Z"</code><br><br><strong>Question:</strong> When a hard GPU failure (such as <code>XID 79</code>, <code>XID 154</code>, or <code>XID 49</code>) occurs and requires host repair / replacement, what is the correct operational action to take?`,
             inputType: "choice",
             choices: [
               {
@@ -1517,7 +1526,7 @@ PROTO_PAYLOAD:
               }
             ],
             correctChoice: "c",
-            hint: `Paste this query in <a href="https://console.cloud.google.com/logs/query?project=gpu-launchpad-playground" target="_blank" rel="noopener">Cloud Logging (Logs Explorer)</a> to see the exact command executed at <code>20:57:59Z</code>:
+            hint: `Paste this query in <a href="https://console.cloud.google.com/logs/query?project=gpu-launchpad-playground" target="_blank" rel="noopener">Cloud Logging (Logs Explorer)</a> to see the exact command executed at <code>2026-09-24T20:57:59Z</code>:
 <div class="code-block">(resource.type="k8s_cluster" OR resource.type="gce_instance")
 log_id("cloudaudit.googleapis.com/activity")
 timestamp>="2026-09-24T20:57:00Z" AND timestamp<="2026-09-24T21:00:00Z"</div>`,
@@ -1538,18 +1547,19 @@ timestamp>="2026-09-24T20:57:00Z" AND timestamp<="2026-09-24T21:00:00Z"</div>`,
           },
           {
             id: "d3-c4",
-            stepLabel: "Breadcrumb 3.4 · Real Node Replacement, Ray Health & Job Resumption Timeline (2026-09-24)",
+            stepLabel: "Breadcrumb 3.4 · Real Node Replacement, Ray Health & Job Resumption Timeline (2026-09-24 20:57–21:50 UTC)",
             title: "Calculate How Long It Took to Replace the Node, Restore Ray (2/2) & Resume the Job",
-            prompt: `Finally, let's measure the <strong>exact real-world recovery durations</strong> from the <code>2026-09-24</code> Cloud Logging audit/event logs and the recovery orchestrator pod (<code>dapo-run11-recovery-orchestrator</code>)!<br><br>Query <a href="https://console.cloud.google.com/logs/query?project=gpu-launchpad-playground" target="_blank" rel="noopener">Cloud Logging (Logs Explorer)</a> for <code>dapo-run11-recovery-orchestrator</code> (or inspect the <code>2026-09-24T20:57:00Z..21:52:00Z</code> system/K8s events on <code>-34t3</code>):<br><code>resource.type="k8s_container" AND resource.labels.cluster_name="ikwak-reliability" AND resource.labels.pod_name="dapo-run11-recovery-orchestrator"</code><br><br>Trace the real timestamps:<br>• <code>20:31:38Z</code>: Fatal <code>XID 79</code> + <code>XID 154</code> fault on node <code>-34t3</code><br>• <code>20:57:59Z</code>: Triggered <code>cloud.google.com/perform-maintenance=true</code><br>• <code>21:14:47Z → 21:31:18Z</code>: GCE terminated VM, attempted Restart-in-Place, hit <code>restartOnANewMachineDueToRipTimeout</code>, and booted the VM on a healthy host (<code>automaticRestart</code> at <code>21:31:18Z</code>, <code>33m 19s</code> after label)<br>• <code>21:33:24Z</code>: GKE Node <code>-34t3</code> reported <code>Ready=True</code> with <code>8</code> B200 GPUs and scheduled replacement pod <code>ray-cluster-kuberay-worker-grp-0-worker-lsfdm</code> (<strong><code>35m 25s</code></strong> after <code>perform-maintenance</code>)<br>• <code>21:37:42Z</code>: Replacement worker pod finished pulling the 20.1 GB container image and <strong>Ray reported <code>2/2</code> nodes (<code>16/16</code> GPUs) healthy</strong> (<strong><code>39m 43s</code> [<code>~40m</code>]</strong> after <code>perform-maintenance</code> / <code>4m 18s</code> after Node Ready)<br>• <code>21:49:55Z</code>: Resubmitted job <code>dapo-run11-recovered</code> completed NCCL init and began <strong>training <code>Step 1/500</code></strong> (<strong><code>12m 13s</code> [<code>~12m</code>]</strong> after Ray reported healthy / <strong><code>51m 56s</code> [<code>~52m</code>]</strong> after <code>perform-maintenance</code> / <strong><code>1h 18m 18s</code> [<code>~78m</code>]</strong> total from fault)<br><br><strong>Question:</strong> Enter the time it took for the node to be replaced/repaired &amp; Ready (<code>~35m</code> / <code>35m 25s</code>), or reported healthy in Ray (<code>~40m</code> / <code>39m 43s</code>), OR the time to resume training Step 1 after Ray was healthy (<code>~12m</code> / <code>12m 13s</code>, or <code>~52m</code> from maintenance trigger / <code>~78m</code> total):`,
+            prompt: `Finally, let's measure the <strong>exact real-world recovery durations</strong> from the <strong><code>2026-09-24T20:57:59Z</code> – <code>2026-09-24T21:49:55Z</code></strong> Cloud Logging audit/event logs and the recovery orchestrator audit log (<code>dapo-run11-recovery-orchestrator</code> recorded at <strong><code>2026-10-20T00:54:22Z</code></strong>)!<br><br>Query <a href="https://console.cloud.google.com/logs/query?project=gpu-launchpad-playground" target="_blank" rel="noopener">Cloud Logging (Logs Explorer)</a> using either the orchestrator summary query:<br><code>resource.type="k8s_container" AND resource.labels.cluster_name="ikwak-reliability" AND resource.labels.pod_name="dapo-run11-recovery-orchestrator" AND timestamp&gt;="2026-10-20T00:53:00Z" AND timestamp&lt;="2026-10-20T00:55:00Z"</code><br>or the raw <code>2026-09-24</code> GCE system events &amp; K8s pod scheduling events:<br><code>((log_id("cloudaudit.googleapis.com/system_event") AND resource.labels.instance_id="174490015860863227") OR (log_id("events") AND "ray-cluster-kuberay-worker-grp-0-worker-lsfdm")) AND timestamp&gt;="2026-09-24T21:12:00Z" AND timestamp&lt;="2026-09-24T21:40:00Z"</code><br><br>Trace the real timestamps:<br>• <code>20:31:38Z</code>: Fatal <code>XID 79</code> + <code>XID 154</code> fault on node <code>-34t3</code><br>• <code>20:57:59Z</code>: Triggered <code>cloud.google.com/perform-maintenance=true</code><br>• <code>21:14:47Z → 21:31:18Z</code>: GCE terminated VM, attempted Restart-in-Place, hit <code>restartOnANewMachineDueToRipTimeout</code>, and booted the VM on a healthy host (<code>automaticRestart</code> at <code>21:31:18Z</code>, <code>33m 19s</code> after label)<br>• <code>21:33:24Z</code>: GKE Node <code>-34t3</code> reported <code>Ready=True</code> with <code>8</code> B200 GPUs and scheduled replacement pod <code>ray-cluster-kuberay-worker-grp-0-worker-lsfdm</code> (<strong><code>35m 25s</code></strong> after <code>perform-maintenance</code>)<br>• <code>21:37:42Z</code>: Replacement worker pod finished pulling the 20.1 GB container image and <strong>Ray reported <code>2/2</code> nodes (<code>16/16</code> GPUs) healthy</strong> (<strong><code>39m 43s</code> [<code>~40m</code>]</strong> after <code>perform-maintenance</code> / <code>4m 18s</code> after Node Ready)<br>• <code>21:49:55Z</code>: Resubmitted job <code>dapo-run11-recovered</code> completed NCCL init and began <strong>training <code>Step 1/500</code></strong> (<strong><code>12m 13s</code> [<code>~12m</code>]</strong> after Ray reported healthy / <strong><code>51m 56s</code> [<code>~52m</code>]</strong> after <code>perform-maintenance</code> / <strong><code>1h 18m 18s</code> [<code>~78m</code>]</strong> total from fault)<br><br><strong>Question:</strong> Enter the time it took for the node to be replaced/repaired &amp; Ready (<code>~35m</code> / <code>35m 25s</code>), or reported healthy in Ray (<code>~40m</code> / <code>39m 43s</code>), OR the time to resume training Step 1 after Ray was healthy (<code>~12m</code> / <code>12m 13s</code>, or <code>~52m</code> from maintenance trigger / <code>~78m</code> total):`,
             inputType: "text",
             placeholder: "e.g., 35m 25s (node ready) / 39m 43s (Ray healthy) / 12m 13s (Ray->Step 1) / 52m",
-            hint: `Query <code>dapo-run11-recovery-orchestrator</code> in <a href="https://console.cloud.google.com/logs/query?project=gpu-launchpad-playground" target="_blank" rel="noopener">Cloud Logging (Logs Explorer)</a>:
+            hint: `Query <code>dapo-run11-recovery-orchestrator</code> at <code>2026-10-20T00:54:22Z</code> in <a href="https://console.cloud.google.com/logs/query?project=gpu-launchpad-playground" target="_blank" rel="noopener">Cloud Logging (Logs Explorer)</a>:
 <div class="code-block">resource.type="k8s_container"
 resource.labels.cluster_name="ikwak-reliability"
-resource.labels.pod_name="dapo-run11-recovery-orchestrator"</div>
-Or query the raw 2026-09-24 GCE &amp; GKE recovery events directly:
-<div class="code-block">(resource.labels.instance_id="174490015860863227" OR "ray-cluster-kuberay-worker-grp-0-worker-lsfdm")
-timestamp>="2026-09-24T21:10:00Z" AND timestamp<="2026-09-24T21:52:00Z"</div>`,
+resource.labels.pod_name="dapo-run11-recovery-orchestrator"
+timestamp>="2026-10-20T00:53:00Z" AND timestamp<="2026-10-20T00:55:00Z"</div>
+Or query the raw <code>2026-09-24</code> GCE system events &amp; GKE pod events directly:
+<div class="code-block">((log_id("cloudaudit.googleapis.com/system_event") AND resource.labels.instance_id="174490015860863227") OR (log_id("events") AND "ray-cluster-kuberay-worker-grp-0-worker-lsfdm"))
+timestamp>="2026-09-24T21:12:00Z" AND timestamp<="2026-09-24T21:40:00Z"</div>`,
             telemetrySample: `=== [Run 11 Historical Recovery Timeline Audit (2026-09-24) on Node -34t3 (instance_id=174490015860863227)] ===
 1. [2026-09-24T20:31:38.086Z] FAULT_INJECTED: NVRM: Xid (PCI:0000:cc:00): 79, GPU has fallen off the bus (+ Xid 154 Node Reboot Required, Xid 145 NVLink)
 2. [2026-09-24T20:31:46.469Z] JOB_FAILED (+9.4s): dapo-run10-recovered aborted with ray.exceptions.ActorUnavailableError

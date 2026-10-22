@@ -8,10 +8,10 @@ This directory (`reliability/`) contains the complete **GPU Cluster Reliability 
 
 | Path | Purpose |
 | :--- | :--- |
-| [`lab-webapp/index.html`](./lab-webapp/index.html) | Single-page interactive **3-Day (10-Breadcrumb) Detective Lab Web App** (`Day 1 Lab`, `Day 2 Lab`, `Day 3 Lab`) with 10-minute per-clue countdown timers (`10,000` max points), live scoreboard, password-protected `Instructor Preview` & `Reveal Answer` (`ilovejensen`), and real Cloud Logging queries + Veritas links. |
+| [`lab-webapp/index.html`](./lab-webapp/index.html) | Single-page interactive **3-Day (10-Breadcrumb) Detective Lab Web App** (`Day 1 Lab`, `Day 2 Lab`, `Day 3 Lab`) with 10-minute per-clue countdown timers (`10,000` max points), live scoreboard, password-protected `Instructor Preview` & `Reveal Answer` (`ilovejensen`), and **timestamp-pinned (`timestamp>="..." AND timestamp<="..."`) Cloud Logging queries** + Veritas links so **no pre-staging is required**. |
 | [`lab-webapp/server.py`](./lab-webapp/server.py) | Zero-dependency Python HTTP + JSON API server (`ThreadingHTTPServer` on port `8787`) backing the real-time multi-player CE scoreboard (`scoreboard.json`). |
-| [`lab-webapp/prestage-scenarios.sh`](./lab-webapp/prestage-scenarios.sh) | One-shot pre-staging script that deploys all Day 1, Day 2, and Day 3 pods and serial console `XID 48` logs (one-off vs. recurring) to the live `ikwak-reliability` cluster (`gpu-launchpad-playground`) so CEs with read-only access can query everything live in Cloud Console. |
-| [`CE_BREADCRUMB_LAB_GUIDE.md`](./CE_BREADCRUMB_LAB_GUIDE.md) | Complete Instructor Guide & Answer Key for all 3 Days (10 Breadcrumbs), including exact Cloud Logging (Logs Explorer) queries, Veritas link (`MACHINE:yugrqvu-tl3`), and accepted fuzzy keywords. |
+| [`lab-webapp/prestage-scenarios.sh`](./lab-webapp/prestage-scenarios.sh) | Archive script that originally generated the Day 1, Day 2, and Day 3 pods and serial console `XID 48` logs on `2026-10-19` and `2026-10-20`. **Not needed before running a lab session** since all queries in `index.html` reference those exact UTC timestamps directly. |
+| [`CE_BREADCRUMB_LAB_GUIDE.md`](./CE_BREADCRUMB_LAB_GUIDE.md) | Complete Instructor Guide & Answer Key for all 3 Days (10 Breadcrumbs), including exact timestamp-scoped Cloud Logging (Logs Explorer) queries, Veritas link (`MACHINE:yugrqvu-tl3`), and accepted fuzzy keywords. |
 | [`BLOG_MTTR_TRAINING_CLUSTERS.md`](./BLOG_MTTR_TRAINING_CLUSTERS.md) | Technical deep-dive blog on maximizing GPU cluster Goodput by reducing MTTD and MTTR on `a4-highgpu-8g` (NVIDIA B200) clusters. |
 | [`fault-injection-runs/`](./fault-injection-runs/) | Raw empirical logs, scripts, and `HANDOFF.md` from Runs 1–11 on the 2-node `a4-highgpu-8g` B200 GKE cluster (`ikwak-reliability`). |
 
@@ -29,12 +29,10 @@ This directory (`reliability/`) contains the complete **GPU Cluster Reliability 
 
 ---
 
-## 3. Quick Start: Running the Lab Server & Pre-Staging Live Breadcrumbs
+## 3. Quick Start: Running the Lab Server (Zero Pre-Staging Required)
+
+All Day 1 (`2026-10-20T00:53:54Z`–`00:53:56Z`), Day 2 (`2026-10-19T17:14Z` & `2026-10-20T00:54Z`), and Day 3 (`2026-09-24T20:31:38Z`–`21:49:55Z` + `2026-10-20T00:54:22Z`) logs are permanently indexed in Cloud Logging (`gpu-launchpad-playground`), and every query in the web app includes explicit `timestamp>="..." AND timestamp<="..."` bounds. Simply run the web server:
 
 ```bash
-# 1. Start the live web app + scoreboard server on port 8787:
 python3 /usr/local/google/home/ikwak/jetski-playground/reliability/lab-webapp/server.py
-
-# 2. (Optional) Re-stage all Day 1, Day 2 & Day 3 pods and serial console logs on ikwak-reliability:
-bash /usr/local/google/home/ikwak/jetski-playground/reliability/lab-webapp/prestage-scenarios.sh
 ```
